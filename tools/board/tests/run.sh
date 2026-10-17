@@ -2155,6 +2155,364 @@ T02  todo         phase:D  exporter    Two [blocked by T01]" "$(cat "$OUT")"
     check "no warning" "" "$(cat "$ERR")"
 }
 
+# --- Adversarial QA, round 3: probes kept as regression tests --------------------------------------------------------
+
+# signal_hook <signal>: a pre-commit hook that sends <signal> to the set-status.sh process (the outermost one above the
+# hook) in the middle of an attempt, after TASKS.md is edited, and lets git go on with the commit a second later.
+signal_hook() {
+    cat >"$REPO/.git/hooks/pre-commit" <<EOF
+#!/bin/sh
+pid=\$PPID
+while :; do
+    parent=\$(ps -o ppid= -p "\$pid" | tr -d ' ')
+    ps -o args= -p "\$parent" | grep -q set-status.sh || break
+    pid=\$parent
+done
+kill -$1 "\$pid"
+sleep 1
+exit 0
+EOF
+    chmod +x "$REPO/.git/hooks/pre-commit"
+}
+
+# signal_case <signal>...: set-status gets the signal in the middle of an attempt; it must undo the attempt.
+signal_case() {
+    local sig
+    for sig in "$@"; do
+        new_world
+        signal_hook "$sig"
+        before="$(tasks_sum)"
+        rc=0
+        status "2026-10-12 09:00" T05 "in progress" --qa "round 1 approved by x" >"$OUT" 2>"$ERR" || rc=$?
+        # git finishes the commit after the signal; wait for it before looking.
+        sleep 1.5
+        check "$sig: exits with the signal" "yes" "$([[ "$rc" -gt 128 ]] && echo yes || echo "no ($rc)")"
+        check "$sig: HEAD and TASKS.md unchanged, the checkout clean" "$before " "$(tasks_sum) $(git -C "$REPO" status --porcelain --untracked-files=no)"
+        check "$sig: origin unchanged" "${before%%$'\n'*}" "$(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
+    done
+}
+
+CASES+=("adv3 probe: an interrupt or TERM in the middle of an attempt undoes it")
+case_69() {
+    # Trapped: bash waits for the running git, then exits through the undo.
+    signal_case INT TERM
+}
+
+CASES+=("adv3 probe: a push whose reply is lost is recorded once")
+case_70() {
+    new_world
+    # The push lands, then the connection drops: git reports a failure for a push that origin has.
+    cat >"$REPO/.git/hooks/pre-push" <<EOF
+#!/bin/sh
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+[ -e "$WORK/world/lost" ] && exit 0
+touch "$WORK/world/lost"
+git -C "$REPO" push -q --no-verify origin "HEAD:refs/heads/$BRANCH" || exit 2
+echo "fatal: the remote end hung up unexpectedly" >&2
+exit 1
+EOF
+    chmod +x "$REPO/.git/hooks/pre-push"
+    rc=0
+    status "2026-10-12 09:00" T05 "in progress" --qa "round 1 approved by x" >"$OUT" 2>"$ERR" || rc=$?
+    check_status "it succeeds" 0 "$rc"
+    check "one status commit on origin" "board: T05 -> in progress (QA)
+board: T04 -> needs owner (question)" "$(git -C "$WORK/world/origin.git" log -2 --format=%s "$BRANCH")"
+    check "the main checkout is origin's head, clean" "$(git -C "$WORK/world/origin.git" rev-parse "$BRANCH") " \
+        "$(git -C "$REPO" rev-parse HEAD) $(git -C "$REPO" status --porcelain --untracked-files=no)"
+}
+
+# --- Adversarial QA, round 3: findings (these fail until fixed) ----------------------------------------------------
+
+CASES+=("adv3 finding: a hangup in the middle of an attempt races the undo with the running git")
+case_71() {
+    # Not trapped: bash runs the EXIT trap (the undo) at once, while git still commits. The undo cannot take the index
+    # (git holds it), says "undid this attempt ... nothing changed", and git then moves HEAD to the status commit: a
+    # local status commit that the next set-status call pushes, or a TASKS.md that blocks every later call. A closed
+    # terminal or a killed agent session sends SIGHUP; a closed output pipe SIGPIPE.
+    signal_case HUP PIPE
+}
+
+CASES+=("adv3 finding: a carriage return in a note splits the line on the next edit")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_72() {
+    new_world
+    # A CR survives the newline clean-up (`--qa "$(cat verdict.txt)"` of a CRLF file has them); the next edit of
+    # TASKS.md (python's universal newlines) turns it into a line break, here into a task heading.
+    status "2026-10-12 09:00" T05 "in progress" --qa $'round 1 rejected by x: one\r### T09 Injected — `done`' >/dev/null
+    check "the CR does not reach TASKS.md" "0" "$(grep -c $'\r' "$REPO/planning/TASKS.md" || true)"
+    board sync >/dev/null 2>&1
+    status "2026-10-12 09:05" T05 testing >/dev/null
+    check "the next edit adds no task" "" "$(grep '^### T09' "$REPO/planning/TASKS.md" || true)"
+    check "the QA line stays one line under the heading" "QA: 2026-10-12 09:00 UTC: round 1 rejected by x: one" \
+        "$(grep -A1 '^### T05 ' "$REPO/planning/TASKS.md" | tail -n 1 | cut -c1-52)"
+    reset_log
+    board sync >/dev/null 2>&1
+    check "the sync creates no issue and posts no comment" "" "$(writes | grep -E '^gh issue (create|comment)' || true)"
+
+    new_world
+    status "2026-10-12 09:00" T05 todo --qa $'round 1 rejected by x: first finding\r\nsecond finding' >/dev/null
+    status "2026-10-12 09:05" T05 "in progress" >/dev/null
+    check "CRLF text: no stray line in the task body" "" "$(grep '^ second finding' "$REPO/planning/TASKS.md" || true)"
+}
+
+CASES+=("adv3 finding: an undo that cannot restore TASKS.md says that nothing changed")
+case_73() {
+    new_world
+    before="$(tasks_sum)"
+    # Another git process holds the main checkout's index (an agent's `git status`, an editor, a crashed git).
+    touch "$REPO/.git/index.lock"
+    rc=0
+    status "2026-10-12 09:00" T05 "in progress" >"$OUT" 2>"$ERR" || rc=$?
+    rm -f "$REPO/.git/index.lock"
+    check_status "refused" 1 "$rc"
+    # It says "undid this attempt ... nothing changed", but restores TASKS.md with git checkout, which needs the
+    # index, and `if undo_to` turns errexit off inside it, so the failure is not seen.
+    check "TASKS.md unchanged and the checkout clean, as the message says" "$before " \
+        "$(tasks_sum) $(git -C "$REPO" status --porcelain --untracked-files=no)"
+    rc=0
+    status "2026-10-12 09:05" T05 "in progress" >"$OUT" 2>"$ERR" || rc=$?
+    check "the next call is not blocked by the failed one" "0" "$rc"
+}
+
+CASES+=("adv3 finding: an option is taken as the text of the option before it")
+case_74() {
+    new_world
+    before="$(tasks_sum)"
+    pushed="$(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
+    # An empty unquoted variable: `--qa $VERDICT --dry-run`.
+    rc=0
+    status "2026-10-12 09:00" T05 "in progress" --qa --dry-run >"$OUT" 2>"$ERR" || rc=$?
+    check "--qa --dry-run: refused" "1" "$rc"
+    rc=0
+    status "2026-10-12 09:00" T05 "in progress" --qa --no-push >"$OUT" 2>"$ERR" || rc=$?
+    check "--qa --no-push: refused" "1" "$rc"
+    rc=0
+    status "2026-10-12 09:00" T06 "in progress" --force --reason --dry-run >"$OUT" 2>"$ERR" || rc=$?
+    check "--reason --dry-run: refused" "1" "$rc"
+    check "nothing changed, nothing pushed" "$before $pushed" "$(tasks_sum) $(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
+}
+
+CASES+=("adv3 finding: a push whose reply is lost while another session pushes on top is recorded twice")
+case_75() {
+    new_world
+    other_clone
+    cat >"$REPO/.git/hooks/pre-push" <<EOF
+#!/bin/sh
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+[ -e "$WORK/world/lost" ] && exit 0
+touch "$WORK/world/lost"
+# The push lands, another session pushes on top of it, then the reply of the first push is lost.
+git -C "$REPO" push -q --no-verify origin "HEAD:refs/heads/$BRANCH" || exit 2
+cd "$OTHER" && git pull -q --ff-only && mkdir -p src && echo x >src/race.txt && git add src/race.txt &&
+    git commit -q -m "Another session's commit" && git push -q origin HEAD
+echo "fatal: the remote end hung up unexpectedly" >&2
+exit 1
+EOF
+    chmod +x "$REPO/.git/hooks/pre-push"
+    rc=0
+    status "2026-10-12 09:00" T03 testing --qa "round 1 approved by the spec tester" >"$OUT" 2>"$ERR" || rc=$?
+    check_status "it succeeds" 0 "$rc"
+    check "one status commit on origin" "1" "$(git -C "$WORK/world/origin.git" log --format=%s "$BRANCH" | grep -cx 'board: T03 -> testing (QA)')"
+    check "one QA line" "1" "$(git -C "$WORK/world/origin.git" show "$BRANCH:planning/TASKS.md" | grep -c 'round 1 approved by the spec tester')"
+}
+
+CASES+=("adv3 finding: a note that quotes the blocked marker is overwritten by the Blocked comment")
+case_76() {
+    new_world
+    board sync >/dev/null 2>&1
+    # T06 (#7) is blocked; a tester quotes the board's marker in a verdict.
+    status "2026-10-12 09:00" T06 todo --qa 'round 1 rejected by x: the <!-- blocked: marker is matched by substring' >/dev/null
+    board sync >/dev/null 2>&1
+    reset_log
+    board sync >/dev/null 2>&1
+    check "the next sync writes nothing" "" "$(writes)"
+    reset_log
+    board sync >/dev/null 2>&1
+    check "and the one after it neither" "" "$(writes)"
+    check "one Blocked comment and the QA comment with its text" "1 1" \
+        "$(comments_of_issue 7 | grep -c '^  comment: \*\*Blocked\*\*') $(comments_of_issue 7 | grep -c '^  comment: \*\*QA:\*\* 2026-10-12 09:00 UTC: round 1 rejected by x: the <!-- blocked: marker')"
+}
+
+CASES+=("adv3 finding: a second dependency clause is dropped without a warning")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_77() {
+    new_world
+    cat >"$WORK/world/parse.md" <<'EOF'
+## Phase B: packages
+
+### T00 Zero — `done`
+### T01 One — `done`
+### T02 Two — `todo` (depends on T01) (depends on T05)
+### T03 Three — `todo` (depends on T01; depends on T05 too)
+### T04 Four — `todo` (depends on T01) after T05
+### T05 Five — `todo`
+EOF
+    (cd "$REPO" && TASKS_FILE="$WORK/world/parse.md" "$BOARD/board.sh" list) >"$OUT" 2>"$ERR"
+    kept=""
+    for id in T02 T03 T04; do
+        if grep -q "^$id .*blocked by T05" "$OUT" || grep -q "^board: warning: $id" "$ERR"; then
+            kept+="$id kept "
+        else
+            kept+="$id dropped "
+        fi
+    done
+    check "T05 is a dependency, or the second clause is warned about" "T02 kept T03 kept T04 kept " "$kept"
+}
+
+CASES+=("adv3 finding: a dependency that can never be done blocks for good without a warning")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_78() {
+    new_world
+    cat >"$WORK/world/parse.md" <<'EOF'
+## Phase B: packages
+
+### T00 Zero — `done`
+### T01 One — `todo` (depends on T0)
+### T02 Two — `todo` (depends on T99)
+### T03 Three — `todo` (depends on T04)
+### T04 Four — `todo` (depends on T03)
+### T05 Five — `todo` (depends on everything)
+### T06 Six — `todo` (depends on everything)
+EOF
+    (cd "$REPO" && TASKS_FILE="$WORK/world/parse.md" "$BOARD/board.sh" list) >"$OUT" 2>"$ERR"
+    flagged=""
+    # An id that is no task (a typo of T00, a task not written yet).
+    for id in T01 T02; do
+        grep -q "^board: warning: $id" "$ERR" && flagged+="$id warned " || flagged+="$id silent "
+    done
+    # Tasks that wait for each other: warned about, or not blocked by each other.
+    for pair in "T03 T04" "T05 T06"; do
+        a="${pair% *}" b="${pair#* }"
+        if grep '^board: warning: ' "$ERR" | grep "$a" | grep -q "$b" || ! grep -q "^$a .*blocked by.*$b" "$OUT"; then
+            flagged+="$a/$b warned "
+        else
+            flagged+="$a/$b silent "
+        fi
+    done
+    check "named" "T01 warned T02 warned T03/T04 warned T05/T06 warned " "$flagged"
+}
+
+CASES+=("adv3 finding: a dependency range of a typo's size hangs the parser")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_79() {
+    new_world
+    # The parser builds the list by repeated concatenation (quadratic): T02–T30000 takes seconds, T02–T99999 minutes,
+    # and every set-status call (under the board lock) and board run parses the whole file.
+    printf '### T00 Zero — `done`\n### T01 One — `todo` (depends on T02–T99999)\n' >"$WORK/world/big.md"
+    rc=0
+    (cd "$REPO" && TASKS_FILE="$WORK/world/big.md" timeout 15 "$BOARD/board.sh" list) >"$OUT" 2>"$ERR" || rc=$?
+    check "the parser finishes" "finished" "$([[ "$rc" != 124 ]] && echo finished || echo "timed out after 15 s")"
+    check_contains "and names the range" "board: warning: T01" "$(cat "$ERR")"
+}
+
+CASES+=("adv3 finding: board.sh fails once T15 deletes planning/")
+case_80() {
+    new_world
+    board sync >/dev/null 2>&1
+    git -C "$REPO" rm -q -r planning
+    git -C "$REPO" commit -q -m "T15: delete legacy/ and planning/"
+    # The deletion push runs the sync; every later tests run on the integration branch runs the report.
+    rc=0
+    board sync >"$OUT" 2>"$ERR" || rc=$?
+    check "sync without a task list" "0" "$rc$([[ "$rc" == 0 ]] || echo " $(cat "$ERR")")"
+    rc=0
+    board report >"$OUT" 2>"$ERR" || rc=$?
+    check "report without a task list" "0" "$rc$([[ "$rc" == 0 ]] || echo " $(cat "$ERR")")"
+}
+
+CASES+=("adv3 finding: the board lock outlives set-status in a detached child")
+case_81() {
+    new_world
+    # The lock's descriptor (9) is inherited by git, its hooks and what they leave running: git's detached auto
+    # maintenance after a commit or fetch, or a hook's background job like this one.
+    printf '#!/bin/sh\nsleep 8 </dev/null >/dev/null 2>&1 &\necho $! >"%s"\nexit 0\n' "$WORK/world/sleeper" >"$REPO/.git/hooks/post-commit"
+    chmod +x "$REPO/.git/hooks/post-commit"
+    status "2026-10-12 09:00" T05 "in progress" >/dev/null
+    rm "$REPO/.git/hooks/post-commit"
+    started="$(date +%s)"
+    status "2026-10-12 09:01" T05 "in progress" --qa "a note" >"$OUT" 2>"$ERR"
+    took=$(($(date +%s) - started))
+    kill "$(cat "$WORK/world/sleeper")" 2>/dev/null || true
+    check "the next call does not wait for the background job" "yes" "$([[ "$took" -lt 5 ]] && echo yes || echo "no (${took} s)")"
+}
+
+CASES+=("adv3 finding: commits that a force push dropped from origin are pushed back")
+case_82() {
+    new_world
+    other_clone
+    status "2026-10-12 09:00" T05 "in progress" >/dev/null
+    dropped="$(git -C "$REPO" rev-parse HEAD)"
+    # The owner drops that status change from origin with a force push.
+    git -C "$OTHER" fetch -q origin
+    git -C "$OTHER" reset -q --hard "origin/$BRANCH~1"
+    git -C "$OTHER" push -q -f origin HEAD
+    rc=0
+    status "2026-10-12 09:10" T04 todo --answer "Not now" >"$OUT" 2>"$ERR" || rc=$?
+    check "the dropped commit stays off origin" "no" \
+        "$(git -C "$WORK/world/origin.git" merge-base --is-ancestor "$dropped" "$BRANCH" && echo yes || echo no)"
+}
+
+CASES+=("adv3 finding: a squash merge in progress in the main checkout is not seen")
+case_83() {
+    new_world
+    git -C "$REPO" checkout -q -b wip/T05-grafana
+    mkdir -p "$REPO/src"
+    echo '<?php' >"$REPO/src/grafana.php"
+    git -C "$REPO" add src/grafana.php
+    git -C "$REPO" commit -q -m "Port the dashboard"
+    git -C "$REPO" checkout -q "$BRANCH"
+    git -C "$REPO" merge -q --squash wip/T05-grafana >/dev/null 2>&1
+    rc=0
+    status "2026-10-12 09:00" T03 testing --qa "round 1 approved by x" >"$OUT" 2>"$ERR" || rc=$?
+    check "the squash merge keeps its message and its staged change" "SQUASH_MSG A  src/grafana.php" \
+        "$([[ -e "$REPO/.git/SQUASH_MSG" ]] && echo SQUASH_MSG) $(git -C "$REPO" status --porcelain --untracked-files=no)"
+}
+
+CASES+=("adv3 finding: a task started in testing has no Started and no cycle time")
+case_84() {
+    new_world
+    # todo -> testing starts work for the dependency gate, but Started reads only "-> in progress" commits.
+    status "2026-10-12 09:00" T05 testing >/dev/null
+    status "2026-10-13 09:00" T05 "done" --qa "round 1 approved by the spec and adversarial testers" >/dev/null
+    board sync >/dev/null 2>&1
+    check "Started is set" "card #6 Status=Done; Phase=B; Area=grafana; QA rounds=1; Started=2026-10-12; Finished=2026-10-13" "$(summary | grep '^card #6 ')"
+    board report >/dev/null 2>&1
+    check_contains "the report has its cycle time" "| #6 T05 Grafana port | done | grafana | 1 | 2026-10-12 | 2026-10-13 | 1.0 |" \
+        "$(jq -r '.issues[] | select(.title == "[Board] Flow report") | .body' "$GH_STUB_STATE")"
+}
+
+CASES+=("adv3 finding: a note longer than a GitHub comment is accepted")
+case_85() {
+    new_world
+    before="$(tasks_sum)"
+    # GitHub refuses comment bodies over 65536 characters: the sync would fail on this note on every run, and the
+    # tasks after it would never sync again.
+    rc=0
+    status "2026-10-12 09:00" T05 todo --qa "round 1 rejected by x: $(head -c 70000 /dev/zero | tr '\0' 'a')" >"$OUT" 2>"$ERR" || rc=$?
+    check "refused, nothing changed" "1 $before" "$rc $(tasks_sum)"
+}
+
+CASES+=("adv3 finding: a heading without a title is read by board.sh, not by set-status")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_86() {
+    new_world
+    edit_heading 's/^### T05 Grafana port — /### T05 — /' "A heading without a title"
+    (cd "$REPO" && "$BOARD/board.sh" list) >"$OUT" 2>"$ERR"
+    rc=0
+    status "2026-10-12 09:00" T05 "in progress" >"$WORK/world/status.out" 2>&1 || rc=$?
+    check "warned about, or set-status changes it" "yes" \
+        "$( { grep -q '^board: warning: T05' "$ERR" || [[ "$rc" == 0 ]]; } && echo yes || echo "no: listed as \"$(grep '^T05 ' "$OUT")\", set-status: $(cat "$WORK/world/status.out")")"
+}
+
+CASES+=("adv3 finding: a screenshot path that starts with a dash")
+case_87() {
+    new_world
+    cp "$FIXTURES/shot.png" "$REPO/-grafana.png"
+    rc=0
+    status "2026-10-12 09:00" T05 "in progress" --qa "round 1 approved by x" --attach -grafana.png >"$OUT" 2>"$ERR" || rc=$?
+    check "attached" "0 1" "$rc $(git -C "$REPO" ls-files planning/screenshots/T05 | grep -c 'grafana\.png$')"
+}
+
 run_cases
 
 PASSED="$(grep -c '^ok$' "$RESULTS" || true)"
