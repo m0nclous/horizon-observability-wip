@@ -47,7 +47,7 @@ final readonly class DashboardOptions
         public array $tags = ['horizon', 'queue'],
         public string $prometheusDatasourceRegex = '',
         public string $infinityDatasourceRegex = '',
-        public string $jobListUrl = '/metrics/horizon/{list}-jobs',
+        public string $jobListUrl = '${api_path}/jobs/{list}',
         public string $busyWindow = '15s',
         public string $refresh = '15s',
         public string $alertRuleUidRegex = 'horizon-.*',

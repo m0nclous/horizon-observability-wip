@@ -143,7 +143,7 @@ final readonly class DashboardBuilder
     }
 
     /**
-     * Reset sets every filter to All on this same dashboard and keeps the time range: without explicit values
+     * Reset sets every filter to All on this same dashboard and keeps the time range and the job scope: without explicit values
      * in the URL Grafana would keep the selection. The URL uses the current dashboard's uid, because another
      * Grafana may store it elsewhere; Grafana adds its sub-path itself. Horizon opens this environment's Horizon.
      *
@@ -152,6 +152,11 @@ final readonly class DashboardBuilder
     private function links(): array
     {
         $reset = array_map(static fn (string $name): string => 'var-'.$name.'=%24__all', Variables::FILTERS);
+
+        if (! $this->options->legacy) {
+            // The job scope is not a filter: Reset stays on the selected application
+            $reset[] = '${prometheus_job:queryparam}';
+        }
 
         return [
             [

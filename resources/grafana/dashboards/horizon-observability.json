@@ -30,7 +30,7 @@
       "title": "Reset",
       "tooltip": "",
       "type": "link",
-      "url": "/d/${__dashboard.uid}?var-supervisor=%24__all&var-batch_kind=%24__all&var-queue=%24__all&var-job_class=%24__all&var-supervisor_title=%24__all&var-batch_title=%24__all"
+      "url": "/d/${__dashboard.uid}?var-supervisor=%24__all&var-batch_kind=%24__all&var-queue=%24__all&var-job_class=%24__all&var-supervisor_title=%24__all&var-batch_title=%24__all&${prometheus_job:queryparam}"
     },
     {
       "asDropdown": false,
@@ -3307,7 +3307,7 @@
               "source": "url",
               "format": "table",
               "parser": "backend",
-              "url": "/metrics/horizon/failed-jobs?limit=500&from=${__from}&to=${__to}&${supervisor:queryparam}&${batch_kind:queryparam}&${queue:queryparam}&${job_class:queryparam}",
+              "url": "${api_path}/jobs/failed?limit=500&from=${__from}&to=${__to}&${supervisor:queryparam}&${batch_kind:queryparam}&${queue:queryparam}&${job_class:queryparam}",
               "url_options": {
                 "method": "GET",
                 "data": ""
@@ -3505,7 +3505,7 @@
               "source": "url",
               "format": "table",
               "parser": "backend",
-              "url": "/metrics/horizon/completed-jobs?limit=500&from=${__from}&to=${__to}&${supervisor:queryparam}&${batch_kind:queryparam}&${queue:queryparam}&${job_class:queryparam}",
+              "url": "${api_path}/jobs/completed?limit=500&from=${__from}&to=${__to}&${supervisor:queryparam}&${batch_kind:queryparam}&${queue:queryparam}&${job_class:queryparam}",
               "url_options": {
                 "method": "GET",
                 "data": ""
@@ -3681,7 +3681,7 @@
               "source": "url",
               "format": "table",
               "parser": "backend",
-              "url": "/metrics/horizon/pending-jobs?limit=500&from=${__from}&to=${__to}&${supervisor:queryparam}&${batch_kind:queryparam}&${queue:queryparam}&${job_class:queryparam}",
+              "url": "${api_path}/jobs/pending?limit=500&from=${__from}&to=${__to}&${supervisor:queryparam}&${batch_kind:queryparam}&${queue:queryparam}&${job_class:queryparam}",
               "url_options": {
                 "method": "GET",
                 "data": ""
@@ -3873,7 +3873,7 @@
               "source": "url",
               "format": "table",
               "parser": "backend",
-              "url": "/metrics/horizon/delayed-jobs?limit=500&from=${__from}&to=${__to}&${supervisor:queryparam}&${batch_kind:queryparam}&${queue:queryparam}&${job_class:queryparam}",
+              "url": "${api_path}/jobs/delayed?limit=500&from=${__from}&to=${__to}&${supervisor:queryparam}&${batch_kind:queryparam}&${queue:queryparam}&${job_class:queryparam}",
               "url_options": {
                 "method": "GET",
                 "data": ""
@@ -4597,6 +4597,24 @@
         "query": "query_result(group by (tts_url) (last_over_time(ho_horizon_info{job=~\"$prometheus_job\"}[7d])))",
         "refresh": 1,
         "regex": "/tts_url=\"([^\"]+)\"/",
+        "skipUrlSync": true,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "query_result(group by (api_path) (last_over_time(ho_horizon_info{job=~\"$prometheus_job\"}[7d])))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "api_path",
+        "options": [],
+        "query": "query_result(group by (api_path) (last_over_time(ho_horizon_info{job=~\"$prometheus_job\"}[7d])))",
+        "refresh": 1,
+        "regex": "/api_path=\"([^\"]+)\"/",
         "skipUrlSync": true,
         "type": "query"
       },

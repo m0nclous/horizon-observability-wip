@@ -76,7 +76,7 @@ it('defines the hidden prometheus_job variable with All as .+', function (): voi
         'type' => 'query',
     ])->and(array_keys($variables))->toBe([
         'datasource', 'prometheus_job', 'supervisor', 'batch_kind', 'queue', 'job_class', 'supervisor_title',
-        'batch_title', 'horizon_url', 'tts_url', 'app_api',
+        'batch_title', 'horizon_url', 'tts_url', 'api_path', 'app_api',
     ]);
 });
 
@@ -124,4 +124,12 @@ it('takes --job on the command line', function (): void {
         array_map(rmdir(...), glob($directory.'/*') ?: []);
         @rmdir($directory);
     }
+});
+
+it('keeps the job scope when Reset sets the filters to All', function (): void {
+    $reset = Rendered::dashboard()['links'][0];
+
+    expect($reset['title'])->toBe('Reset')
+        ->and($reset['url'])->toEndWith('&${prometheus_job:queryparam}')
+        ->toContain('var-supervisor=%24__all&var-batch_kind=%24__all&var-queue=%24__all&var-job_class=%24__all');
 });

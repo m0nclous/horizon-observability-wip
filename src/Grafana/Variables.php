@@ -70,6 +70,9 @@ final readonly class Variables
             $this->info('horizon_url', 'url'),
             // Hidden: the speech service for alert phrases, exported like horizon_url; without it only the tone
             $this->info('tts_url', 'tts_url'),
+            // Hidden: the path of the application's job list API (horizon-observability.path), exported like
+            // horizon_url; the Infinity URLs are relative to the datasource URL: ${api_path}/jobs/<list>
+            $this->options->legacy ? null : $this->info('api_path', 'api_path'),
             // Hidden: the Infinity datasource with the application's job lists, by type: in a production Grafana
             // the datasource is created in the UI and has its own uid
             $this->datasource('app_api', 'yesoreyeram-infinity-datasource', $this->options->infinityDatasourceRegex),
