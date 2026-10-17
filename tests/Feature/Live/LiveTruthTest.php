@@ -169,4 +169,4 @@ it('does not show 0 pending jobs for a selected supervisor while Horizon is stop
         // Either the honest number or null (the poll tile then falls back to the Prometheus value through merge);
         // a 0 hides a growing queue in the moment the tile matters most.
         ->and($live['pending']['value'])->not->toBe(0);
-})->skip('T12 QA round 1 finding 4: a Supervisor filter resolves through running supervisors only, so the scope is empty while Horizon is stopped; unskip after the fix.');
+});

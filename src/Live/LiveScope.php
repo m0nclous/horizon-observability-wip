@@ -14,8 +14,10 @@ use DF\HorizonObservability\Redis\Keys;
  * Resolved scope of a live snapshot (Addendum R4.1-R4.3, C'): the queues it covers and whether a Job or Batch
  * filter is active.
  *
- * - Supervisor and Queue scope the queues: the selected running supervisors' split queues intersected with the
- *   topology and the queue list.
+ * - Supervisor and Queue scope the queues: the selected supervisors' split queues intersected with the topology and
+ *   the queue list. A selected supervisor that is running anywhere scopes by the queues it runs; one that is not
+ *   running (Horizon stopped, or not started yet) by the queues the configured topology gives it, because its queues
+ *   still fill up ({@see Topology::supervisors()}). A name that is neither running nor configured scopes nothing.
  * - A Batch filter narrows the queues to the queues of its batch links and the classes to the linked classes.
  * - A Job or Batch filter sets `jobFilter`: pending and delayed values become null and busy workers count only the
  *   selected classes.
@@ -55,11 +57,26 @@ final readonly class LiveScope
 
         if ($filters['supervisors'] !== null) {
             $served = [];
+            $running = [];
 
             foreach ($supervisors->all() as $supervisor) {
                 if (in_array($supervisor->name, $filters['supervisors'], true)) {
+                    $running[$supervisor->name] = true;
+
                     foreach ($supervisor->queues as $queue) {
                         $served[Keys::field($supervisor->connection, $queue)] = true;
+                    }
+                }
+            }
+
+            // A selected supervisor that is not running: the queues the configured topology gives it (the off-mode
+            // Queue variable knows them from the last day of horizon_supervisor_processes).
+            if (array_diff($filters['supervisors'], array_keys($running)) !== []) {
+                foreach ($topology->supervisors() as $configured) {
+                    if (! isset($running[$configured['name']]) && in_array($configured['name'], $filters['supervisors'], true)) {
+                        foreach ($configured['queues'] as $queue) {
+                            $served[Keys::field($configured['connection'], $queue)] = true;
+                        }
                     }
                 }
             }

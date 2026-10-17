@@ -330,6 +330,23 @@ it('reads Horizon as stopped without a master and lists no supervisor', function
         ->and($snapshot->pending['value'])->toBe(5);
 });
 
+it('scopes a Supervisor filter by the configured queues while Horizon is stopped', function (): void {
+    // No master and no supervisor: supervisor-default is configured for `default`, which keeps its jobs (QA round 1).
+    LiveState::queues(app());
+
+    $snapshot = liveBuild(['supervisors' => ['supervisor-default']]);
+
+    expect($snapshot->scope)->toBe(['supervisors' => ['supervisor-default'], 'queues' => ['default'], 'job_filter' => false])
+        ->and($snapshot->horizon['status'])->toBe(-1)
+        ->and($snapshot->supervisors)->toBe([])
+        ->and($snapshot->pending)->toMatchArray(['value' => 3, 'oldest_seconds' => 17, 'oldest_queue' => 'default', 'level' => 1, 'color' => 'yellow'])
+        ->and($snapshot->delayed)->toBe(['value' => 1, 'due' => 1])
+        ->and($snapshot->reserved)->toBe(['value' => 2])
+        ->and(array_column($snapshot->queues, 'queue'))->toBe(['default'])
+        ->and($snapshot->queues[0]['supervisors'])->toBe([])
+        ->and(liveBuild(['supervisors' => ['supervisor-gone']])->pending['value'])->toBe(0);
+});
+
 it('merges a supervisor that several masters run', function (): void {
     HorizonState::using(app())
         ->master('host-a', supervisors: ['host-a:supervisor-default'])
