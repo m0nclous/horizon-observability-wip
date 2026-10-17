@@ -86,9 +86,10 @@ that the next task points to. Everything here is export-ignored and will be dele
       and must return the expected values (tiles, captions, colours, table cells, series), including filters, empty
       state, counter resets, two replicas, scrape intervals 5/10/60 s and ranges 15 m/1 h/6 h; a DOM check reads tiles.
     - Every change to collectors, Lua, `src/Grafana/**` or a dependency bump must keep both suites green (CI gate).
-14. **Kanban with a QA gate** (owner, 2026-10-17). Board columns: Todo → In Progress → Testing → Done
-    (`tools/board/README.md`). `planning/TASKS.md` stays the source of truth; change statuses only with
-    `tools/board/set-status.sh` (it commits and pushes `planning/TASKS.md`, the board workflow moves the card).
+14. **Kanban with a QA gate** (owner, 2026-10-17). Board columns: Todo → In Progress → Testing → Done, plus Needs
+    owner for tasks waiting for the owner (`tools/board/README.md`). `planning/TASKS.md` stays the source of truth;
+    change statuses only with `tools/board/set-status.sh` (it commits and pushes `planning/TASKS.md`, the board
+    workflow moves the card).
     - The implementing agent sets `in progress` when it starts and `testing` when all its gates are green and committed.
     - At least two independent tester agents (never the implementer) test every task in `testing`:
       the **spec tester** (each acceptance item, Arch/ADDENDUM conformance, all gates on phpredis and predis, lowest
@@ -101,6 +102,36 @@ that the next task points to. Everything here is export-ignored and will be dele
     - After 3 rejected rounds the task stays `in progress` with `--qa "escalated to the owner: ..."` and the integrator
       asks the owner.
     - The integrator merges a task branch only when the task is `done`.
+
+    Flow rules (added 2026-10-17; details and commands in `tools/board/README.md`):
+    - **Needs owner.** A task that waits for a decision only the owner can make moves to `needs owner` with
+      `set-status.sh Txx "needs owner" --question "..."` (the issue comment mentions @m0nclous; the board column is
+      "Needs owner"). Whoever receives the answer records it with `--answer "..."` and moves the task back to
+      `in progress` (WIP permitting) or `todo`. Do not guess past an open owner question.
+    - **Stop the line.** When the `tests` workflow fails on a push to the integration branch, the board workflow opens
+      "[CI] The integration branch is red" (label `stop-the-line`) and closes it when the branch is green again. While
+      it is open nothing moves to `done`: testers and the integrator check for it via MCP before approving or merging,
+      and the next work is making the branch green (fix forward or revert).
+    - **One pull request per task.** The implementer pushes `wip/Txx-<slug>` to `origin` and opens a draft PR to the
+      integration branch via MCP with `Closes #<issue>`. Pull requests run a fast CI subset (static, the stable leg
+      PHP 8.3 / L13 / phpredis, the lowest leg PHP 8.2 / L11 / predis, Grafana assets on 13.2.4); the full matrix runs
+      on the integration branch after the merge. All GitHub writes act as the owner's account, so testers post
+      **COMMENT** reviews that start with `QA verdict: APPROVED` or `QA verdict: CHANGES REQUESTED` (GitHub refuses
+      APPROVE and REQUEST_CHANGES on a PR of its own author). The integrator merges via MCP (merge commit) only when the
+      task is `done`, the PR checks are green and no `stop-the-line` issue is open.
+    - **Dependencies and WIP limits.** `set-status.sh` refuses `in progress`, `testing` and `done` while a dependency
+      (heading tail `(depends on ...)` or the phase's `(all depend on ...)`) is not `done`, and refuses a task entering
+      In Progress at 2 tasks or Testing at 3 (`BOARD_WIP_IN_PROGRESS`, `BOARD_WIP_TESTING`); a QA rejection always
+      returns to In Progress. `--force` overrides and is recorded in the commit; use it only with a reason. The board
+      labels todo tasks `ready` or `blocked` (with a comment naming the missing dependencies): take ready tasks only.
+    - **Fields and report.** The board carries Phase, Area (`tools/board/areas.tsv`; add a line for every new task),
+      QA rounds, Started and Finished. The pinned issue "[Board] Flow report" shows WIP against the limits, the CI
+      state, open owner questions and per-task QA rounds, start, finish and cycle days with the rejection rate. QA lines
+      say `round N approved by ...` or `round N rejected by ...` so the rounds are counted.
+    - **Screenshots.** Evidence images go in with `set-status.sh ... --attach <png>` (copied to
+      `planning/screenshots/<Txx>/`, committed and linked from the QA comment). Visual tasks (dashboard: T13, T15, T17,
+      any change of `src/Grafana/**` or `resources/grafana/**`) attach Grafana 12.4.13 and 13.2.4 screenshots with
+      every verdict; a visual verdict without both is a finding.
 
 ## Git and environment
 
@@ -131,9 +162,12 @@ that the next task points to. Everything here is export-ignored and will be dele
    `vendor/bin/pest` (should be green), read TASKS.md.
 2. If a task is `in progress` but no session is working on it (no commit touching it in the last 24 h, or the owner says
    so), treat it as `todo` and resume it first; its "Progress" note says what is already done.
-   Otherwise take the first task whose status is `todo` and whose dependencies are `done`. Mark it `in progress` in TASKS.md, commit.
+   Otherwise take the first ready task (`todo` with every dependency `done`; `tools/board/board.sh list` shows
+   `[ready]`) and mark it with `tools/board/set-status.sh Txx "in progress"`. If the WIP limit refuses, help finish
+   or test a task that is already in progress or testing.
 3. Implement against its inputs; meet every acceptance item; run `vendor/bin/pest`, `vendor/bin/phpstan`, `vendor/bin/pint --test`.
-4. Mark it `done` with a one-line note (date, commit), commit and push.
+4. Commit with a one-line progress note, push the task branch, open the draft PR and move the task to `testing` with
+   `set-status.sh` (decision 14); it becomes `done` only through the QA gate.
 5. Independent tasks of the same phase may run in parallel (separate agents/worktrees): they own disjoint files.
 
 ## Working alone or in parallel
