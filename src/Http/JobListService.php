@@ -12,6 +12,7 @@ use DF\HorizonObservability\Horizon\Supervisors;
 use DF\HorizonObservability\Horizon\Topology;
 use DF\HorizonObservability\Queues\DelayedJobStore;
 use DF\HorizonObservability\Redis\Keys;
+use Illuminate\Support\Facades\Date;
 
 /**
  * The rows of a job list (Arch Q2.1, C13, C14): resolves the dashboard filters to queue and class sets, reads the
@@ -27,7 +28,8 @@ use DF\HorizonObservability\Redis\Keys;
  * - An empty resolved filter (a supervisor that is not running, a batch kind without links, disjoint filters)
  *   returns no rows without reading any job (C13).
  * - Delayed jobs are read from the queues of the Horizon topology that pass the filters (with a Supervisor filter,
- *   only the queues those supervisors run on their connection), against one `now` per request.
+ *   only the queues those supervisors run on their connection), against one `now` per request (Laravel's date
+ *   factory, so `travelTo()` applies, C23).
  *
  * @internal
  */
@@ -69,7 +71,8 @@ final readonly class JobListService
         }
 
         if ($query->list === JobList::Delayed) {
-            $rows = $this->delayed->rows($this->delayedQueues($queues, $served), $jobClasses, $query->limit, CarbonImmutable::now());
+            $now = CarbonImmutable::instance(Date::now());
+            $rows = $this->delayed->rows($this->delayedQueues($queues, $served), $jobClasses, $query->limit, $now);
 
             return array_map(JobRows::delayed(...), $rows);
         }
