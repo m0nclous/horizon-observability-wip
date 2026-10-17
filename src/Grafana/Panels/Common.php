@@ -446,6 +446,24 @@ final readonly class Common
     }
 
     /**
+     * A binary "Add field from calculation" of two fields: `$left $operator $right` as $alias.
+     *
+     * @return array<string, mixed>
+     */
+    public static function calculateFields(string $alias, string $left, string $operator, string $right): array
+    {
+        return ['id' => 'calculateField', 'options' => [
+            'mode' => 'binary',
+            'alias' => $alias,
+            'binary' => [
+                'left' => ['matcher' => ['id' => 'byName', 'options' => $left]],
+                'operator' => $operator,
+                'right' => ['matcher' => ['id' => 'byName', 'options' => $right]],
+            ],
+        ]];
+    }
+
+    /**
      * @return array<string, string>
      */
     public static function byRefId(string $refId): array

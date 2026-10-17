@@ -78,6 +78,17 @@ it('keeps the look of the committed render', function (): void {
     expect(LayoutProjection::full(Rendered::dashboard()))->toBe(LayoutProjection::optimised(LayoutProjection::frozen(), Rendered::dashboard()));
 });
 
+it('shows the legacy columns of the queue and job tables in the legacy order', function (): void {
+    $frozen = array_column(LayoutProjection::frozen(), null, 'id');
+
+    expect(LayoutProjection::columns($frozen[PanelRegistry::QUEUES]['transformations']))->toBe([
+        'Queue', 'Utilization', 'Processes', 'Pending', 'Delayed', 'Oldest wait', 'Wait p95', 'Completed', 'Failed',
+        'Timeouts', 'Retries', 'Success rate',
+    ])->and(LayoutProjection::columns($frozen[PanelRegistry::JOBS]['transformations']))->toBe([
+        'Job', 'Queue', 'Pending', 'Failed', 'Retries', 'Success rate', 'Workers', 'Min', 'Avg', 'p95', 'Max', 'Timeouts',
+    ]);
+});
+
 it('fills the Overview row with tiles from edge to edge', function (): void {
     $tiles = array_values(array_filter(LayoutProjection::layout(renderedDashboard()), static fn (array $panel): bool => $panel['row'] === PanelRegistry::OVERVIEW_ROW));
     $x = 0;

@@ -95,6 +95,14 @@ it('sends at most 12 requests per refresh: the queue tables read the hidden sour
         ->and($budget->panelBytes()[5])->toBe(0);
 });
 
+it('meets every static gate of the budget (ADDENDUM R2.3) with one attempts query per table (O6)', function (): void {
+    $budget = committedBudget();
+
+    expect($budget->violations())->toBe([])
+        ->and($budget->interpolatedBytes())->toBeLessThanOrEqual(StaticBudget::MAX_INTERPOLATED_BYTES)
+        ->and(max($budget->panelBytes()))->toBeLessThanOrEqual(StaticBudget::MAX_PANEL_BYTES);
+});
+
 it('finds a day-long counter lookback, also in collapsed rows and variables', function (): void {
     $budget = new StaticBudget(budgetDashboard([
         budgetPanel(1, ['sum(last_over_time(ho_queue_jobs_total{job=~".+"}[1d] offset 1h))']),

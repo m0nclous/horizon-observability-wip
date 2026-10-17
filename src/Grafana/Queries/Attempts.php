@@ -24,6 +24,11 @@ final readonly class Attempts
 
     public const TIMED_OUT = 'timed_out';
 
+    /**
+     * The statuses the tables count, in one query (ADDENDUM R2.4 O6).
+     */
+    public const COUNTED = 'completed|failed|timed_out|retried';
+
     private const LABELS = ['queue', 'job_class', 'status'];
 
     /**

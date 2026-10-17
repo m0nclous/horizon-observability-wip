@@ -168,9 +168,6 @@ final readonly class Jobs
 
         $targets = [
             'A' => $pending,
-            'B' => $this->count(Attempts::FAILED),
-            'C' => $this->count(Attempts::RETRIED),
-            'D' => $this->attemptsOf(Attempts::COMPLETED).' / '.Promql::paren($this->attemptsOf(Attempts::FINISHED).' > 0'),
             'E' => Promql::sum($this->promql->selector(Metric::QueueJobsReserved), ...$by).' or 0 * '.$rows,
             'F' => $durationIncrease('sum', ...$by).' / '.Promql::paren($durationCount.' > 0'),
             'G' => Promql::either(
@@ -181,7 +178,6 @@ final readonly class Jobs
                 ),
                 $p95,
             ),
-            'H' => $this->count(Attempts::TIMED_OUT),
             'I' => Promql::min($this->promql->over('min_over_time', Metric::JobDurationMin, Promql::RANGE), ...$by),
             'J' => $max,
             // A stub row of dashes without jobs: otherwise an empty period shows only headers, without the Job
@@ -218,27 +214,39 @@ final readonly class Jobs
             'id' => PanelRegistry::JOBS,
             // Classes that ran in the period above the idle ones: those have no Avg
             'options' => Common::tableOptions(['Pending' => true, 'Avg' => true]),
-            'targets' => array_map(
-                fn (string $refId, string $expr): array => $this->common->target($refId, $expr, format: 'table'),
-                array_keys($targets),
-                $targets,
-            ),
+            'targets' => [
+                ...array_map(
+                    fn (string $refId, string $expr): array => $this->common->target($refId, $expr, format: 'table'),
+                    array_keys($targets),
+                    $targets,
+                ),
+                // Failed, Timeouts, Retries and Success rate from one attempts query by status (ADDENDUM R2.4 O6; the
+                // legacy table evaluated attempts_delta five times): a series per (queue, class, status), 0 for the
+                // listed classes without such attempts. Pivoted into columns by "Labels to fields".
+                $this->common->target('B', $this->attemptsByStatus($rows)),
+            ],
             // The row carries the title
             'title' => '',
             'transformations' => [
+                // The attempts by status (query B) become a column per status
+                ['id' => 'labelsToFields', 'filter' => Common::byRefId('B'), 'options' => ['valueLabel' => 'status']],
                 Common::merge(),
+                // Failed counts timeouts too; without attempts in the period the success rate is 0 / 0, a dash
+                Common::calculateFields('failed_total', 'failed', '+', 'timed_out'),
+                Common::calculateFields('finished', 'completed', '+', 'failed_total'),
+                Common::calculateFields('success', 'completed', '/', 'finished'),
                 ['id' => 'organize', 'options' => [
-                    'excludeByName' => ['Time' => true, 'Value #Z' => true],
+                    'excludeByName' => ['Time' => true, 'Value #Z' => true, 'completed' => true, 'failed' => true, 'finished' => true],
                     'includeByName' => new stdClass,
                     'indexByName' => [
-                        'Time' => 0, 'job_class' => 1, 'queue' => 2, 'Value #A' => 3, 'Value #B' => 4, 'Value #C' => 5,
-                        'Value #D' => 6, 'Value #E' => 7, 'Value #I' => 8, 'Value #F' => 9, 'Value #G' => 10,
-                        'Value #J' => 11, 'Value #H' => 12,
+                        'Time' => 0, 'job_class' => 1, 'queue' => 2, 'Value #A' => 3, 'failed_total' => 4, 'retried' => 5,
+                        'success' => 6, 'Value #E' => 7, 'Value #I' => 8, 'Value #F' => 9, 'Value #G' => 10,
+                        'Value #J' => 11, 'timed_out' => 12,
                     ],
                     'renameByName' => [
-                        'job_class' => 'Job', 'queue' => 'Queue', 'Value #A' => 'Pending', 'Value #B' => 'Failed',
-                        'Value #C' => 'Retries', 'Value #D' => 'Success rate', 'Value #E' => 'Workers',
-                        'Value #F' => 'Avg', 'Value #G' => 'p95', 'Value #H' => 'Timeouts',
+                        'job_class' => 'Job', 'queue' => 'Queue', 'Value #A' => 'Pending', 'failed_total' => 'Failed',
+                        'retried' => 'Retries', 'success' => 'Success rate', 'Value #E' => 'Workers',
+                        'Value #F' => 'Avg', 'Value #G' => 'p95', 'timed_out' => 'Timeouts',
                         'Value #I' => 'Min', 'Value #J' => 'Max',
                     ],
                 ]],
@@ -282,22 +290,16 @@ final readonly class Jobs
     }
 
     /**
-     * Attempts in the period per class (legacy `attempts`).
+     * The attempts of the period per (queue, class, status) for the statuses the table counts, as whole numbers, and
+     * 0 for the listed classes ($rows) without them (legacy `job_count` per status).
      */
-    private function attemptsOf(string $statuses): string
+    private function attemptsByStatus(string $rows): string
     {
-        return Promql::sum($this->attempts->delta($statuses, Promql::RANGE), ...self::BY_JOB);
-    }
+        $statuses = explode('|', Attempts::COUNTED);
+        $byStatus = Promql::call('round', Promql::sum($this->attempts->delta(Attempts::COUNTED, Promql::RANGE), 'queue', 'job_class', 'status'));
+        $rowsByStatus = Promql::either(...array_map(static fn (string $status): string => Promql::withLabel($rows, 'status', $status), $statuses));
 
-    /**
-     * Attempts in the period, 0 for listed classes without such attempts so the column does not empty
-     * (legacy `job_count`).
-     */
-    private function count(string $statuses): string
-    {
-        $rows = $this->rows();
-
-        return Promql::either(Promql::andOn(Promql::call('round', $this->attemptsOf($statuses)), $rows, ...self::BY_JOB), '0 * '.$rows);
+        return Promql::either(Promql::andOn($byStatus, $rows, ...self::BY_JOB), '0 * '.Promql::paren($rowsByStatus));
     }
 
     /**

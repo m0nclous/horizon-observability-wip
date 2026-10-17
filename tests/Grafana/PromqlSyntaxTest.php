@@ -83,7 +83,7 @@ it('writes every expression with the macros substituted to build/grafana-rules.y
 
     $outsideStrings = (string) preg_replace('/"(?:[^"\\\\]|\\\\.)*"/', '""', $text);
 
-    expect(count($rules['groups'][0]['rules']))->toBeGreaterThan(70)
+    expect(count($rules['groups'][0]['rules']))->toBeGreaterThan(60)
         ->and($outsideStrings)->not->toContain('$')
         ->and(preg_match('/\[[^\]]*\.\*/', $outsideStrings))->toBe(0, 'a variable was substituted where a duration belongs');
 });

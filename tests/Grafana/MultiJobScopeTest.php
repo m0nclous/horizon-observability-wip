@@ -92,7 +92,8 @@ it('evaluates every expression with All jobs when two applications share supervi
     // The panels and variables that fail, by the comment line each test expression starts with
     preg_match_all('/# ((?:panel|variable|rule) [^\\\\"]+?)\\\\n/', $output, $failing);
 
-    expect(count($tests))->toBeGreaterThan(70)
+    // 69 since WP8C O6 merged the attempts columns of the queue and job tables into one query each
+    expect(count($tests))->toBeGreaterThan(60)
         ->and($failing[1])->toBe([])
         ->and($status)->toBe(0, substr($output, 0, 4000));
 });

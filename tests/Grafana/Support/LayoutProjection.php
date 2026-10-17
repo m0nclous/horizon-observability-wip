@@ -29,6 +29,8 @@ final class LayoutProjection
 
     private const QUEUES = 5;
 
+    private const JOBS = 6;
+
     private const QUEUE_SOURCE = 24;
 
     /**
@@ -76,6 +78,9 @@ final class LayoutProjection
      * - O5: the hidden queue source #24 shares the hidden top grid row with #23 (both half wide); it is taken from
      *   $dashboard after checking that it sits in that row. The queue table #5 first keeps the rows of its own
      *   supervisor and does not show their supervisor column.
+     * - O6: the attempts columns of #5 and #6 come from one query by status, which their transformations pivot and
+     *   combine; they are taken from $dashboard after checking that they show the legacy columns in the legacy order
+     *   ({@see columns()}). Field config and options stay the legacy ones.
      *
      * @param  list<array<string, mixed>>  $frozen
      * @param  array<array-key, mixed>  $dashboard  the render under test, decoded
@@ -108,29 +113,68 @@ final class LayoutProjection
                 continue;
             }
 
-            if ($id === self::QUEUES && is_array($panel['transformations'] ?? null)) {
-                $transformations = $panel['transformations'];
+            if (($id === self::QUEUES || $id === self::JOBS) && is_array($panel['transformations'] ?? null)) {
+                $rendered = self::transformationsOf($dashboard, $id);
 
-                foreach ($transformations as $index => $transformation) {
-                    if (is_array($transformation) && ($transformation['id'] ?? null) === 'organize') {
-                        $transformations[$index]['options']['excludeByName']['supervisor'] = true;
-                    }
+                if (self::columns($rendered) !== self::columns($panel['transformations'])) {
+                    throw new RuntimeException('Table #'.$id.' shows other columns than the legacy one: '.implode(', ', self::columns($rendered)));
                 }
 
-                $panel['transformations'] = [[
-                    'id' => 'filterByValue',
-                    'options' => [
-                        'filters' => [['config' => ['id' => 'equal', 'options' => ['value' => '${supervisor_title}']], 'fieldName' => 'supervisor']],
-                        'match' => 'any',
-                        'type' => 'include',
-                    ],
-                ], ...$transformations];
+                $panel['transformations'] = $rendered;
             }
 
             $expected[] = $panel;
         }
 
         return $expected;
+    }
+
+    /**
+     * The columns a table shows, left to right: the fields its organize step orders, renamed, without the excluded
+     * ones.
+     *
+     * @param  array<array-key, mixed>  $transformations
+     * @return list<string>
+     */
+    public static function columns(array $transformations): array
+    {
+        foreach ($transformations as $transformation) {
+            if (! is_array($transformation) || ($transformation['id'] ?? null) !== 'organize' || ! is_array($transformation['options'] ?? null)) {
+                continue;
+            }
+
+            $options = $transformation['options'];
+            $index = is_array($options['indexByName'] ?? null) ? $options['indexByName'] : [];
+            $excluded = is_array($options['excludeByName'] ?? null) ? array_keys(array_filter($options['excludeByName'])) : [];
+            $rename = is_array($options['renameByName'] ?? null) ? $options['renameByName'] : [];
+            asort($index);
+            $columns = [];
+
+            foreach (array_keys($index) as $field) {
+                if (! in_array($field, $excluded, true)) {
+                    $columns[] = (string) ($rename[$field] ?? $field);
+                }
+            }
+
+            return $columns;
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $dashboard
+     * @return array<array-key, mixed>
+     */
+    private static function transformationsOf(array $dashboard, int $id): array
+    {
+        foreach (self::full($dashboard) as $panel) {
+            if (($panel['id'] ?? null) === $id) {
+                return is_array($panel['transformations'] ?? null) ? $panel['transformations'] : [];
+            }
+        }
+
+        throw new RuntimeException('Panel '.$id.' is missing.');
     }
 
     /**

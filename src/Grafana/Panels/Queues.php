@@ -94,29 +94,37 @@ final readonly class Queues
             'targets' => [['datasource' => Common::dashboard(), 'panelId' => PanelRegistry::QUEUE_SOURCE, 'refId' => 'A', 'withTransforms' => false]],
             'title' => '${supervisor_title:text}',
             'transformations' => [
+                // The attempts by status (query C) become a column per status
+                ['id' => 'labelsToFields', 'filter' => Common::byRefId('C'), 'options' => ['valueLabel' => 'status']],
                 // The rows of this copy's supervisor; the dash of the table without supervisors keeps the stub row
                 ['id' => 'filterByValue', 'options' => ['filters' => [
                     ['config' => ['id' => 'equal', 'options' => ['value' => '${supervisor_title}']], 'fieldName' => 'supervisor'],
                 ], 'match' => 'any', 'type' => 'include']],
                 Common::merge(),
+                // Failed counts timeouts too; without attempts in the period the success rate is 0 / 0, a dash
+                Common::calculateFields('failed_total', 'failed', '+', 'timed_out'),
+                Common::calculateFields('finished', 'completed', '+', 'failed_total'),
+                Common::calculateFields('success', 'completed', '/', 'finished'),
                 ['id' => 'organize', 'options' => [
                     // age, limit, level, p95 and p95_level are parts of the Oldest wait and Wait p95 texts;
-                    // the values of F and K, the stub row and the supervisor of the source rows are not shown
+                    // the values of F and K, the stub row, the supervisor of the source rows and the parts of
+                    // Failed and Success rate are not shown
                     'excludeByName' => [
                         'Time' => true, 'age' => true, 'limit' => true, 'level' => true, 'Value #F' => true,
                         'p95' => true, 'p95_level' => true, 'Value #K' => true, 'Value #Z' => true, 'supervisor' => true,
+                        'failed' => true, 'finished' => true,
                     ],
                     'includeByName' => new stdClass,
                     'indexByName' => [
                         'Time' => 0, 'queue' => 1, 'Value #A' => 2, 'Value #D' => 3, 'Value #B' => 4,
-                        'Value #G' => 5, 'cell' => 6, 'p95_cell' => 7, 'Value #C' => 8, 'Value #E' => 9,
-                        'Value #I' => 10, 'Value #H' => 11, 'Value #J' => 12,
+                        'Value #G' => 5, 'cell' => 6, 'p95_cell' => 7, 'completed' => 8, 'failed_total' => 9,
+                        'timed_out' => 10, 'retried' => 11, 'success' => 12,
                     ],
                     'renameByName' => [
                         'queue' => 'Queue', 'Value #A' => 'Utilization', 'Value #B' => 'Pending',
-                        'Value #C' => 'Completed', 'Value #G' => 'Delayed', 'Value #D' => 'Processes',
-                        'Value #E' => 'Failed', 'Value #H' => 'Retries', 'Value #I' => 'Timeouts',
-                        'Value #J' => 'Success rate', 'p95_cell' => 'Wait p95', 'cell' => 'Oldest wait',
+                        'completed' => 'Completed', 'Value #G' => 'Delayed', 'Value #D' => 'Processes',
+                        'failed_total' => 'Failed', 'retried' => 'Retries', 'timed_out' => 'Timeouts',
+                        'success' => 'Success rate', 'p95_cell' => 'Wait p95', 'cell' => 'Oldest wait',
                     ],
                 ]],
                 Common::toString('Utilization'),
@@ -184,7 +192,6 @@ final readonly class Queues
                 Promql::sum($this->promql->selector(Metric::QueuePendingJobs), 'queue'),
                 $this->orZero(Promql::sum($this->promql->selector(Metric::QueueJobsPending), 'queue')),
             ),
-            'C' => $this->orZero(Promql::sum($this->attempts->delta(Attempts::COMPLETED, $range), 'queue')),
             // Running processes: 0 while Horizon is paused or stopped, as on the Supervisor Processes tile
             'D' => $this->selection->byJobSelection(
                 $this->orZero(Promql::binary(
@@ -198,18 +205,12 @@ final readonly class Queues
                 )),
                 $this->orZero(Promql::sum($this->promql->selector(Metric::QueueJobsReserved), 'queue')),
             ),
-            'E' => $this->orZero(Promql::sum($this->attempts->delta(Attempts::FAILED, $range), 'queue')),
             'F' => $this->selection->byJobSelection($this->oldestCell()),
             // As the Delayed tile: not due yet
             'G' => $this->selection->byJobSelection($this->orZero(Promql::paren(
                 Promql::sum($this->promql->selector(Metric::QueueDelayedJobs), 'queue')
                 .' - '.Promql::sum($this->promql->selector(Metric::QueueDelayedDueJobs), 'queue'),
             ))),
-            'H' => $this->orZero(Promql::sum($this->attempts->delta(Attempts::RETRIED, $range), 'queue')),
-            'I' => $this->orZero(Promql::sum($this->attempts->delta(Attempts::TIMED_OUT, $range), 'queue')),
-            // Without attempts in the period: empty (a dash)
-            'J' => Promql::sum($this->attempts->delta(Attempts::COMPLETED, $range), 'queue')
-                .' / '.Promql::paren(Promql::sum($this->attempts->delta(Attempts::FINISHED, $range), 'queue').' > 0'),
             // The histogram has no classes: a dash with jobs or a batch selected
             'K' => $this->selection->byJobSelection($this->waitP95Cell()),
         ];
@@ -221,6 +222,23 @@ final readonly class Queues
             $targets[] = Common::rawTarget($refId, $scoped($expr, true, ...$labels[$refId] ?? []), format: 'table');
         }
 
+        // Completed, Failed, Timeouts, Retries and Success rate from one attempts query by status (ADDENDUM R2.4 O6;
+        // the legacy table evaluated attempts_delta six times): one series per (queue, supervisor, status), 0 for
+        // configured queues without attempts. A series per status, not a table: the table pivots the statuses into
+        // columns with "Labels to fields" and computes Failed and Success rate.
+        $statuses = explode('|', Attempts::COUNTED);
+        $byStatus = Promql::either(
+            Promql::andOn(Promql::sum($this->attempts->delta(Attempts::COUNTED, $range), 'queue', 'status'), $queues, 'queue'),
+            '0 * '.Promql::paren(self::perValue($queues, 'status', $statuses)),
+        );
+        $targets[] = Common::rawTarget('C', Promql::binary(
+            Promql::paren(self::perValue($supervised, 'status', $statuses)),
+            '*',
+            Promql::paren($this->promql->filtered($byStatus, true)),
+            on: ['queue', 'status'],
+            groupLeft: [],
+        ));
+
         // A stub row of dashes when there are no queues: otherwise only headers remain, without the Queue column,
         // and the table does not stretch. Its supervisor is the title of the only table without supervisors.
         $stub = Promql::unlessOn(
@@ -230,6 +248,16 @@ final readonly class Queues
         $targets[] = Common::rawTarget('Z', $stub, format: 'table');
 
         return $targets;
+    }
+
+    /**
+     * Copies of $expr, one per value, each with the label set to it (a cross join with a list of values).
+     *
+     * @param  list<string>  $values
+     */
+    private static function perValue(string $expr, string $label, array $values): string
+    {
+        return Promql::either(...array_map(static fn (string $value): string => Promql::withLabel($expr, $label, $value), $values));
     }
 
     /**

@@ -6,6 +6,7 @@ use DF\HorizonObservability\Grafana\PanelRegistry;
 use DF\HorizonObservability\Grafana\Promql;
 use DF\HorizonObservability\Grafana\Queries\Attempts;
 use DF\HorizonObservability\Grafana\Queries\Selection;
+use DF\HorizonObservability\Tests\Grafana\Support\ProfileSeries;
 use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
@@ -50,14 +51,14 @@ it('gives the legacy value at every step of the period (O4)', function (string $
     $tests = [];
 
     foreach (range(4, 19) as $minute) {
-        $tests[] = ['expr' => '# step '.$minute."\n".batchScopeDifference($now, $legacy), 'eval_time' => $minute.'m', 'exp_samples' => []];
+        $tests[] = ['expr' => '# step '.$minute."\n".ProfileSeries::difference($now, $legacy), 'eval_time' => $minute.'m', 'exp_samples' => []];
         // Not trivially equal: the steps have attempts
         $tests[] = ['expr' => 'count('.$now.' > 0)', 'eval_time' => $minute.'m', 'exp_samples' => [['labels' => '{}', 'value' => 1]]];
     }
 
     [$status, $output] = Promtool::testRules([], [[
         'interval' => '1m',
-        'input_series' => batchScopeData()['series'],
+        'input_series' => ProfileSeries::data()['series'],
         'promql_expr_test' => $tests,
     ]]);
 
