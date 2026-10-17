@@ -33,7 +33,8 @@ use UnexpectedValueException;
  *   without one the queue fails with {@see UnsupportedTopology} before any command is sent.
  * - **Full mode** ({@see self::inspect()}, the queues collector): counts, the class breakdown of the first
  *   `queue_scan_limit` head payloads (at most {@see self::MAX_BYTES}), the reserved breakdown of at most
- *   {@see self::RESERVED_SCAN_LIMIT} payloads, and the readiness of the first first-attempt payload (C8).
+ *   {@see self::RESERVED_SCAN_LIMIT} payloads (at most {@see self::RESERVED_MAX_BYTES}), and the readiness of the first
+ *   first-attempt payload (C8).
  * - **Live mode** ({@see self::live()}, the live snapshot): the same counts and readiness, but the head scan stops
  *   at the first fresh payload, at {@see self::LIVE_SCAN_LIMIT} payloads and at {@see self::LIVE_MAX_BYTES}; no pending
  *   breakdown; the reserved breakdown only when asked (a Job or Batch filter is active).
@@ -52,6 +53,11 @@ final readonly class QueueInspector
      * Reserved payloads counted by class per queue (Arch Q3 internal constants).
      */
     public const RESERVED_SCAN_LIMIT = 1000;
+
+    /**
+     * Byte cap of the reserved scan in both modes (applied by the script), like the head scan's in full mode (C12).
+     */
+    public const RESERVED_MAX_BYTES = 16777216;
 
     /**
      * Byte cap of the head scan in full mode (Arch Q3 internal constants).

@@ -352,6 +352,28 @@ it('counts at most 1000 reserved payloads by class', function (): void {
         ->and($snapshot->unscannedReserved())->toBe(5);
 });
 
+it('stops the reserved scan at 16 MB in both modes', function (): void {
+    // The reserved scan is capped at 1000 members and, like the head scan, by bytes: 1000 reserved payloads of a few
+    // MB each would otherwise be copied on every scrape.
+    $prefix = TestCase::redisPrefix();
+    $members = [];
+
+    foreach (range(1, 7) as $i) {
+        $members[QueuePayloads::encode(queueStateJob(QUEUE_STATE_NOW - 5, ['tags' => [str_repeat('x', 3 * 1024 * 1024)]]))] = QUEUE_STATE_NOW + $i;
+    }
+
+    RedisKeys::client()->zadd($prefix.'queues:default:reserved', $members);
+
+    $full = queueStateInspect();
+    $live = app(QueueInspector::class)->live('redis', 'default', queueStateNow(), true);
+
+    // 3 MB payloads: the sixth one passes 16 MB, the seventh is never read.
+    expect($full->reserved)->toBe(7)
+        ->and($full->reservedByClass)->toBe(['App\\Jobs\\SendInvoice' => 6])
+        ->and($full->unscannedReserved())->toBe(1)
+        ->and($live->reservedByClass)->toBe(['App\\Jobs\\SendInvoice' => 6]);
+});
+
 it('reads the queues of another queue connection through its own Redis connection and prefix', function (): void {
     config()->set('database.redis.queues', [...config('database.redis.default'), 'options' => ['prefix' => TestCase::redisPrefix().'other:']]);
     config()->set('queue.connections.other', ['driver' => 'redis', 'connection' => 'queues', 'queue' => 'default', 'retry_after' => 90]);

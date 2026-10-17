@@ -22,7 +22,8 @@ Returns {pending_len, reserved_total, delayed_total, delayed_due, earliest_due_s
 - scanned: head payloads read; the head scan stops at max_bytes (the payload that reaches the cap is included);
 - pending_pairs, reserved_pairs: flat {displayName, count, ...}, the displayName as the raw JSON string content
   (escapes not decoded; '' when it is missing or not a string); reserved_pairs is empty when
-  reserved_scan_limit is 0.
+  reserved_scan_limit is 0, and counts at most reserved_scan_limit payloads and 16 MB of them (the payload that
+  reaches the cap is included).
 
 Fields are found with a plain string.find of the top-level keys "displayName":, "attempts":, "pushedAt":,
 "createdAt": and "delay": (no patterns: cjson reorders the keys of a released payload, and the escaped quotes
@@ -324,15 +325,44 @@ while index < window and bytes < max_bytes and not (live and found) do
     end
 end
 
--- Reserved payloads by class, in chunks of 100.
+-- Reserved payloads by class: at most reserved_limit of them and RESERVED_MAX_BYTES (the payload that reaches the cap
+-- is included; the rest are unscanned), in chunks sized like the head scan's.
+local RESERVED_MAX_BYTES = 16777216
 local reserved_total = redis.call('ZCARD', KEYS[2])
 local reserved = {}
 local reserved_window = math.min(reserved_total, reserved_limit)
+local offset, reserved_bytes, reserved_largest = 0, 0, 0
 
-for offset = 0, reserved_window - 1, 100 do
-    for _, text in ipairs(redis.call('ZRANGE', KEYS[2], offset, math.min(offset + 99, reserved_window - 1))) do
+while offset < reserved_window and reserved_bytes < RESERVED_MAX_BYTES do
+    local chunk = 1
+
+    if reserved_largest > 0 then
+        chunk = math.floor((RESERVED_MAX_BYTES - reserved_bytes) / reserved_largest)
+    end
+
+    chunk = math.max(1, math.min(chunk, 100, reserved_window - offset))
+
+    local items = redis.call('ZRANGE', KEYS[2], offset, offset + chunk - 1)
+
+    if #items == 0 then
+        break
+    end
+
+    for _, text in ipairs(items) do
+        if reserved_bytes >= RESERVED_MAX_BYTES then
+            break
+        end
+
+        local size = #text
+        reserved_bytes = reserved_bytes + size
+
+        if size > reserved_largest then
+            reserved_largest = size
+        end
+
         local name = display_name({text})
         reserved[name] = (reserved[name] or 0) + 1
+        offset = offset + 1
     end
 end
 
