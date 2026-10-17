@@ -99,7 +99,7 @@ final readonly class AlertRulesBuilder
                 ),
                 ['type' => 'gt', 'params' => [Thresholds::WAIT_CRITICAL_FACTOR]],
                 noData: 'OK',
-                summary: 'Oldest pending job in {{ $labels.queue }}'.$job.' waits {{ printf "%.1f" $values.A.Value }}x the queue wait limit',
+                summary: $this->withValue('Oldest pending job in {{ $labels.queue }}'.$job.' waits {{ printf "%.1f" .Value }}x the queue wait limit', 'No wait data for {{ $labels.queue }}'.$job),
                 panelId: PanelRegistry::idOf($dashboard, 'Pending'),
             ),
             // As the red Failed tile, but per queue over the failure window: failures and timeouts from the
@@ -114,8 +114,7 @@ final readonly class AlertRulesBuilder
                 ),
                 ['type' => 'gte', 'params' => [Thresholds::FAILURE_SHARE_CRITICAL]],
                 noData: 'OK',
-                summary: '{{ humanizePercentage $values.A.Value }} of attempts in {{ $labels.queue }}'.$job.' failed in '
-                    .Thresholds::FAILURE_WINDOW_MINUTES.' minutes',
+                summary: $this->withValue('{{ humanizePercentage .Value }} of attempts in {{ $labels.queue }}'.$job.' failed in '.Thresholds::FAILURE_WINDOW_MINUTES.' minutes', 'No attempt data for {{ $labels.queue }}'.$job),
                 panelId: PanelRegistry::idOf($dashboard, 'Failed'),
                 lookbackSeconds: Thresholds::FAILURE_WINDOW_MINUTES * 60,
             ),
@@ -162,11 +161,22 @@ final readonly class AlertRulesBuilder
                 Promql::count($promql->replicas(Metric::HorizonStatus), 'job'),
                 ['type' => 'gt', 'params' => [1]],
                 noData: 'OK',
-                summary: '{{ $values.A.Value }} targets of {{ $labels.job }} export the same metrics; scrape one target per application',
+                summary: $this->withValue('{{ .Value }} targets of {{ $labels.job }} export the same metrics; scrape one target per application', 'No target data for {{ $labels.job }}'),
                 panelId: $panelId,
                 for: self::DUPLICATES_FOR,
             ),
         ];
+    }
+
+    /**
+     * A summary that reads query A as `.` (its value is `.Value`), and $missing when the rule has no value: Grafana
+     * expands the annotations in the no-data state too, where `$values.A.Value` is nil and a template function
+     * given it fails ("Error in expanding template"; the pilot's failure rule logged it on every evaluation without
+     * attempts). `with $values.A` tells no data from a zero value (probed on Grafana 12.4.13 and 13.2.4).
+     */
+    private function withValue(string $summary, string $missing): string
+    {
+        return '{{ with $values.A }}'.$summary.'{{ else }}'.$missing.'{{ end }}';
     }
 
     /**

@@ -151,7 +151,7 @@
           "execErrState": "Error",
           "for": "5m",
           "annotations": {
-            "summary": "Oldest pending job in {{ $labels.queue }} ({{ $labels.job }}) waits {{ printf \"%.1f\" $values.A.Value }}x the queue wait limit",
+            "summary": "{{ with $values.A }}Oldest pending job in {{ $labels.queue }} ({{ $labels.job }}) waits {{ printf \"%.1f\" .Value }}x the queue wait limit{{ else }}No wait data for {{ $labels.queue }} ({{ $labels.job }}){{ end }}",
             "__dashboardUid__": "horizon-observability",
             "__panelId__": "2"
           },
@@ -201,7 +201,7 @@
           "execErrState": "Error",
           "for": "5m",
           "annotations": {
-            "summary": "{{ humanizePercentage $values.A.Value }} of attempts in {{ $labels.queue }} ({{ $labels.job }}) failed in 15 minutes",
+            "summary": "{{ with $values.A }}{{ humanizePercentage .Value }} of attempts in {{ $labels.queue }} ({{ $labels.job }}) failed in 15 minutes{{ else }}No attempt data for {{ $labels.queue }} ({{ $labels.job }}){{ end }}",
             "__dashboardUid__": "horizon-observability",
             "__panelId__": "4"
           },

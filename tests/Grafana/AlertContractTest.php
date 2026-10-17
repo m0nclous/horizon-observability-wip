@@ -140,3 +140,20 @@ it('refuses a datasource uid Grafana would not accept', function (string $uid): 
         ->expectsOutputToContain('--datasource-uid must be')
         ->assertExitCode(2);
 })->with(['with a space' => ['prom prod'], 'too long' => [str_repeat('p', 41)], 'half a variable' => ['${PROM']]);
+
+it('reads rule values only where the rule has one', function (): void {
+    // In the no-data state $values.A.Value is nil, and a template function given nil logs "Error in expanding
+    // template" on every evaluation (the pilot's failure rule did); `with $values.A` keeps a zero value
+    $rules = (new AlertRulesBuilder(new DashboardOptions(healthRules: true)))->build()['groups'][0]['rules'];
+
+    foreach ($rules as $rule) {
+        $summary = $rule['annotations']['summary'];
+
+        expect($summary)->not->toContain('$values.A.Value');
+
+        if (str_contains($summary, '.Value')) {
+            expect($summary)->toStartWith('{{ with $values.A }}')
+                ->toMatch('/\{\{ else \}\}No [a-z]+ data for [^{]*(\{\{ \$labels\.(queue|job) \}\}[^{]*)+\{\{ end \}\}$/');
+        }
+    }
+});

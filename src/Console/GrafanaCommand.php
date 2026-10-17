@@ -18,8 +18,8 @@ use InvalidArgumentException;
  * compares those files with the render and exits 1 when they differ (for the CI of an infrastructure repository).
  *
  * Metric names carry the prefix of `horizon-observability.namespace` (default `ho_`), also with `--defaults`, so the
- * render matches what the application exports. The path is relative to the current directory: the application root for `php artisan`, the package root for
- * `vendor/bin/testbench`, whose base path is its own skeleton.
+ * render matches what the application exports. The path is relative to the current directory: the application root
+ * for `php artisan`, the package root for `vendor/bin/testbench`, whose base path is its own skeleton.
  */
 final class GrafanaCommand extends Command
 {
