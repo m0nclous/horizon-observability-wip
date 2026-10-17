@@ -16,7 +16,7 @@ use LogicException;
  *
  * {@see self::fields()} is the public field contract, which the Grafana contract tests read; every formatted row
  * has exactly these keys in this order. A time the store could not read (a hash written without it) gives null
- * instead of a value computed from 0.
+ * instead of a value computed from 0, and so does a time whose milliseconds are no integer (finite, but corrupt).
  *
  * @phpstan-import-type JobStoreRow from JobStore
  * @phpstan-import-type DelayedRow from DelayedJobStore
@@ -99,11 +99,22 @@ final class JobRows
     }
 
     /**
-     * Unix seconds as Unix milliseconds, as Grafana expects them.
+     * Unix seconds as Unix milliseconds, as Grafana expects them; null without a time or when the milliseconds lie
+     * outside the integer range (about 9.2e15 s).
+     *
+     * Casting such a float would wrap it to a wrong time on PHP 8.2-8.4 and warn on PHP 8.5, which Laravel's error
+     * handler turns into an exception, so one corrupt hash would fail the whole list until it expires. (float)
+     * PHP_INT_MAX is 2^63, the first value past the range; NAN fails both comparisons.
      */
     public static function milliseconds(?float $seconds): ?int
     {
-        return $seconds === null ? null : (int) round($seconds * 1000);
+        if ($seconds === null) {
+            return null;
+        }
+
+        $milliseconds = round($seconds * 1000);
+
+        return $milliseconds >= (float) PHP_INT_MIN && $milliseconds < (float) PHP_INT_MAX ? (int) $milliseconds : null;
     }
 
     /**

@@ -6,8 +6,9 @@ declare(strict_types=1);
 | Extra readiness parity cases of the queue reader (T05), in the format of tests/Fixtures/payloads.php: raw payloads
 | with the readiness PayloadClock::readyAt() computes, whether they are first attempts, and the decoded display name.
 | They cover the edges of the string extraction in queue_state.lua: JSON escapes, PHP's is_numeric() and is_int()
-| rules, whitespace after a colon, and keys that occur twice (string jobs whose data has a key of the same name).
-| tests/Contract/ReadinessParityTest runs them with the shared fixtures.
+| rules, whitespace after a colon, keys that occur twice (string jobs whose data has a key of the same name), and
+| attempts outside the integer and the double range (a finite |attempts| >= 1 is a retry, INF and -INF truncate to 0
+| like PHP's (int)). tests/Contract/ReadinessParityTest runs them with the shared fixtures.
 */
 
 return [
@@ -143,5 +144,47 @@ JSON,
         'ready_at' => 1700000016.5,
         'first_attempt' => false,
         'display_name' => 'App\Jobs\fetch',
+    ],
+
+    'attempts 2^64 is a retry (no integer wrap to 0)' => [
+        'payload' => '{"displayName":"App\\\\Jobs\\\\A","attempts":18446744073709551616,"pushedAt":"1700000017.5"}',
+        'ready_at' => 1700000017.5,
+        'first_attempt' => false,
+        'display_name' => 'App\Jobs\A',
+    ],
+
+    'attempts 1e30 is a retry' => [
+        'payload' => '{"displayName":"App\\\\Jobs\\\\A","attempts":1e30,"pushedAt":"1700000018.5"}',
+        'ready_at' => 1700000018.5,
+        'first_attempt' => false,
+        'display_name' => 'App\Jobs\A',
+    ],
+
+    'attempts "1e30" as a numeric string is a retry' => [
+        'payload' => '{"displayName":"App\\\\Jobs\\\\A","attempts":"1e30","pushedAt":"1700000019.5"}',
+        'ready_at' => 1700000019.5,
+        'first_attempt' => false,
+        'display_name' => 'App\Jobs\A',
+    ],
+
+    'attempts 1e999 (INF after json_decode) truncates to 0: a first attempt' => [
+        'payload' => '{"displayName":"App\\\\Jobs\\\\A","attempts":1e999,"pushedAt":"1700000020.5"}',
+        'ready_at' => 1700000020.5,
+        'first_attempt' => true,
+        'display_name' => 'App\Jobs\A',
+    ],
+
+    'attempts -1e999 (-INF after json_decode) truncates to 0: a first attempt' => [
+        'payload' => '{"displayName":"App\\\\Jobs\\\\A","attempts":-1e999,"pushedAt":"1700000021.5"}',
+        'ready_at' => 1700000021.5,
+        'first_attempt' => true,
+        'display_name' => 'App\Jobs\A',
+    ],
+
+    'attempts "1e999" (INF after the float cast) truncates to 0: a first attempt' => [
+        'payload' => '{"displayName":"App\\\\Jobs\\\\A","attempts":"1e999","pushedAt":"1700000022.5"}',
+        'ready_at' => 1700000022.5,
+        'first_attempt' => true,
+        'display_name' => 'App\Jobs\A',
     ],
 ];

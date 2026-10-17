@@ -119,7 +119,8 @@ final class Json
     private static function float(float $value): string
     {
         if (! is_finite($value)) {
-            throw new InvalidArgumentException('JSON cannot represent '.$value.'.');
+            // Spelled out: PHP 8.5 warns when NAN is coerced to a string.
+            throw new InvalidArgumentException('JSON cannot represent '.(is_nan($value) ? 'NAN' : ($value > 0 ? 'INF' : '-INF')).'.');
         }
 
         // sprintf() drops the sign of -0.0, so the sign is taken separately.
