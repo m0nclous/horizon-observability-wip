@@ -33,14 +33,15 @@ the first load; the report uses cycles 2-4), so `--seconds` must cover four refr
 
 ## Reproduce the R2.1 legacy row
 
-The pilot dashboard (`tests/Fixtures/grafana/legacy/queues.json`, uid `horizon`) on the probe's history: legacy names,
+The pilot dashboard (uid `horizon`, the legacy golden that T13 deleted; `git show` restores it) on the probe's history: legacy names,
 15-second steps, the probe's job and instance labels, Grafana 13.2.4 with the datasource `timeInterval` at 15 s.
 
 ```sh
 docker compose --profile perf down -v
 PERF_PROMETHEUS_CONFIG=prometheus.reference.yml docker/perf/backfill.sh --schema=legacy --step=15 --hours=26 --job=office-horizon --instance=app:8080
 php vendor/bin/testbench workbench:perf-exporter --schema=legacy &
-GRAFANA_DASHBOARDS=./tests/Fixtures/grafana/legacy PROMETHEUS_URL=http://perf-prometheus:9090 SCRAPE_INTERVAL=15s GRAFANA_IMAGE=grafana/grafana:13.2.4 docker compose up -d grafana
+mkdir -p build/perf/legacy-dashboard && git show 55dd179:tests/Fixtures/grafana/legacy/queues.json > build/perf/legacy-dashboard/queues.json
+GRAFANA_DASHBOARDS=./build/perf/legacy-dashboard PROMETHEUS_URL=http://perf-prometheus:9090 SCRAPE_INTERVAL=15s GRAFANA_IMAGE=grafana/grafana:13.2.4 docker compose up -d grafana
 node bin/perf.mjs capture --url "http://localhost:3000/d/horizon?orgId=1&from=now-1h&to=now&kiosk" --seconds 70 --out build/perf/legacy-1h.json
 node bin/perf.mjs replay build/perf/legacy-1h.json --prometheus http://localhost:9091
 node bin/perf.mjs report build/perf/legacy-1h.json --expect docker/perf/reference-legacy.json

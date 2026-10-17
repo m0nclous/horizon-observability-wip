@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Grafana;
 
 use DF\HorizonObservability\Grafana\Queries\Attempts;
-use DF\HorizonObservability\Grafana\Queries\Selection;
-use DF\HorizonObservability\Grafana\Queries\Waits;
 use DF\HorizonObservability\Metrics\Metric;
 use LogicException;
 
@@ -56,16 +54,15 @@ final readonly class AlertRulesBuilder
     {
         $dashboard = (new DashboardBuilder($this->options))->build();
         $promql = $this->options->rulePromql();
-        $legacy = $this->options->legacy;
-        // One alert per application (scrape job) and queue; the pilot had no job scope
-        $by = static fn (string ...$labels): array => $legacy ? array_values($labels) : ['job', ...array_values($labels)];
+        // One alert per application (scrape job) and queue
+        $by = static fn (string ...$labels): array => ['job', ...array_values($labels)];
         $status = $promql->selector(Metric::HorizonStatus);
         $window = Thresholds::FAILURE_WINDOW_MINUTES.'m';
         $attemptsIn = fn (string $statuses): string => Promql::sum(
             $promql->over('increase', Metric::JobsTotal, $window, [Promql::re('status', $statuses)]),
             ...$by('queue'),
         );
-        $job = $legacy ? '' : ' ({{ $labels.job }})';
+        $job = ' ({{ $labels.job }})';
 
         $rules = [
             // No Horizon status series: Prometheus does not scrape the application. Without this rule the others
@@ -76,9 +73,7 @@ final readonly class AlertRulesBuilder
                 Promql::count($status),
                 $this->below(1),
                 noData: 'Alerting',
-                summary: $legacy
-                    ? 'Prometheus has no '.$promql->name(Metric::HorizonStatus).', /metrics of the app is not scraped'
-                    : 'Prometheus has no '.$promql->name(Metric::HorizonStatus).': the metrics endpoint of the application is not scraped',
+                summary: 'Prometheus has no '.$promql->name(Metric::HorizonStatus).': the metrics endpoint of the application is not scraped',
                 panelId: PanelRegistry::idOf($dashboard, 'Horizon'),
             ),
             // As the red Horizon tile: paused or not running. Without metrics No queue metrics fires instead.
@@ -96,8 +91,8 @@ final readonly class AlertRulesBuilder
             $this->rule(
                 'long-wait',
                 sprintf('Queue wait over %dx limit', Thresholds::WAIT_CRITICAL_FACTOR),
-                $legacy ? (new Waits($promql, new Selection($promql)))->ratio() : Promql::binary(
-                    Promql::max($promql->oldestAge(), ...$by('queue')),
+                Promql::binary(
+                    Promql::max($promql->selector(Metric::QueueOldestPendingJobAge), ...$by('queue')),
                     '/',
                     Promql::max($promql->selector(Metric::WaitThreshold), ...$by('queue')),
                     on: $by('queue'),

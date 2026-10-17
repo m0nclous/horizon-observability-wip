@@ -85,7 +85,7 @@ final readonly class DashboardBuilder
         ];
 
         // What the dashboard needs, for Grafana's import (Arch Q5.2); file provisioning ignores it
-        return $this->options->legacy ? $dashboard : ['__requires' => self::requires(), ...$dashboard];
+        return ['__requires' => self::requires(), ...$dashboard];
     }
 
     /**
@@ -115,7 +115,7 @@ final readonly class DashboardBuilder
         $promql = $this->options->promql();
         $selection = new Selection($promql);
         $attempts = new Attempts($promql, $this->options->counterLookback());
-        $workers = new Workers($promql, $selection, $this->options->legacy ? $this->options->busyWindow() : Variables::BUSY_WINDOW);
+        $workers = new Workers($promql, $selection, Variables::BUSY_WINDOW);
         $waits = new Waits($promql, $selection);
         $batchState = new BatchState($promql);
         $alertState = new AlertState($this->options->alertRules());
@@ -124,10 +124,10 @@ final readonly class DashboardBuilder
         $tiles = new Tiles($common, $promql, $selection, $attempts, $workers, $waits, $alertState, $this->options->rpmMinutes());
         $queues = new Queues($promql, $selection, $attempts, $workers, $waits);
         $jobs = new Jobs($common, $promql, $selection, $attempts, $workers);
-        $jobLists = new JobLists($this->options);
+        $jobLists = new JobLists;
         $batches = new Batches($common, $promql, $attempts, $batchState, $this->options->rpmMinutes());
 
-        $panels = [(new AlertSound($common, $alertState, $this->options->alertSound()))->panel()];
+        $panels = [(new AlertSound($common, $alertState, Resources::alertSoundScript()))->panel()];
         $y = AlertSound::HEIGHT;
 
         $panels[] = Common::row(PanelRegistry::OVERVIEW_ROW, 'Overview', $y);
@@ -156,7 +156,7 @@ final readonly class DashboardBuilder
             $batches->list($y + Common::ROW_HEIGHT),
         ]);
 
-        return $this->options->legacy ? $panels : array_map(self::withMinInterval(...), $panels);
+        return array_map(self::withMinInterval(...), $panels);
     }
 
     /**
@@ -228,8 +228,8 @@ final readonly class DashboardBuilder
     }
 
     /**
-     * Reset sets every filter to All on this same dashboard and keeps the time range and the job scope: without explicit values
-     * in the URL Grafana would keep the selection. The URL uses the current dashboard's uid, because another
+     * Reset sets every filter to All on this same dashboard and keeps the time range and the job scope: without
+     * explicit values in the URL Grafana would keep the selection. The URL uses the current dashboard's uid, because another
      * Grafana may store it elsewhere; Grafana adds its sub-path itself. Horizon opens this environment's Horizon.
      *
      * @return list<array<string, mixed>>
@@ -237,11 +237,8 @@ final readonly class DashboardBuilder
     private function links(): array
     {
         $reset = array_map(static fn (string $name): string => 'var-'.$name.'=%24__all', Variables::FILTERS);
-
-        if (! $this->options->legacy) {
-            // The job scope is not a filter: Reset stays on the selected application
-            $reset[] = '${prometheus_job:queryparam}';
-        }
+        // The job scope is not a filter: Reset stays on the selected application
+        $reset[] = '${prometheus_job:queryparam}';
 
         return [
             [

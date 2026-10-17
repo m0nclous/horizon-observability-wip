@@ -6,19 +6,19 @@ use DF\HorizonObservability\Grafana\DashboardBuilder;
 use DF\HorizonObservability\Grafana\DashboardOptions;
 use DF\HorizonObservability\Grafana\PanelRegistry;
 use DF\HorizonObservability\Tests\Grafana\Support\LayoutProjection;
-use DF\HorizonObservability\Tests\Grafana\Support\LegacyFixtures;
+use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
  * The layout projection (Arch Q5.6, Q5.7) must not change while WP8B rewrites the queries: panel ids, types,
  * titles, grid positions, repeat options and row membership, and the look of every panel. The reference is the
- * projection of the legacy golden, frozen in tests/Fixtures/grafana/default/layout-projection.json.
+ * projection of the pilot's dashboard, frozen in tests/Fixtures/grafana/default/layout-projection.json.
  */
 
 pest()->group('grafana');
 
-function legacyDashboard(): array
+function renderedDashboard(?DashboardOptions $options = null): array
 {
-    return LayoutProjection::decoded((new DashboardBuilder(LegacyFixtures::options()))->build());
+    return LayoutProjection::decoded((new DashboardBuilder($options ?? new DashboardOptions))->build());
 }
 
 it('pins the layout', function (): void {
@@ -32,7 +32,7 @@ it('pins the layout', function (): void {
         $panel['repeatDirection'] ?? null,
         $panel['maxPerRow'] ?? null,
         $panel['collapsed'] ?? null,
-    ], LayoutProjection::layout(legacyDashboard()));
+    ], LayoutProjection::layout(renderedDashboard()));
 
     // id, type, title, [h, w, x, y], row, repeat, repeatDirection, maxPerRow, collapsed
     expect($rows)->toBe([
@@ -61,22 +61,21 @@ it('pins the layout', function (): void {
     ]);
 });
 
-it('freezes the projection of the legacy golden', function (): void {
-    // The frozen file outlives tests/Fixtures/grafana/legacy (Arch Q5.6: deleted at the end of WP8B)
-    $golden = json_decode(LegacyFixtures::read('queues.json'), true, flags: JSON_THROW_ON_ERROR);
+it('keeps the layout and the look of the legacy dashboard', function (DashboardOptions $options): void {
+    // The frozen projection of the pilot's dashboard (Arch Q5.6): no option may change the look
+    expect(LayoutProjection::full(renderedDashboard($options)))->toBe(LayoutProjection::frozen());
+})->with([
+    'package defaults' => [new DashboardOptions],
+    'another identity, job and prefix' => [new DashboardOptions(metricPrefix: 'acme_', uid: 'queues', title: 'Queues', job: 'app')],
+    'slow scrapes and health rules' => [new DashboardOptions(scrapeInterval: 60, healthRules: true)],
+]);
 
-    expect(LayoutProjection::frozen())->toBe(LayoutProjection::full($golden));
+it('keeps the look of the committed render', function (): void {
+    expect(LayoutProjection::full(Rendered::dashboard()))->toBe(LayoutProjection::frozen());
 });
 
-it('keeps the layout and the look of the legacy dashboard', function (string $profile): void {
-    $options = $profile === 'legacy' ? LegacyFixtures::options() : new DashboardOptions;
-    $dashboard = LayoutProjection::decoded((new DashboardBuilder($options))->build());
-
-    expect(LayoutProjection::full($dashboard))->toBe(LayoutProjection::frozen());
-})->with(['legacy', 'package defaults']);
-
 it('fills the Overview row with tiles from edge to edge', function (): void {
-    $tiles = array_values(array_filter(LayoutProjection::layout(legacyDashboard()), static fn (array $panel): bool => $panel['row'] === PanelRegistry::OVERVIEW_ROW));
+    $tiles = array_values(array_filter(LayoutProjection::layout(renderedDashboard()), static fn (array $panel): bool => $panel['row'] === PanelRegistry::OVERVIEW_ROW));
     $x = 0;
 
     foreach ($tiles as $tile) {
@@ -92,7 +91,7 @@ it('fills the Overview row with tiles from edge to edge', function (): void {
 it('places no panel over another', function (): void {
     $overlaps = static fn (array $a, array $b): bool => $a['x'] < $b['x'] + $b['w'] && $b['x'] < $a['x'] + $a['w']
         && $a['y'] < $b['y'] + $b['h'] && $b['y'] < $a['y'] + $a['h'];
-    $dashboard = legacyDashboard();
+    $dashboard = renderedDashboard();
     // The dashboard grid, and the grid of each collapsed row (its panels open below it and push the rest down)
     $grids = [$dashboard['panels']];
 
@@ -112,11 +111,11 @@ it('places no panel over another', function (): void {
 });
 
 it('gives every panel the id of the registry', function (): void {
-    $ids = array_column(LayoutProjection::layout(legacyDashboard()), 'id');
+    $ids = array_column(LayoutProjection::layout(renderedDashboard()), 'id');
     $registry = (new ReflectionClass(PanelRegistry::class))->getConstants();
     sort($ids);
     sort($registry);
 
     expect($ids)->toBe($registry)
-        ->and(PanelRegistry::idOf(legacyDashboard(), 'Failed'))->toBe(PanelRegistry::FAILED);
+        ->and(PanelRegistry::idOf(renderedDashboard(), 'Failed'))->toBe(PanelRegistry::FAILED);
 });

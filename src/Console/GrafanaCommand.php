@@ -6,6 +6,7 @@ namespace DF\HorizonObservability\Console;
 
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Grafana\DashboardOptions;
+use DF\HorizonObservability\Grafana\LiveMode;
 use DF\HorizonObservability\Grafana\Render;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
@@ -42,6 +43,7 @@ final class GrafanaCommand extends Command
         {--scrape-interval=10s : Scrape interval S of the package endpoint, 5s to 60s: the panels\' min interval, the busy window max(15s, 2 x S), the counter lookback max(10m, 10 x S) and the refresh}
         {--folder=Horizon : Grafana folder of the alert rules}
         {--datasource-uid= : Uid of the Prometheus datasource of the alert rules (default: ${HORIZON_OBSERVABILITY_PROMETHEUS_UID}, interpolated by Grafana)}
+        {--live=off : Live Overview mode: off (every tile reads Prometheus); poll and stream arrive with the live panels}
         {--health-rules : Add the opt-in health rules: a failing metrics collector, and more than one scraped target per job}
         {--prometheus-datasource= : Name regex of the Prometheus datasource (default: Grafana\'s default datasource)}
         {--infinity-datasource= : Name regex of the Infinity datasource of the job lists (default: the first one)}';
@@ -137,6 +139,12 @@ final class GrafanaCommand extends Command
             throw new InvalidArgumentException('--folder must not contain "$": Grafana would read it as an environment variable.');
         }
 
+        $live = LiveMode::tryFrom($this->text('live'));
+
+        if ($live !== LiveMode::Off) {
+            throw new InvalidArgumentException('--live must be off: the poll and stream live panels are not rendered yet.');
+        }
+
         $job = $this->text('job', required: false);
         $scrapeInterval = $this->scrapeInterval();
         $datasource = $this->text('datasource-uid', required: false);
@@ -154,6 +162,7 @@ final class GrafanaCommand extends Command
             scrapeInterval: $scrapeInterval,
             alertFolder: $folder,
             alertDatasourceUid: $datasource === '' ? DashboardOptions::DATASOURCE_PLACEHOLDER : $datasource,
+            live: $live,
             job: $job === '' ? null : $job,
             healthRules: $this->option('health-rules') === true,
         );

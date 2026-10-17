@@ -58,7 +58,9 @@ final readonly class Workers
 
     /**
      * Busy share of the workers of each queue over the busy window (legacy `QUEUE_BUSY`): the reserved jobs summed
-     * over the window, divided by the number of scrapes in it, counted on the processes series.
+     * over the window, divided by the number of scrapes in it, counted on the supervisors' processes series of the
+     * queue. That series replaces the pilot's `horizon_current_processes` (Arch Q5.2, Q5.6 step 3): both come
+     * from the supervisors' process maps with the same pooled queue label, so the sample count is the same.
      */
     public function queueBusy(): string
     {
@@ -67,7 +69,7 @@ final readonly class Workers
         return Promql::paren(Promql::binary(
             Promql::sum($this->promql->over('sum_over_time', Metric::QueueJobsReserved, $this->busyWindow, [$anyQueue]), 'queue'),
             '/',
-            Promql::max($this->promql->queueProcesses([$anyQueue], 'count_over_time', $this->busyWindow), 'queue'),
+            Promql::max($this->promql->over('count_over_time', Metric::SupervisorProcesses, $this->busyWindow, [$anyQueue]), 'queue'),
             on: ['queue'],
         ));
     }

@@ -56,12 +56,12 @@ final readonly class Variables
      */
     public function all(): array
     {
-        return array_values(array_filter([
+        return [
             // The Prometheus datasource by type, not uid: the dashboard imports into any Grafana unchanged
             $this->datasource('datasource', 'prometheus', $this->options->prometheusDatasourceRegex),
             // Hidden: the Prometheus job (scrape job of the package endpoint) every query is scoped to, so one
             // Grafana serves several applications; All by default, ?var-prometheus_job=<job> or --job pins one
-            $this->options->legacy ? null : $this->scope(),
+            $this->scope(),
             $this->filter('supervisor', 'Supervisor', $this->supervisorQuery(), '/supervisor="([^"]+)"/', '.*'),
             // Kinds with batches in the period; the batch tables repeat by it. Batches have no queue or
             // supervisor, so the filter does not narrow the other panels.
@@ -83,17 +83,17 @@ final readonly class Variables
             $this->info('tts_url', 'tts_url'),
             // Hidden: the path of the application's job list API (horizon-observability.path), exported like
             // horizon_url; the Infinity URLs are relative to the datasource URL: ${api_path}/jobs/<list>
-            $this->options->legacy ? null : $this->info('api_path', 'api_path'),
+            $this->info('api_path', 'api_path'),
             // Hidden: the scrape interval of the package endpoint, the min interval of every Prometheus panel;
             // ?var-scrape_interval=30s overrides it
-            $this->options->legacy ? null : $this->textbox('scrape_interval', $this->options->scrapeIntervalText()),
+            $this->textbox('scrape_interval', $this->options->scrapeIntervalText()),
             // Hidden: the window of the worker utilisation (Utilization bars, the Supervisor Processes colour), at
             // least one scrape interval; ?var-busy_window=30s overrides it
-            $this->options->legacy ? null : $this->textbox('busy_window', $this->options->busyWindow()),
+            $this->textbox('busy_window', $this->options->busyWindow()),
             // Hidden: the Infinity datasource with the application's job lists, by type: in a production Grafana
             // the datasource is created in the UI and has its own uid
             $this->datasource('app_api', 'yesoreyeram-infinity-datasource', $this->options->infinityDatasourceRegex),
-        ]));
+        ];
     }
 
     /**

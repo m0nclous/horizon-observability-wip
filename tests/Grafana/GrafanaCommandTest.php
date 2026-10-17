@@ -174,6 +174,10 @@ it('refuses invalid options and writes nothing', function (array $options, strin
     'empty title' => [['--title' => ' '], '--title must not be empty'],
     'title on two lines' => [['--title' => "Queues\nProduction"], '--title must be a single line'],
     'folder with an environment variable' => [['--folder' => 'Horizon $ENV'], '--folder must not contain "$"'],
+    // The live panels arrive later (WP8D); until then only off renders
+    'live poll' => [['--live' => 'poll'], '--live must be off'],
+    'live stream' => [['--live' => 'stream'], '--live must be off'],
+    'unknown live mode' => [['--live' => 'fast'], '--live must be off'],
 ]);
 
 it('summarises where a file differs from the render', function (): void {

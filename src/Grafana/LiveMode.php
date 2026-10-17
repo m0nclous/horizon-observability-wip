@@ -7,7 +7,7 @@ namespace DF\HorizonObservability\Grafana;
 /**
  * How the Overview row gets its current values (owner decision 9, `--live=off|poll|stream`).
  *
- * Only `Off` is rendered before WP8B; it is what the legacy dashboard does (every tile reads Prometheus).
+ * Only `Off` is rendered until WP8D; it is what the pilot's dashboard did (every tile reads Prometheus).
  *
  * @internal
  */

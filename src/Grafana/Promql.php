@@ -42,9 +42,6 @@ final readonly class Promql
     private const QUEUE_FAMILIES = [
         'queue_pending_jobs',
         'queue_oldest_pending_job_age_seconds',
-        // The legacy names, for the LegacyProfile render only
-        'queue_oldest_pending_job_age',
-        'horizon_current_processes',
         'queue_jobs_total',
         'queue_jobs_pending',
         'queue_jobs_reserved',
@@ -92,16 +89,14 @@ final readonly class Promql
     public const JOB_VARIABLE = '$prometheus_job';
 
     /**
-     * @param  bool  $legacy  the pilot's family names (TEMPORARY, {@see DashboardOptions::$legacy})
-     * @param  string|null  $jobRegex  the `job` regex every package selector is scoped to: {@see JOB_VARIABLE} in the
-     *                                 dashboard, the rendered regex in the alert rules; null scopes nothing (the pilot)
+     * @param  string  $jobRegex  the `job` regex every package selector is scoped to: {@see JOB_VARIABLE} in the
+     *                            dashboard, the rendered regex in the alert rules
      * @param  bool  $dedupe  wrap every package selector in `max by (job, <labels>)` (Arch Q5.6 step 10)
      */
     public function __construct(
         private string $prefix,
-        public bool $legacy = false,
-        private ?string $jobRegex = null,
-        private bool $dedupe = false,
+        private string $jobRegex = self::JOB_VARIABLE,
+        private bool $dedupe = true,
     ) {
         $this->queueMetrics = $this->names(self::QUEUE_FAMILIES);
         $this->jobMetrics = $this->names(self::JOB_FAMILIES);
@@ -164,35 +159,6 @@ final readonly class Promql
     }
 
     /**
-     * The oldest pending job age per queue (Arch Q5.6 step 3: `queue_oldest_pending_job_age_seconds`).
-     */
-    public function oldestAge(string ...$matchers): string
-    {
-        return $this->legacy
-            ? self::vector($this->prefix.'queue_oldest_pending_job_age', ...$matchers)
-            : $this->selector(Metric::QueueOldestPendingJobAge, ...$matchers);
-    }
-
-    /**
-     * Worker processes per queue: `horizon_supervisor_processes` per (supervisor, queue), which replaces the
-     * pilot's `horizon_current_processes` per queue (Arch Q5.2, Q5.6 step 3). Both come from the supervisors'
-     * process maps with the same pooled queue label, so their sums and sample counts per queue are equal. With
-     * $function and $window, a range function of it.
-     *
-     * @param  list<string>  $matchers
-     */
-    public function queueProcesses(array $matchers = [], ?string $function = null, ?string $window = null): string
-    {
-        if (! $this->legacy) {
-            return $this->package(Metric::SupervisorProcesses, '', $matchers, $function, $window);
-        }
-
-        $selector = self::vector($this->prefix.'horizon_current_processes', ...$matchers);
-
-        return $function === null || $window === null ? $selector : self::range($function, $selector, $window);
-    }
-
-    /**
      * @param  list<string>  $matchers
      */
     private function package(
@@ -251,7 +217,7 @@ final readonly class Promql
      */
     private function scoped(array $matchers): array
     {
-        return $this->jobRegex === null ? array_values($matchers) : [self::re('job', $this->jobRegex), ...array_values($matchers)];
+        return [self::re('job', $this->jobRegex), ...array_values($matchers)];
     }
 
     /**
@@ -302,10 +268,10 @@ final readonly class Promql
             }
 
             $own = $labels === '' ? '' : substr($labels, 1, -1);
-            $scope = $this->jobRegex === null ? '' : self::re('job', $this->jobRegex);
+            $scope = self::re('job', $this->jobRegex);
 
             // The job scope stays the first matcher
-            if ($scope !== '' && str_starts_with($own, $scope)) {
+            if (str_starts_with($own, $scope)) {
                 $matchers = [$scope, ...$matchers];
                 $own = ltrim(substr($own, strlen($scope)), ', ');
             }

@@ -48,6 +48,6 @@ it('writes every package selector through the Promql catalog builders', function
 
     ksort($names);
 
-    expect($names)->toBe(['AlertRulesBuilder.php' => 2, 'Variables.php' => 1])
+    expect($names)->toBe(['AlertRulesBuilder.php' => 1, 'Variables.php' => 1])
         ->and($literals)->toBe([]);
 });

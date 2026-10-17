@@ -14,8 +14,8 @@ use RuntimeException;
  * the options without the alert sound script, the field config and the transformations.
  *
  * The full projection of the legacy dashboard is frozen in `tests/Fixtures/grafana/default/layout-projection.json`
- * (as decoded JSON: an empty object reads as an empty list, on both sides of the comparison), so it outlives the
- * legacy goldens.
+ * (as decoded JSON: an empty object reads as an empty list, on both sides of the comparison); it outlived the
+ * legacy goldens, which WP8B deleted.
  */
 final class LayoutProjection
 {

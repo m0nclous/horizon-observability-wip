@@ -147,8 +147,9 @@ final readonly class Queues
             // Running processes: 0 while Horizon is paused or stopped, as on the Supervisor Processes tile
             'D' => $this->selection->byJobSelection(
                 $this->orZero(Promql::binary(
-                    // The Queue filter is explicit: the processes family is not one of the queue-filtered ones
-                    Promql::sum($this->promql->queueProcesses([Promql::re('queue', '$queue')]), 'queue'),
+                    // The supervisors' processes per queue, which replaced the pilot's horizon_current_processes
+                    // (Arch Q5.2). The Queue filter is explicit: the family is not one of the queue-filtered ones.
+                    Promql::sum($this->promql->selector(Metric::SupervisorProcesses, Promql::re('queue', '$queue')), 'queue'),
                     '*',
                     $this->workers->horizonRunning(),
                     on: [],
