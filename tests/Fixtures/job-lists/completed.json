@@ -1,0 +1,22 @@
+{
+    "data": [
+        {
+            "id": "22222222-3333-4444-8555-666666666666",
+            "name": "Closure (routes/console.php:12)",
+            "queue": "default",
+            "queued_at": 1700000010000,
+            "completed_at": 1700000012500,
+            "runtime": 2,
+            "horizon_path": "jobs/completed/22222222-3333-4444-8555-666666666666"
+        },
+        {
+            "id": "11111111-2222-4333-8444-555555555555",
+            "name": "App\\Jobs\\ImportFeed",
+            "queue": "slow",
+            "queued_at": 1700000000250,
+            "completed_at": 1700000003457,
+            "runtime": 2.457,
+            "horizon_path": "jobs/completed/11111111-2222-4333-8444-555555555555"
+        }
+    ]
+}

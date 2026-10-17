@@ -1,0 +1,28 @@
+{
+    "data": [
+        {
+            "id": "66666666-7777-4888-8999-aaaaaaaaaaaa",
+            "name": "App\\Jobs\\Import",
+            "queue": "default",
+            "attempts": 2,
+            "queued_at": null,
+            "available_at": 1700000030000
+        },
+        {
+            "id": "77777777-8888-4999-8aaa-bbbbbbbbbbbb",
+            "name": "App\\Jobs\\Отчёт",
+            "queue": "slow",
+            "attempts": 0,
+            "queued_at": 1699999000500,
+            "available_at": 1700000045250
+        },
+        {
+            "id": "55555555-6666-4777-8888-999999999999",
+            "name": "App\\Jobs\\SendReminder",
+            "queue": "default",
+            "attempts": 0,
+            "queued_at": 1699999990123,
+            "available_at": 1700000060500
+        }
+    ]
+}

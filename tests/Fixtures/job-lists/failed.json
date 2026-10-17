@@ -1,0 +1,24 @@
+{
+    "data": [
+        {
+            "id": "44444444-5555-4666-8777-888888888888",
+            "name": "App\\Jobs\\Отчёт",
+            "queue": "mail",
+            "attempts": 1,
+            "failed_at": 1700000030500,
+            "runtime": null,
+            "exception": "ShouldntReport@anonymous: Simulated failure",
+            "horizon_path": "failed/44444444-5555-4666-8777-888888888888"
+        },
+        {
+            "id": "33333333-4444-4555-8666-777777777777",
+            "name": "App\\Jobs\\Charge",
+            "queue": "default",
+            "attempts": 3,
+            "failed_at": 1700000021235,
+            "runtime": 1.235,
+            "exception": "QueryException: SQLSTATE[HY000] [2002] Connection refused (Connection: mysql, SQL: select 1)",
+            "horizon_path": "failed/33333333-4444-4555-8666-777777777777"
+        }
+    ]
+}
