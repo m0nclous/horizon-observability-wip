@@ -46,7 +46,9 @@ use Throwable;
  *
  * **Reading**: links seen during the last {@see self::TTL_SECONDS} (7 days), at most the {@see self::MAX_LINKS} most
  * recently seen, with one `ZRANGE`. The batches collector also removes older ones once per scrape
- * ({@see self::prune()}); reads ignore them either way. Reads use no breaker; they fail visibly.
+ * ({@see self::prune()}); reads ignore them either way. Reads and the scrape's prune run on the short-timeout reader of
+ * the storage connection (`redis.scrape_timeout`, like every scrape-path read of package keys, Arch Q1.3), not on the
+ * worker-side storage client, and use no breaker; they fail visibly.
  *
  * @internal
  */
@@ -220,7 +222,7 @@ final class BatchLinks
      */
     public function recent(CarbonImmutable $now): array
     {
-        $storage = $this->storage();
+        $storage = $this->reader();
         // phpredis takes the WITHSCORES flag as a bool, predis as the modifier; both answer member => score.
         $reply = $this->command($storage, 'zrange', [
             $this->keys()->batchLinks(),
@@ -253,7 +255,7 @@ final class BatchLinks
      */
     public function prune(CarbonImmutable $now): int
     {
-        $removed = $this->command($this->storage(), 'zremrangebyscore', [
+        $removed = $this->command($this->reader(), 'zremrangebyscore', [
             $this->keys()->batchLinks(),
             '-inf',
             '('.($now->getTimestamp() - self::TTL_SECONDS),
@@ -334,6 +336,17 @@ final class BatchLinks
         $clients = $this->container->make(RedisClients::class);
 
         return $clients->storage();
+    }
+
+    /**
+     * The storage connection as a short-timeout reader (`redis.scrape_timeout`), for the scrape, job-list and live paths.
+     */
+    private function reader(): Connection
+    {
+        /** @var RedisClients $clients */
+        $clients = $this->container->make(RedisClients::class);
+
+        return $clients->reader($clients->storageConnection());
     }
 
     private function keys(): Keys

@@ -326,7 +326,7 @@ describe('reading', function (): void {
         expect($kinds)->toHaveCount(BatchLinks::MAX_LINKS)
             ->and($kinds)->not->toContain('kind-0')
             ->and($kinds)->toContain('kind-1', 'kind-'.BatchLinks::MAX_LINKS)
-            ->and($commands->names(RedisClients::STORAGE))->toBe(['ZRANGE']);
+            ->and($commands->names(RedisClients::READER.'horizon'))->toBe(['ZRANGE']);
     });
 
     it('answers an empty kind list without a Redis command', function (): void {
@@ -342,7 +342,9 @@ describe('reading', function (): void {
 
         app(BatchLinks::class)->forKinds(['import']);
 
-        expect($commands->names(RedisClients::STORAGE))->toBe(['ZRANGE']);
+        // On the scrape-timeout reader of the storage connection, never the worker-side storage client (Arch Q1.3).
+        expect($commands->names(RedisClients::READER.'horizon'))->toBe(['ZRANGE'])
+            ->and($commands->count(RedisClients::STORAGE))->toBe(0);
     });
 
     it('prunes links older than 7 days', function (): void {

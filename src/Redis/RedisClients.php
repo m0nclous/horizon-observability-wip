@@ -52,7 +52,8 @@ final class RedisClients
     public function __construct(private readonly Application $app) {}
 
     /**
-     * The storage connection (worker writes, package reads).
+     * The storage connection with `redis.worker_timeout`, for the worker-side writes; the scrape, job-list and live
+     * paths read the package keys through {@see self::reader()} of {@see self::storageConnection()} (Arch Q1.3).
      */
     public function storage(): Connection
     {
