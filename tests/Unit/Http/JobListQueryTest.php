@@ -30,6 +30,15 @@ it('parses the limit and the period', function (): void {
         ->and($query->toMs)->toBe(1700003600000);
 });
 
+it('reads every integer form the validation accepts', function (string $query, int $limit, ?int $from): void {
+    $parsed = JobListQuery::fromRequest(jobListRequest($query), JobList::Completed);
+
+    expect([$parsed->limit, $parsed->fromMs])->toBe([$limit, $from]);
+})->with([
+    'plus sign' => ['limit=%2B5&from=%2B10', 5, 10],
+    'surrounding spaces' => ['limit=%205%20&from=+7', 5, 7],
+]);
+
 it('ignores the period for delayed jobs', function (): void {
     $query = JobListQuery::fromRequest(jobListRequest('from=1&to=2'), JobList::Delayed);
 

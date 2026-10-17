@@ -112,6 +112,27 @@ final readonly class Topology
     }
 
     /**
+     * The Redis connection (`database.redis.<name>` or `database.redis.clusters.<name>`) that holds the queues of a
+     * queue connection, as Laravel's and Horizon's Redis connectors resolve it: `queue.connections.<name>.connection`,
+     * or `default` when it is unset. Null when the queue connection is not configured or does not use the `redis`
+     * driver, so its queues are not inspected. Shared by the queue readers (T05, T06, T12): pass the result to
+     * `RedisClients::reader()`.
+     */
+    public function redisConnection(string $queueConnection): ?string
+    {
+        $connections = $this->config->get('queue.connections');
+        $connection = is_array($connections) ? ($connections[$queueConnection] ?? null) : null;
+
+        if (! is_array($connection) || ($connection['driver'] ?? null) !== 'redis') {
+            return null;
+        }
+
+        $name = $connection['connection'] ?? null;
+
+        return is_string($name) && $name !== '' ? $name : 'default';
+    }
+
+    /**
      * @return list<SupervisorOptions>
      */
     private function supervisorOptions(): array

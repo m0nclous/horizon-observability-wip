@@ -136,8 +136,16 @@ final readonly class JobListQuery
         ];
     }
 
+    /**
+     * The value as the `integer` rule validated it (`FILTER_VALIDATE_INT`, which also accepts `+5` and surrounding
+     * whitespace), so a value that passed validation is never read as absent.
+     */
     private static function integer(mixed $value): ?int
     {
-        return is_int($value) || (is_string($value) && preg_match('/^-?\d+$/', $value) === 1) ? (int) $value : null;
+        if (is_int($value)) {
+            return $value;
+        }
+
+        return is_string($value) ? filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE) : null;
     }
 }

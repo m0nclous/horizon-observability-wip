@@ -96,3 +96,22 @@ it('reads the wait thresholds like LongWaitDetected', function (): void {
         ->and(topology()->waitThreshold('redis', 'unlisted'))->toBe(Topology::DEFAULT_WAIT_SECONDS)
         ->and(topology()->waitThreshold('redis', 'off'))->toBeNull();
 });
+
+it('maps a queue connection to its Redis connection like the Redis connectors', function (): void {
+    config()->set('queue.connections', [
+        'redis' => ['driver' => 'redis', 'connection' => 'default', 'queue' => 'default'],
+        'queues.long' => ['driver' => 'redis', 'connection' => 'queue', 'queue' => 'long'],
+        'implicit' => ['driver' => 'redis', 'queue' => 'default'],
+        'blank' => ['driver' => 'redis', 'connection' => null],
+        'database' => ['driver' => 'database', 'table' => 'jobs'],
+        'broken' => 'redis',
+    ]);
+
+    expect(topology()->redisConnection('redis'))->toBe('default')
+        ->and(topology()->redisConnection('queues.long'))->toBe('queue')
+        ->and(topology()->redisConnection('implicit'))->toBe('default')
+        ->and(topology()->redisConnection('blank'))->toBe('default')
+        ->and(topology()->redisConnection('database'))->toBeNull()
+        ->and(topology()->redisConnection('broken'))->toBeNull()
+        ->and(topology()->redisConnection('missing'))->toBeNull();
+});

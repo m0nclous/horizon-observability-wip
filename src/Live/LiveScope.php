@@ -87,7 +87,8 @@ final readonly class LiveScope
     }
 
     /**
-     * Cache key part of the scope: sha1 of the normalised (sorted) scope.
+     * Cache key part of the scope: sha1 of the normalised (sorted) scope. `serialize()` is exact for any bytes (a
+     * JSON encoding fails on invalid UTF-8, and every such scope would share one key).
      */
     public function cacheKey(): string
     {
@@ -108,7 +109,7 @@ final readonly class LiveScope
         $queues = array_values(array_unique($queues));
         sort($queues);
 
-        return sha1((string) json_encode([1, $supervisors, $queues, $this->jobFilter, $classes]));
+        return sha1(serialize([1, $supervisors, $queues, $this->jobFilter, $classes]));
     }
 
     /**

@@ -87,6 +87,13 @@ it('has a cache key of the normalised scope', function (): void {
         ->not->toBe((new LiveScope(null, [['connection' => 'other', 'queue' => 'a']], false, null))->cacheKey());
 });
 
+it('keeps scopes with invalid UTF-8 names apart', function (): void {
+    $scope = static fn (string $queue): LiveScope => new LiveScope(null, [['connection' => 'redis', 'queue' => $queue]], false, null);
+
+    expect($scope("bad\xFF")->cacheKey())->not->toBe($scope("bad\xFE")->cacheKey())
+        ->and($scope("bad\xFF")->cacheKey())->not->toBe((new LiveScope(null, [], false, null))->cacheKey());
+});
+
 it('lists each queue name once', function (): void {
     expect((new LiveScope(null, [['connection' => 'a', 'queue' => 'q'], ['connection' => 'b', 'queue' => 'q']], false, null))->queueNames())->toBe(['q']);
 });
