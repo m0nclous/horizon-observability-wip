@@ -100,7 +100,7 @@ final readonly class DashboardBuilder
         $jobLists = new JobLists($this->options);
         $batches = new Batches($common, $promql, $attempts, $batchState);
 
-        $panels = [(new AlertSound($common, $alertState, $this->options->alertSoundScript))->panel()];
+        $panels = [(new AlertSound($common, $alertState, $this->options->alertSound()))->panel()];
         $y = AlertSound::HEIGHT;
 
         $panels[] = Common::row(PanelRegistry::OVERVIEW_ROW, 'Overview', $y);

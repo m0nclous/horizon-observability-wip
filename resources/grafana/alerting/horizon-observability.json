@@ -1,0 +1,213 @@
+{
+  "apiVersion": 1,
+  "groups": [
+    {
+      "orgId": 1,
+      "name": "Queues",
+      "folder": "Horizon",
+      "interval": "1m",
+      "rules": [
+        {
+          "uid": "horizon-no-metrics",
+          "title": "No queue metrics",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
+              "model": {
+                "editorMode": "code",
+                "expr": "count(office_horizon_status)",
+                "instant": true,
+                "range": false,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "lt",
+                      "params": [
+                        1
+                      ]
+                    }
+                  }
+                ],
+                "refId": "C"
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Error",
+          "for": "5m",
+          "annotations": {
+            "summary": "Prometheus has no office_horizon_status, /metrics of the app is not scraped",
+            "__dashboardUid__": "horizon",
+            "__panelId__": "1"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "horizon-down",
+          "title": "Horizon is down",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
+              "model": {
+                "editorMode": "code",
+                "expr": "min(office_horizon_status)",
+                "instant": true,
+                "range": false,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "lt",
+                      "params": [
+                        1
+                      ]
+                    }
+                  }
+                ],
+                "refId": "C"
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "for": "5m",
+          "annotations": {
+            "summary": "Horizon is paused or not running",
+            "__dashboardUid__": "horizon",
+            "__panelId__": "1"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "horizon-long-wait",
+          "title": "Queue wait over 2x limit",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
+              "model": {
+                "editorMode": "code",
+                "expr": "max by (queue) (office_queue_oldest_pending_job_age) / on (queue) max by (queue) (office_horizon_wait_threshold_seconds)",
+                "instant": true,
+                "range": false,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        2
+                      ]
+                    }
+                  }
+                ],
+                "refId": "C"
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "for": "5m",
+          "annotations": {
+            "summary": "Oldest pending job in {{ $labels.queue }} waits {{ printf \"%.1f\" $values.A.Value }}x the queue wait limit",
+            "__dashboardUid__": "horizon",
+            "__panelId__": "2"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "horizon-failures",
+          "title": "High failure rate",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 900,
+                "to": 0
+              },
+              "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
+              "model": {
+                "editorMode": "code",
+                "expr": "sum by (queue) (increase(office_queue_jobs_total{status=~\"failed|timed_out\"}[15m])) / clamp_min(sum by (queue) (increase(office_queue_jobs_total{status=~\"completed|failed|timed_out\"}[15m])), 100)",
+                "instant": true,
+                "range": false,
+                "refId": "A"
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gte",
+                      "params": [
+                        0.05
+                      ]
+                    }
+                  }
+                ],
+                "refId": "C"
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "for": "5m",
+          "annotations": {
+            "summary": "{{ humanizePercentage $values.A.Value }} of attempts in {{ $labels.queue }} failed in 15 minutes",
+            "__dashboardUid__": "horizon",
+            "__panelId__": "4"
+          },
+          "isPaused": false
+        }
+      ]
+    }
+  ]
+}

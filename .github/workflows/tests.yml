@@ -180,14 +180,9 @@ jobs:
           extensions: redis, pcntl, posix, pdo_sqlite, mbstring
           coverage: none
       - run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress
-      # The renderer, its --check and the static performance gates arrive with T13 (Console/GrafanaCommand).
+      # Arch Q5.7 item 1; the static performance gates join with WP8C.
       - name: Committed assets equal the render (composer test:grafana)
-        run: |
-          if [ ! -f src/Console/GrafanaCommand.php ]; then
-            echo "::notice::horizon-observability:grafana is not implemented yet (T13); the legacy goldens are checked by the Grafana test suite."
-            exit 0
-          fi
-          composer test:grafana
+        run: composer test:grafana
       - name: Grafana contract tests
         run: |
           mkdir -p build

@@ -18,7 +18,7 @@ pest()->group('grafana');
  */
 function runAlertSound(string $ttsUrl, string $to = 'now'): array
 {
-    $harness = <<<'JS'
+    $harness = <<<'HARNESS'
         const [script, ttsUrl, to] = [require('fs').readFileSync(process.argv[2], 'utf8'), process.argv[3], process.argv[4]];
         const calls = { oscillators: 0, speak: [], fetch: [] };
         const node = () => ({ connect: () => node(), start() {}, stop() {}, type: '', frequency: { value: 0 },
@@ -48,7 +48,7 @@ function runAlertSound(string $ttsUrl, string $to = 'now'): array
         };
         new Function('context', script)(context);
         setImmediate(() => console.log(JSON.stringify({ globals: Object.keys(window), ...calls })));
-        JS;
+        HARNESS;
 
     $script = tempnam(sys_get_temp_dir(), 'ho-alert-sound-');
     file_put_contents($script, Resources::alertSoundScript());

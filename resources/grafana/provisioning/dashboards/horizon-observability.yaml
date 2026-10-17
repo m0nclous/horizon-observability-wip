@@ -1,0 +1,13 @@
+# Provisions the rendered dashboard (Arch Q5.5): mount the dashboards directory of the render
+# (php artisan horizon-observability:grafana, default ./grafana/dashboards) at the path below.
+apiVersion: 1
+
+providers:
+  - name: horizon-observability
+    type: file
+    folder: Horizon
+    allowUiUpdates: false          # the file is the source: re-render instead of editing in the UI
+    updateIntervalSeconds: 10
+    options:
+      path: /etc/grafana/dashboards/horizon-observability
+      foldersFromFilesStructure: false
