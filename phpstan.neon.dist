@@ -2,9 +2,6 @@ parameters:
     level: 9
     paths:
         - src
-        - tests
-    excludePaths:
-        - legacy
-        - tests/Fixtures
+        - workbench/app
     tmpDir: build/phpstan
     treatPhpDocTypesAsCertain: false
