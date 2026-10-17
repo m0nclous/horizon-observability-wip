@@ -797,6 +797,91 @@ case_27() {
     check "Started is the UTC day of the commit" "card #6 Status=In Progress; Phase=B; Area=grafana; QA rounds=0; Started=2026-10-13" "$(summary | grep '^card #6 ')"
 }
 
+# --- Adversarial QA, round 1: findings (these fail until the scripts are fixed) ---------------------------------------
+
+CASES+=("qa1 finding: rebase or cherry-pick stopped on a conflict")
+case_28() {
+    new_world
+    conflicting_side
+    git -C "$REPO" rebase -q "$BRANCH" >/dev/null 2>&1 || true
+    before="$(tasks_sum)"
+    rc=0
+    PATH="$WORK/fastbin:$PATH" status "2026-10-12 09:00" T05 "in progress" --no-push >"$OUT" 2>"$ERR" || rc=$?
+    check_status "a stopped rebase: refused" 1 "$rc"
+    check "a stopped rebase: no commit, no edit (no conflict markers committed)" "$before" "$(tasks_sum)"
+
+    new_world
+    conflicting_side
+    git -C "$REPO" checkout -q "$BRANCH"
+    git -C "$REPO" cherry-pick side >/dev/null 2>&1 || true
+    before="$(tasks_sum)"
+    rc=0
+    PATH="$WORK/fastbin:$PATH" status "2026-10-12 09:00" T05 "in progress" --no-push >"$OUT" 2>"$ERR" || rc=$?
+    check_status "a stopped cherry-pick: refused" 1 "$rc"
+    check "a stopped cherry-pick: TASKS.md left as it was" "$before" "$(tasks_sum)"
+}
+
+CASES+=("qa1 finding: uncommitted TASKS.md edits stay out of the status commit")
+case_29() {
+    new_world
+    sed -i 's/^Golden port\./Golden port. HALF-WRITTEN EDIT OF THE INTEGRATOR/' "$REPO/planning/TASKS.md"
+    status "2026-10-12 09:00" T05 "in progress" --no-push >"$OUT" 2>"$ERR" || true
+    check "the status commit does not carry the edit" "" "$(git -C "$REPO" show HEAD -- planning/TASKS.md | grep 'HALF-WRITTEN' || true)"
+    check_contains "the edit is still in the working tree" "HALF-WRITTEN EDIT OF THE INTEGRATOR" "$(cat "$REPO/planning/TASKS.md")"
+}
+
+CASES+=("qa1 finding: the gates see the state on origin")
+case_30() {
+    new_world
+    git clone -q -b "$BRANCH" "$WORK/world/origin.git" "$WORK/world/other"
+    (cd "$WORK/world/other" && BOARD_MAIN="$WORK/world/other" BOARD_NOW="2026-10-12 09:00" "$BOARD/set-status.sh" T05 "in progress") >/dev/null 2>&1
+    pushed="$(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
+    local_head="$(git -C "$REPO" rev-parse HEAD)"
+    rc=0
+    status "2026-10-12 09:05" T04 "in progress" --answer "Yes" >"$OUT" 2>"$ERR" || rc=$?
+    check_status "In Progress is full on origin (T02, T05): refused" 1 "$rc"
+    check_contains "refused by the WIP gate, not by the failed push" "the WIP limit of in progress is 2 and it holds T02, T05" "$(cat "$ERR")"
+    check "origin unchanged" "$pushed" "$(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
+    check "no unpushable local commit left behind" "$local_head" "$(git -C "$REPO" rev-parse HEAD)"
+}
+
+CASES+=("qa1 finding: testing -> in progress without a QA line")
+case_31() {
+    new_world
+    status "2026-10-12 09:00" T05 "in progress" >/dev/null
+    rc=0
+    status "2026-10-12 09:10" T03 "in progress" >"$OUT" 2>"$ERR" || rc=$?
+    check_status "In Progress full (T02, T05) and no QA rejection recorded: refused" 1 "$rc"
+}
+
+CASES+=("qa1 finding: a backslash in a title")
+case_32() {
+    new_world
+    edit_heading 's/^### T05 Grafana port — /### T05 Grafana port C:\\temp\\new — /' "Backslash title"
+    board sync >/dev/null 2>&1
+    check "the issue title" '[T05] Grafana port C:\temp\new' "$(jq -r '.issues[] | select(.number == 6) | .title' "$GH_STUB_STATE")"
+    reset_log
+    board sync >/dev/null 2>&1
+    check "the second sync writes nothing" "" "$(writes)"
+}
+
+CASES+=("qa1 finding: a spaced en dash range")
+case_33() {
+    new_world
+    edit_heading 's/(depends on T02–T04, T05)/(depends on T02 – T04)/' "Spaced en dash"
+    check "T03 is a dependency" "T06  todo         phase:C  live        Live backend [blocked by T02, T03, T04]" "$(board list | grep '^T06 ')"
+}
+
+CASES+=("qa1 finding: a board field of another type")
+case_34() {
+    new_world
+    state_edit '.project.fields += [{"id": "PVTF_qa", "name": "QA rounds", "type": "ProjectV2Field", "dataType": "TEXT"}]'
+    rc=0
+    board sync >"$OUT" 2>"$ERR" || rc=$?
+    check_status "one bad field does not stop the sync" 0 "$rc"
+    check "every task has its issue" "8" "$(jq '[.issues[] | select(.labels | index("task"))] | length' "$GH_STUB_STATE")"
+}
+
 run_cases
 
 PASSED="$(grep -c '^ok$' "$RESULTS" || true)"
