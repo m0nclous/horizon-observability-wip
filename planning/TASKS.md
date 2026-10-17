@@ -300,7 +300,8 @@ loopback-only ports, a per-event concurrency group, PHP 8.5 and 128M portability
 reproduce exactly, wall times +12–30 % on the shared host), `bootstrap-live.sh` idempotent; integrator-request 1739346
 (normalized composer.json) accepted; the coverage threshold (85 %) was not measured locally.
 
-### T12 WP-L1 + WP-L2 Live backend — `testing` (depends on T02, T03, T04, T05, T11)
+### T12 WP-L1 + WP-L2 Live backend — `in progress` (depends on T02, T03, T04, T05, T11)
+QA: 2026-10-17 14:26 UTC: round 1 rejected: 4 findings. round 1 rejected by the adversarial tester: (1) a Supervisor filter while Horizon is stopped answers 0 pending instead of the queue's jobs or null; (2) the wait level uses the rounded age (10.4 s over a 10 s limit reads green, 20.4 s yellow); (3) an invalid UTF-8 queue or supervisor name defeats the cache (toJson throws, every request builds); (4) each push backoff is one tick late (0, 2, 5, 10, 19 s instead of 0, 1, 3, 7, 15 s); repro tests skipped in 0d04137
 Add §R4, §Q9′. One task: WP-L1, then WP-L2. Live snapshot service, `GET {base}/live` controller with ~1 s stampede-safe
 cache, `horizon-observability:stream` command (Grafana Live push, leader lock, backoff). The config keys, the route and
 `Live/{LiveScope,LiveSnapshot,Captions}` come from T02. Coordinate the ring buffer contract with T04; the snapshot needs
