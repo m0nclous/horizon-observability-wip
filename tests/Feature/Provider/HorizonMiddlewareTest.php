@@ -49,9 +49,10 @@ it('appends the link middleware and keeps web (C16)', function (array $providers
         ->and($middleware['route'])->toContain(InjectGrafanaLink::class)
         ->and($middleware['route'])->toContain(StartSession::class);
 
-    // Horizon >= 5.45 builds a "horizon" group in boot(); earlier versions pass horizon.middleware to the routes.
+    // Horizon >= 5.45 builds a "horizon" group in boot() from its own entries (Sentinel) plus horizon.middleware;
+    // earlier versions pass horizon.middleware to the routes. Only the configured tail is ours.
     if ($middleware['group'] !== null) {
-        expect($middleware['group'])->toBe(['Laravel\\Sentinel\\Http\\Middleware\\SentinelMiddleware:horizon', 'web', InjectGrafanaLink::class]);
+        expect(array_slice($middleware['group'], -2))->toBe(['web', InjectGrafanaLink::class]);
     }
 })->with('provider orders');
 
