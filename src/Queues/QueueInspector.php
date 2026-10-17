@@ -144,19 +144,19 @@ final readonly class QueueInspector
         return new QueueSnapshot(
             connection: $connection,
             queue: $queue,
-            length: self::count($reply[0]),
-            reserved: self::count($reply[1]),
-            delayed: self::count($reply[2]),
-            delayedDue: self::count($reply[3]),
+            length: $this->count($reply[0]),
+            reserved: $this->count($reply[1]),
+            delayed: $this->count($reply[2]),
+            delayedDue: $this->count($reply[3]),
             earliestDueAt: $this->time($reply[4]),
             firstFreshReadyAt: $this->time($reply[5]),
-            scanned: self::count($reply[6]),
+            scanned: $this->count($reply[6]),
             pendingByClass: $this->classes($reply[7]),
             reservedByClass: $this->classes($reply[8]),
         );
     }
 
-    private static function count(mixed $value): int
+    private function count(mixed $value): int
     {
         if (is_int($value) && $value >= 0) {
             return $value;
@@ -204,7 +204,7 @@ final readonly class QueueInspector
             }
 
             $class = JobClassLabel::normalize($this->decode((string) $name));
-            $classes[$class] = ($classes[$class] ?? 0) + self::count($count);
+            $classes[$class] = ($classes[$class] ?? 0) + $this->count($count);
         }
 
         return $classes;
