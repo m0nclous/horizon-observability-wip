@@ -14,6 +14,8 @@ use DF\HorizonObservability\Tests\Grafana\Support\LegacyFixtures;
  * projection of the legacy golden, frozen in tests/Fixtures/grafana/default/layout-projection.json.
  */
 
+pest()->group('grafana');
+
 function legacyDashboard(): array
 {
     return LayoutProjection::decoded((new DashboardBuilder(LegacyFixtures::options()))->build());

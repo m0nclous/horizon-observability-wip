@@ -8,6 +8,8 @@ use DF\HorizonObservability\Grafana\Promql;
  * The PromQL helpers print exactly what the legacy generator wrote; filtered() is the legacy `filtered`.
  */
 
+pest()->group('grafana');
+
 it('quotes string literals', function (): void {
     expect(Promql::quote("a\"b\\c\td\ne"))->toBe('"a\"b\\\\c\td\ne"');
 });

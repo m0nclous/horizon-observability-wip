@@ -7,6 +7,8 @@ declare(strict_types=1);
  * written as \u{...} escapes, Arch Q5.7 item 7).
  */
 
+pest()->group('grafana');
+
 arch('the renderer classes are final')
     ->expect('DF\HorizonObservability\Grafana')
     ->classes()

@@ -12,6 +12,8 @@ use Symfony\Component\Yaml\Yaml;
  * Arch Q5.6 M2: the alert rules come from the same profile as the dashboard and equal the legacy horizon.yml.
  */
 
+pest()->group('grafana');
+
 it('renders the legacy alert rules', function (): void {
     $rules = (new AlertRulesBuilder(LegacyFixtures::options()))->build();
 

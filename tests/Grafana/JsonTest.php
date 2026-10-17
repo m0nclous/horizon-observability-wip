@@ -9,6 +9,8 @@ use DF\HorizonObservability\Grafana\Json;
  * strings below are Python's output.
  */
 
+pest()->group('grafana');
+
 it('prints nested containers with two-space indentation and a trailing newline', function (): void {
     expect(Json::encode(['a' => [1, true, null], 'b' => ['c' => 'd']]))
         ->toBe("{\n  \"a\": [\n    1,\n    true,\n    null\n  ],\n  \"b\": {\n    \"c\": \"d\"\n  }\n}\n");

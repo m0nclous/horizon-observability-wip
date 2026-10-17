@@ -15,6 +15,8 @@ use DF\HorizonObservability\Tests\Grafana\Support\LegacyFixtures;
  * `python3 legacy/grafana/generate_queues_dashboard.py --prefix office` did.
  */
 
+pest()->group('grafana');
+
 /**
  * A string as the dashboard JSON prints it.
  */
