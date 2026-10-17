@@ -335,7 +335,7 @@ forwarded queue look empty to every reader (T05 review).
 
 ## Phase C: sequential tail
 
-### T13 WP8B + WP8C + WP8D Grafana parametrisation, performance, live rendering — `in progress` (depends on T03–T08, T10, T11, T12)
+### T13 WP8B + WP8C + WP8D Grafana parametrisation, performance, live rendering — `testing` (depends on T03–T08, T10, T11, T12)
 Arch Q5.2–5.7 + Add §R2–R4, §Q9′. One sequential task in this order: **WP8B, then WP8C, then WP8D** (one owner chain of
 `src/Grafana/**`). `Console/GrafanaCommand` (`--check`, `--live=off|poll|stream`, prefix/uid/thresholds),
 `resources/grafana/**` (default dashboard + alert rules JSON + provisioning examples + optional recording rules),
