@@ -1514,6 +1514,192 @@ job tests-pr if: github.event_name == 'pull_request'
 grafana: \${{ fromJSON(github.event_name == 'pull_request' && '[\"grafana/grafana:13.2.4\"]' || '[\"grafana/grafana:12.4.13\", \"grafana/grafana:13.2.4\"]') }}" "$(cat "$OUT")"
 }
 
+CASES+=("adv2 finding: ci comments the same run again (gh escapes < and > in --jq JSON)")
+case_52() {
+    new_world
+    mkdir -p "$REPO/src"
+    echo '<?php' >"$REPO/src/app.php"
+    git -C "$REPO" add src/app.php
+    git -C "$REPO" commit -q -m "Add code"
+    git -C "$REPO" push -q origin HEAD
+    head="$(git -C "$REPO" rev-parse HEAD)"
+    ci failure 900 "$head" >/dev/null 2>&1
+    # Re-run of the failed jobs: attempt 2 is red again, attempt 3 is green.
+    (cd "$REPO" && CI_CONCLUSION=failure CI_RUN_ID=900 CI_RUN_ATTEMPT=2 CI_HEAD_SHA="$head" "$BOARD/board.sh" ci) >/dev/null 2>&1
+    (cd "$REPO" && CI_CONCLUSION=failure CI_RUN_ID=900 CI_RUN_ATTEMPT=2 CI_HEAD_SHA="$head" "$BOARD/board.sh" ci) >/dev/null 2>&1
+    check "one comment per attempt" "2" "$(comments_of_issue 1 | grep -c '^  comment: \*\*Red:\*\*')"
+    # A screenshot commit on top (paths-ignore) does not hide the green attempt.
+    mkdir -p "$REPO/planning/screenshots/T05"
+    cp "$FIXTURES/shot.png" "$REPO/planning/screenshots/T05/x.png"
+    git -C "$REPO" add planning/screenshots
+    git -C "$REPO" commit -q -m "board: T05 screenshots"
+    (cd "$REPO" && CI_CONCLUSION=success CI_RUN_ID=900 CI_RUN_ATTEMPT=3 CI_HEAD_SHA="$head" "$BOARD/board.sh" ci) >"$OUT" 2>&1
+    check "the green attempt closes the issue" "issue #1 CLOSED [CI] The integration branch is red [stop-the-line]" "$(summary | grep '^issue #1 ')"
+    check_contains "under a screenshot commit" "decides: only planning/TASKS.md planning/screenshots changed" "$(cat "$OUT")"
+    # A look-alike path is code: planning/screenshots-old/ is not excluded.
+    mkdir -p "$REPO/planning/screenshots-old"
+    echo x >"$REPO/planning/screenshots-old/x.txt"
+    git -C "$REPO" add planning/screenshots-old
+    git -C "$REPO" commit -q -m "Not a screenshot"
+    (cd "$REPO" && CI_CONCLUSION=failure CI_RUN_ID=906 CI_HEAD_SHA="$head" "$BOARD/board.sh" ci) >"$OUT" 2>&1
+    check_contains "a look-alike path counts as a change" "ignoring tests run 906" "$(cat "$OUT")"
+}
+
+# --- Adversarial QA, round 2: findings (these fail until fixed) ----------------------------------------------------
+
+CASES+=("adv2 finding: the dependency gate blocks moves that do not start work")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_53() {
+    new_world
+    # T06 (depends on T02–T04, T05) is in testing; its dependency T05 was done and is reopened after a regression.
+    edit_heading 's/^### T02 Exposition — `in progress`/### T02 Exposition — `done`/; s/^### T03 Attempts — `testing`/### T03 Attempts — `done`/; s/^### T04 Queue state — `needs owner`/### T04 Queue state — `done`/; s/^### T05 Grafana port — `todo`/### T05 Grafana port — `in progress`/; s/^### T06 Live backend — `todo`/### T06 Live backend — `testing`/' \
+        "T02-T04 done, T05 reopened, T06 in testing"
+    rc=0
+    status "2026-10-12 09:00" T06 testing >"$OUT" 2>"$ERR" || rc=$?
+    check "a no-op says so" "0 set-status: T06 is already testing" "$rc $(cat "$OUT" "$ERR")"
+    rc=0
+    status "2026-10-12 09:01" T06 testing --qa "round 1 approved by the spec tester" >"$OUT" 2>"$ERR" || rc=$?
+    check "a tester records a verdict line on a task that stays in testing" "0" "$rc"
+    rc=0
+    status "2026-10-12 09:02" T06 "in progress" --qa "round 1 rejected by the adversarial tester: the snapshot leaks" >"$OUT" 2>"$ERR" || rc=$?
+    check "a QA rejection returns to In Progress" "0 ### T06 Live backend — \`in progress\` (depends on T02–T04, T05)" \
+        "$rc $(grep '^### T06 ' "$REPO/planning/TASKS.md")"
+    rc=0
+    status "2026-10-12 09:03" T06 "needs owner" --question "Wait for the T05 fix?" >"$OUT" 2>"$ERR" || rc=$?
+    check_status "needs owner has no dependency gate" 0 "$rc"
+    rc=0
+    status "2026-10-12 09:04" T06 "in progress" --answer "No, go on" >"$OUT" 2>"$ERR" || rc=$?
+    check "the owner's answer returns the task to In Progress" "0 ### T06 Live backend — \`in progress\` (depends on T02–T04, T05)" \
+        "$rc $(grep '^### T06 ' "$REPO/planning/TASKS.md")"
+    rc=0
+    status "2026-10-12 09:05" T06 "done" --qa "round 2 approved by the spec and adversarial testers" >"$OUT" 2>"$ERR" || rc=$?
+    check_status "done still needs every dependency done" 1 "$rc"
+}
+
+CASES+=("adv2 finding: a board field that cannot be created stops the whole sync")
+case_54() {
+    new_world
+    rc=0
+    (cd "$REPO" && GH_STUB_FAIL="project field-create" "$BOARD/board.sh" sync) >"$OUT" 2>"$ERR" || rc=$?
+    check_status "the sync goes on without the field" 0 "$rc"
+    check "every task has its issue" "8" "$(jq '[.issues[] | select(.labels | index("task"))] | length' "$GH_STUB_STATE")"
+    check "the cards still get their Status" "8" "$(summary | grep -c '^card #[0-9]* Status=')"
+}
+
+CASES+=("adv2 finding: a main checkout path with a space")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_55() {
+    new_world
+    spaced="$WORK/world/with space"
+    mkdir -p "$spaced"
+    git clone -q -b "$BRANCH" "$WORK/world/origin.git" "$spaced/main"
+    git -C "$spaced/main" worktree add -q -b wip/T05-grafana "$spaced/T05" >/dev/null 2>&1
+    rc=0
+    (cd "$spaced/T05" && BOARD_NOW="2026-10-12 09:00" "$BOARD/set-status.sh" T05 "in progress") >"$OUT" 2>"$ERR" || rc=$?
+    check "from a worktree, BOARD_MAIN unset" "0 ### T05 Grafana port — \`in progress\` (depends only on T00; start first)" \
+        "$rc $(grep '^### T05 ' "$spaced/main/planning/TASKS.md")"
+}
+
+CASES+=("adv2 finding: a dependency clause or task heading the parser does not know is dropped without a warning")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_56() {
+    new_world
+    cat >"$WORK/world/parse.md" <<'EOF'
+## Phase B: packages
+
+### T00 Zero — `done`
+### T01 One — `todo`
+### T02 Two — `todo` (Depends on T01)
+### T03 Three — `todo` (depend on T01)
+### T04 Four (depends on T01) — `todo`
+### T05 Five - `todo` (depends on T01)
+### T06 Six — `Todo` (depends on T01)
+### T07 Seven — `in-progress`
+EOF
+    (cd "$REPO" && TASKS_FILE="$WORK/world/parse.md" "$BOARD/board.sh" list) >"$OUT" 2>"$ERR"
+    kept=""
+    # T05-T07: a hyphen instead of the em dash, a capital or a typo in the status drop the whole task from the board.
+    for id in T02 T03 T04 T05 T06 T07; do
+        if grep -q "^$id .*blocked by T01" "$OUT" || grep -q "^board: warning: $id" "$ERR"; then
+            kept+="$id kept "
+        else
+            kept+="$id dropped "
+        fi
+    done
+    check "listed and blocked by T01, or warned about" "T02 kept T03 kept T04 kept T05 kept T06 kept T07 kept " "$kept"
+}
+
+CASES+=("adv2 finding: a failed commit leaves the shared main checkout dirty")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_57() {
+    # Commit signing through a program that fails (this environment signs every commit with gpg.ssh.program);
+    # a failing pre-commit hook or a missing identity end the same way.
+    failing_signer() {
+        : >"$WORK/world/key.pub"
+        git -C "$REPO" config commit.gpgsign true
+        git -C "$REPO" config gpg.format ssh
+        git -C "$REPO" config user.signingkey "$WORK/world/key.pub"
+        git -C "$REPO" config gpg.ssh.program false
+    }
+    new_world
+    failing_signer
+    rc=0
+    status "2026-10-12 09:01" T03 "done" --qa "round 1 approved by x" --attach "$FIXTURES/shot.png" >"$OUT" 2>"$ERR" || rc=$?
+    check "the screenshot commit fails: exit 1" "1" "$rc"
+    check "the screenshot commit fails: the checkout is clean (no staged screenshot)" "" "$(git -C "$REPO" status --porcelain)"
+
+    new_world
+    failing_signer
+    before="$(tasks_sum)"
+    rc=0
+    status "2026-10-12 09:00" T05 "in progress" --qa "round 1 approved by x" >"$OUT" 2>"$ERR" || rc=$?
+    check "the status commit fails: exit 1 and a message" "1 yes" "$rc $(grep -q '^set-status: ' "$ERR" && echo yes)"
+    check "the status commit fails: HEAD and TASKS.md unchanged" "$before" "$(tasks_sum)"
+    check "the status commit fails: the checkout is clean" "" "$(git -C "$REPO" status --porcelain)"
+    # Signing works again: the next call (any agent's) must not find the checkout blocked by the failed one.
+    git -C "$REPO" config commit.gpgsign false
+    rc=0
+    status "2026-10-12 09:05" T05 "in progress" >"$OUT" 2>"$ERR" || rc=$?
+    check "the next call goes through" "0 ### T05 Grafana port — \`in progress\` (depends only on T00; start first)" \
+        "$rc $(grep '^### T05 ' "$REPO/planning/TASKS.md")"
+    check "and commits only its own change" "board: T05 -> in progress" "$(git -C "$REPO" log -1 --format=%s)"
+}
+
+CASES+=("adv2 finding: approvals worded with a negation count as rejections")
+case_58() {
+    new_world
+    {
+        status "2026-10-12 09:00" T05 todo --qa "round 1 approved by the spec and adversarial testers, no changes requested"
+        status "2026-10-12 09:01" T03 testing --qa "round 2 QA verdict: APPROVED by the spec tester (nothing rejected, nothing open)"
+        status "2026-10-12 09:02" T03 testing --qa "round 2 approved by the adversarial tester: the round 1 findings that were rejected are fixed"
+    } >/dev/null
+    board sync >/dev/null 2>&1
+    check "T05: one approved round" "card #6 Status=Todo; Phase=B; Area=grafana; QA rounds=1" "$(summary | grep '^card #6 ')"
+    board report >/dev/null 2>&1
+    report="$(jq -r '.issues[] | select(.title == "[Board] Flow report") | .body' "$GH_STUB_STATE")"
+    # T01 round 1 approved, T02 round 1 rejected (the history), T03 round 2 and T05 round 1 approved.
+    check_contains "the rejection rate counts only the real rejection" "- QA rounds: 4 (3 approved, 1 rejected), rejection rate 25 %." "$report"
+}
+
+CASES+=("adv2 finding: set-status publishes another session's unpushed commits")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_59() {
+    new_world
+    # The integrator merges a task branch locally (--no-ff) and runs the gates before pushing it.
+    git -C "$REPO" checkout -q -b wip/T05-grafana
+    mkdir -p "$REPO/src"
+    echo '<?php // not reviewed yet' >"$REPO/src/grafana.php"
+    git -C "$REPO" add src/grafana.php
+    git -C "$REPO" commit -q -m "Port the dashboard"
+    git -C "$REPO" checkout -q "$BRANCH"
+    git -C "$REPO" merge -q --no-ff -m "integrator: merge wip/T05-grafana" wip/T05-grafana
+    local_merge="$(git -C "$REPO" rev-parse HEAD)"
+    # Meanwhile another agent records a verdict on another task in the same main checkout.
+    status "2026-10-12 09:00" T03 testing --qa "round 1 approved by the spec tester" >"$OUT" 2>"$ERR" || true
+    check "the integrator's local merge is not pushed by someone else's status change" "no" \
+        "$(git -C "$WORK/world/origin.git" merge-base --is-ancestor "$local_merge" "$BRANCH" && echo yes || echo no)"
+}
+
 run_cases
 
 PASSED="$(grep -c '^ok$' "$RESULTS" || true)"
