@@ -23,7 +23,12 @@ use Throwable;
  * - **Runtime cache.** Without a usable file, the list is kept in the default cache store for
  *   {@see self::TTL_SECONDS}, keyed by a hash of the scanned directories, so one discovery serves every process and
  *   request (PHP-FPM keeps nothing between requests) until it expires.
- * - **Live discovery** ({@see JobClassFinder}) runs only when both miss.
+ * - **Live discovery** ({@see JobClassFinder}) runs only when both miss, behind a scan marker in the same store
+ *   ({@see self::SCAN_SUFFIX}, {@see self::TTL_SECONDS}): while the marker exists no other request scans and the
+ *   list is empty. Discovery autoloads application classes, and a class that cannot be loaded (a trait of a
+ *   dev-only package, a method incompatible with its parent) ends the process with an uncatchable fatal error; the
+ *   marker it leaves behind turns that into one failed scrape per hour instead of every scrape, and a warning names
+ *   the remedy. `horizon-observability:cache` and `:clear` drop the marker.
  *
  * A broken file or cache store never fails a scrape: it is logged (throttled) and the next source answers.
  *
@@ -50,6 +55,16 @@ final readonly class JobClassCache
      * Prefix of the runtime cache key; the rest is the hash of the scanned directories.
      */
     public const KEY_PREFIX = 'horizon-observability:job-classes:v1:';
+
+    /**
+     * Suffix of the runtime cache key that marks a running (or dead) discovery; the value is its start, Unix seconds.
+     */
+    public const SCAN_SUFFIX = ':scan';
+
+    /**
+     * A scan marker older than this is reported as a discovery that did not finish.
+     */
+    public const STALE_SCAN_SECONDS = 60;
 
     public function __construct(
         private Application $app,
@@ -83,12 +98,31 @@ final readonly class JobClassCache
             $store = null;
         }
 
-        $classes = $this->finder->find($paths);
+        $marked = false;
 
         try {
-            $store?->put($key, $classes, self::TTL_SECONDS);
+            $marked = $store?->add($key.self::SCAN_SUFFIX, now()->getTimestamp(), self::TTL_SECONDS) ?? false;
+
+            if (! $marked && $store instanceof Repository && $this->scanBlocked($store->get($key.self::SCAN_SUFFIX))) {
+                return [];
+            }
         } catch (Throwable $e) {
             $this->reporter->report('discovery.cache', $e);
+            $store = null;
+        }
+
+        try {
+            $classes = $this->finder->find($paths);
+
+            try {
+                $store?->put($key, $classes, self::TTL_SECONDS);
+            } catch (Throwable $e) {
+                $this->reporter->report('discovery.cache', $e);
+            }
+        } finally {
+            if ($marked) {
+                $this->forget([$key.self::SCAN_SUFFIX]);
+            }
         }
 
         return $classes;
@@ -119,7 +153,7 @@ final readonly class JobClassCache
             'classes' => $classes,
         ]));
 
-        $this->forget($paths);
+        $this->forget([self::key($paths), self::key($paths).self::SCAN_SUFFIX]);
 
         return count($classes);
     }
@@ -147,7 +181,8 @@ final readonly class JobClassCache
             $deleted = true;
         }
 
-        $this->forget($this->paths());
+        $key = self::key($this->paths());
+        $this->forget([$key, $key.self::SCAN_SUFFIX]);
 
         return $deleted;
     }
@@ -168,6 +203,29 @@ final readonly class JobClassCache
     public static function key(array $paths): string
     {
         return self::KEY_PREFIX.sha1(implode("\0", $paths));
+    }
+
+    /**
+     * Whether a scan marker blocks this discovery: another request is scanning, or a scan died. A marker the store
+     * did not keep (the `null` store) blocks nothing. An old one is reported.
+     */
+    private function scanBlocked(mixed $startedAt): bool
+    {
+        if ($startedAt === null) {
+            return false;
+        }
+
+        if (! is_int($startedAt) || now()->getTimestamp() - $startedAt >= self::STALE_SCAN_SECONDS) {
+            $this->reporter->warnOnce('discovery.scan', sprintf(
+                'Job class discovery did not finish: a class below job_class_paths probably cannot be loaded (a fatal '
+                .'error ends the process). queue_job_classes stays empty until the next attempt, at most %d minutes '
+                .'after the failed one. Run php artisan horizon-observability:cache to see the error, or narrow '
+                .'job_class_paths.',
+                intdiv(self::TTL_SECONDS, 60),
+            ));
+        }
+
+        return true;
     }
 
     /**
@@ -229,14 +287,18 @@ final readonly class JobClassCache
     }
 
     /**
-     * Drop the runtime cache entry; a failing store (e.g. unreachable at deploy time) is only logged.
+     * Drop runtime cache entries; a failing store (e.g. unreachable at deploy time) is only logged.
      *
-     * @param  list<string>  $paths
+     * @param  list<string>  $keys
      */
-    private function forget(array $paths): void
+    private function forget(array $keys): void
     {
         try {
-            $this->store()?->forget(self::key($paths));
+            $store = $this->store();
+
+            foreach ($keys as $key) {
+                $store?->forget($key);
+            }
         } catch (Throwable $e) {
             $this->reporter->report('discovery.cache', $e);
         }

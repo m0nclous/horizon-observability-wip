@@ -11,6 +11,7 @@ use Illuminate\Cache\ArrayStore;
 use Illuminate\Cache\Repository;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Cache;
+use Symfony\Component\Process\Process;
 
 /*
 | The job class cache (Arch Q6.9, C22): the deploy-time file wins, else the runtime cache (1 h, keyed by the scanned
@@ -68,12 +69,114 @@ function freshJobClassCache(): JobClassCache
     return app(JobClassCache::class);
 }
 
+/**
+ * The scan marker key for the scanned directories.
+ */
+function jobClassScanMarker(string $directory): string
+{
+    return JobClassCache::key([$directory]).JobClassCache::SCAN_SUFFIX;
+}
+
 it('discovers the classes when nothing is cached', function (): void {
     $a = $this->classes->job('Alpha');
     $b = $this->classes->job('Beta');
 
     expect(freshJobClassCache()->classes())->toBe([$a, $b])
-        ->and(Cache::get(JobClassCache::key([$this->classes->directory()])))->toBe([$a, $b]);
+        ->and(Cache::get(JobClassCache::key([$this->classes->directory()])))->toBe([$a, $b])
+        ->and(Cache::has(jobClassScanMarker($this->classes->directory())))->toBeFalse();
+});
+
+it('does not rerun a discovery that died until the marker expires, and warns once', function (): void {
+    $a = $this->classes->job('Alpha');
+    // A discovery that started a minute ago and never finished: a class that cannot be loaded ended its process.
+    Cache::put(jobClassScanMarker($this->classes->directory()), now()->getTimestamp() - JobClassCache::STALE_SCAN_SECONDS, JobClassCache::TTL_SECONDS);
+
+    expect(freshJobClassCache()->classes())->toBe([])
+        ->and(freshJobClassCache()->classes())->toBe([])
+        ->and($this->log->messages('warning'))->toHaveCount(1)
+        ->and($this->log->messages('warning')[0])->toStartWith('horizon-observability: Job class discovery did not finish')
+        ->and($this->log->messages('warning')[0])->toContain('php artisan horizon-observability:cache');
+
+    $this->travel(JobClassCache::TTL_SECONDS + 1)->seconds();
+
+    expect(freshJobClassCache()->classes())->toBe([$a])
+        ->and(Cache::has(jobClassScanMarker($this->classes->directory())))->toBeFalse();
+});
+
+it('turns a discovery that dies with a fatal error into one failed scrape, not one per scrape', function (): void {
+    // Loads (it extends a class) and then fails with an uncatchable "Trait not found" fatal error.
+    $this->classes->write('Unloadable', "final class Unloadable extends \\ArrayObject implements \\Illuminate\\Contracts\\Queue\\ShouldQueue\n{\n    use \\Missing\\DevOnlyTrait;\n\n    public function handle(): void {}\n}");
+    $root = dirname(__DIR__, 3);
+    $script = sprintf(<<<'PHP'
+        require %s;
+        $loader = new Composer\Autoload\ClassLoader(%s);
+        $loader->addPsr4(%s, %s);
+        $loader->register();
+        $app = Orchestra\Testbench\Foundation\Application::create(options: ['extra' => ['dont-discover' => ['*']]]);
+        $app['config']->set('cache.default', 'file');
+        $app['config']->set('cache.stores.file.path', %s);
+        $app['config']->set('logging.default', 'stderr');
+        $app['config']->set('horizon-observability.job_class_paths', [%s]);
+        $app->register(DF\HorizonObservability\HorizonObservabilityServiceProvider::class);
+        echo json_encode($app->make(DF\HorizonObservability\Discovery\JobClassCache::class)->classes());
+        PHP,
+        var_export($root.'/vendor/autoload.php', true),
+        var_export($this->classes->root.'/vendor', true),
+        var_export($this->classes->namespace.'\\', true),
+        var_export($this->classes->directory(), true),
+        var_export($this->classes->root.'/file-cache', true),
+        var_export($this->classes->directory(), true),
+    );
+    $scrape = static function () use ($script, $root): Process {
+        $process = new Process([PHP_BINARY, '-d', 'display_errors=stderr', '-r', $script], $root);
+        $process->run();
+
+        return $process;
+    };
+
+    $first = $scrape();
+
+    expect($first->getExitCode())->toBe(255)
+        ->and($first->getErrorOutput())->toContain('Trait "Missing\DevOnlyTrait" not found');
+
+    $second = $scrape(); // the next scrape: the marker of the dead discovery stops it from loading the class again
+
+    expect($second->getExitCode())->toBe(0, $second->getErrorOutput())
+        ->and($second->getOutput())->toBe('[]')
+        ->and($second->getErrorOutput())->not->toContain('Trait "Missing\DevOnlyTrait" not found');
+});
+
+it('leaves a discovery that is running to its request without a warning', function (): void {
+    $this->classes->job('Alpha');
+    Cache::put(jobClassScanMarker($this->classes->directory()), now()->getTimestamp(), JobClassCache::TTL_SECONDS);
+
+    expect(freshJobClassCache()->classes())->toBe([])
+        ->and($this->log->messages('warning'))->toBe([]);
+});
+
+it('scans every time with a store that keeps nothing', function (): void {
+    $a = $this->classes->job('Alpha');
+    config()->set('cache.stores.none', ['driver' => 'null']);
+    config()->set('cache.default', 'none');
+
+    expect(freshJobClassCache()->classes())->toBe([$a])
+        ->and(freshJobClassCache()->classes())->toBe([$a])
+        ->and($this->log->messages('warning'))->toBe([]);
+});
+
+it('drops the scan marker on cache and clear', function (): void {
+    $this->classes->job('Alpha');
+    $marker = jobClassScanMarker($this->classes->directory());
+
+    Cache::put($marker, 1, JobClassCache::TTL_SECONDS);
+    freshJobClassCache()->write();
+
+    expect(Cache::has($marker))->toBeFalse();
+
+    Cache::put($marker, 1, JobClassCache::TTL_SECONDS);
+    freshJobClassCache()->clear();
+
+    expect(Cache::has($marker))->toBeFalse();
 });
 
 it('serves a fresh request from the runtime cache without scanning again (C22)', function (): void {
