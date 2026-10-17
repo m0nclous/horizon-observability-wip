@@ -11,6 +11,18 @@ public-facing text in English, commit + push.
 
 ## Phase 0: design and foundation
 
+Review: 2026-10-17, 6 findings fixed (2ee7b0d, 6829a20, 727e86f). (1) A provider registered from another provider's
+`boot()` added a booting callback that never fired: no routes and no warning; a `booted` fallback now wires
+it up and logs `routes.late`. (2) `collectors.batches` was cast at boot unlike `Config` (`'0'`, `'false'` kept the
+listener). (3) `JobListQuery` parsed integers more strictly than the rule that validated them: `limit=+5` gave 500 rows
+and `from=+10` dropped the bound. (4) `LiveScope::cacheKey()` hashed a failed `json_encode()` for invalid UTF-8, so such
+scopes shared one key. (5) Missing shared contract: `Topology::redisConnection()` maps a queue connection to its Redis
+connection for T05, T06 and T12 (Add §C2.3 item 15). (6) The provider tests would have broken in T13 (grafana
+command), T03 (a hint after "locked"), on the lowest legs (legacy `ready_at` listener) and on a Horizon that changes
+its own group entries. Gates re-run: Pest on phpredis and predis (redis group on both), PHPStan 9, Pint, Rector,
+`composer validate --strict`; C/C′/C2 signatures, Appendix A/A′ config and env names, B/B′ catalog checked against the
+documents; lowest legs still deferred to CI.
+
 ### T00 Audit, architecture, bootstrap — `done`
 Audit (`planning/audit/`), final architecture (`ARCHITECTURE.md`), WP0a bootstrap: legacy code moved to `legacy/`,
 goldens frozen in `tests/Fixtures/grafana/legacy/`, new `composer.json`, LICENSE, hygiene files, Pest/PHPStan/Pint/Rector
@@ -111,8 +123,9 @@ PHP 8.2 locally; the 11.23/5.22 facts used were checked upstream). What later ta
 - T04: `AttemptRing::key()`/`ttl()` and `Keys::field()`/`EXTREMES_BUCKET_SECONDS`/`RING_BUCKET_SECONDS` are final; the
   breaker opens on any `Throwable` and restores a dropped count taken inside a failing write; `AttemptTracker` is
   resolved at boot (no Redis, no eager `Config` in its constructor); `AttemptOutcome` is Q6.2 verbatim (tests are yours).
-- T05/T12: `Topology::queues()`, `waits()`, `waitThreshold()` (default 60 s, see C2.3 item 5), the `QueueSnapshot` data
-  class and `QueueInspector::live()`; parity fixtures in `tests/Fixtures/payloads.php`.
+- T05/T06/T12: `Topology::queues()`, `waits()`, `waitThreshold()` (default 60 s, see C2.3 item 5) and
+  `redisConnection()` (queue connection to Redis connection for `RedisClients::reader()`, C2.3 item 15), the
+  `QueueSnapshot` data class and `QueueInspector::live()`; parity fixtures in `tests/Fixtures/payloads.php`.
 - T06/T13: `JobRows::fields()` freezes the Q2.1 fields; `JobList::horizonPath()`.
 - T12: build snapshots with `LiveSnapshot::compose()`/`unavailable()`; the cache stores `toJson()` and reads
   `fromArray()`.
