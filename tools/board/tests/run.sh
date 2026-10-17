@@ -2841,6 +2841,289 @@ case_100() {
     check "stored without the leading dash" "planning/screenshots/T05/20261012-0900-grafana-13.png" "$(git -C "$REPO" ls-files planning/screenshots/T05)"
 }
 
+# --- Adversarial QA, round 4: findings (these fail until fixed) ----------------------------------------------------
+
+CASES+=("adv4 finding: a status that joins two statuses with a bar is accepted and breaks the heading")
+case_101() {
+    new_world
+    before="$(tasks_sum)"
+    pushed="$(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
+    # The usage line reads <todo|in progress|testing|needs owner|done>. The status check looks for "|<status>|" in
+    # "|todo|in progress|testing|needs owner|done|", so a status cut from it with a bar passes, goes into the heading
+    # (### T05 Grafana port — `todo|in progress`) and is pushed: the task is no task heading any more, the board
+    # loses it, and set-status cannot find it again to repair it.
+    for wrong in "todo|in progress" "in progress|testing" "needs owner|done"; do
+        rc=0
+        status "2026-10-12 09:00" T05 "$wrong" >"$OUT" 2>"$ERR" || rc=$?
+        check "\"$wrong\": refused, nothing changed, nothing pushed" "1 $before $pushed" \
+            "$rc $(tasks_sum) $(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
+    done
+    check "T05 is still a task" "T05  todo         phase:B  grafana     Grafana port [ready]" "$( (board list 2>/dev/null || true) | grep '^T05 ' || true)"
+}
+
+# push_signal_hook <signal>: a pre-push hook that sends <signal> to the set-status.sh process (the outermost one above
+# the hook) and lets the push go on: the push lands on origin.
+push_signal_hook() {
+    cat >"$REPO/.git/hooks/pre-push" <<EOF
+#!/bin/sh
+pid=\$PPID
+while :; do
+    parent=\$(ps -o ppid= -p "\$pid" | tr -d ' ')
+    ps -o args= -p "\$parent" | grep -q set-status.sh || break
+    pid=\$parent
+done
+kill -$1 "\$pid"
+sleep 1
+exit 0
+EOF
+    chmod +x "$REPO/.git/hooks/pre-push"
+}
+
+CASES+=("adv4 finding: a signal while the push lands undoes a status change that origin has and says nothing changed")
+case_102() {
+    local sig landed
+    for sig in INT HUP TERM; do
+        new_world
+        # A closed terminal or a stopped agent session while git pushes: bash waits for the push, which lands, and
+        # then runs the undo, which resets the main checkout behind origin and reports "nothing changed". The caller
+        # believes it and records the verdict again (a second QA line, a second issue comment).
+        push_signal_hook "$sig"
+        rc=0
+        status "2026-10-12 09:00" T05 "in progress" --qa "round 1 approved by x" >"$OUT" 2>"$ERR" || rc=$?
+        sleep 1.5
+        landed=no
+        if git -C "$WORK/world/origin.git" log -1 --format=%s "$BRANCH" | grep -qx 'board: T05 -> in progress (QA)'; then
+            landed=yes
+        fi
+        check "$sig: the push landed" "yes" "$landed"
+        check "$sig: the output does not say that nothing changed" "" "$(grep -E 'nothing changed' "$ERR" || true)"
+        check "$sig: the main checkout is clean" "" "$(git -C "$REPO" status --porcelain --untracked-files=no)"
+    done
+}
+
+CASES+=("adv4 finding: a second phase clause, a lowercase phase heading or an id after the phase clause is dropped silently")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_103() {
+    new_world
+    # The task tail reads every clause and names what it cannot read (round 3); the phase heading reads only its
+    # first "(all depend on ...)" clause, says nothing about an id after it, and a "## phase C" heading (lowercase)
+    # is no phase at all: its tasks lose the dependency without a warning.
+    cat >"$WORK/world/parse.md" <<'EOF'
+## Phase 0: foundation
+
+### T00 Zero — `done`
+### T01 One — `todo`
+
+## Phase B: packages (all depend on T00) (all depend on T01)
+
+### T02 Two — `todo`
+
+## phase C: tail (all depend on T02)
+
+### T03 Three — `todo`
+
+## Phase D: more (all depend on T00) and T02
+
+### T04 Four — `todo`
+EOF
+    (cd "$REPO" && TASKS_FILE="$WORK/world/parse.md" "$BOARD/board.sh" list) >"$OUT" 2>"$ERR"
+    kept=""
+    for triple in "T02 T01 B" "T03 T02 C" "T04 T02 D"; do
+        read -r id dep phase <<<"$triple"
+        if grep -q "^$id .*blocked by.*$dep" "$OUT" || grep -Eqi "^board: warning: (phase $phase|$id)[: ]" "$ERR"; then
+            kept+="$id kept "
+        else
+            kept+="$id dropped "
+        fi
+    done
+    check "the dependency is read, or the heading is warned about" "T02 kept T03 kept T04 kept " "$kept"
+}
+
+CASES+=("adv4 finding: \"(depends on everything except T01)\" and \"(depends on T03)\" on T03 are misread without a warning")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_104() {
+    new_world
+    # Any clause that contains "everything" means every other task; the rest of the clause is neither read nor named.
+    cat >"$WORK/world/parse.md" <<'EOF'
+## Phase B: packages
+
+### T00 Zero — `done`
+### T01 One — `todo`
+### T02 Two — `todo` (depends on everything except T01)
+### T03 Three — `todo` (depends on T03)
+EOF
+    (cd "$REPO" && TASKS_FILE="$WORK/world/parse.md" "$BOARD/board.sh" list) >"$OUT" 2>"$ERR"
+    check "warned about, or not blocked by T01" "yes" \
+        "$( { grep -q '^board: warning: T02' "$ERR" || ! grep -q '^T02 .*blocked by T01' "$OUT"; } && echo yes || echo "no: $(grep '^T02 ' "$OUT")")"
+    # A task that names itself (a typo of T02 or T04) loses that dependency without a word, too.
+    check "a self-dependency is named" "yes" "$(grep -q '^board: warning: T03' "$ERR" && echo yes || echo "no: $(grep '^T03 ' "$OUT")")"
+}
+
+CASES+=("adv4 finding: a WIP limit with a leading zero turns the WIP gate off")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_105() {
+    new_world
+    # Eight more tasks in progress: nine with T02.
+    for n in 08 09 10 11 12 13 14 15; do
+        printf '\n### T%s Extra %s — `in progress`\nMore work.\n' "$n" "$n" >>"$REPO/planning/TASKS.md"
+    done
+    git -C "$REPO" commit -q -am "Add tasks in progress"
+    git -C "$REPO" push -q origin HEAD
+    before="$(tasks_sum)"
+    # "08" passes the ^[0-9]+$ check, and [[ 9 -ge 08 ]] is an error (08 is no octal number), which the if reads as
+    # false: the WIP gate lets the task in. (board.sh report has the same test: a repository variable
+    # BOARD_WIP_IN_PROGRESS=08 shows every count of the column as "over the limit".)
+    rc=0
+    BOARD_WIP_IN_PROGRESS=08 status "2026-10-12 09:00" T05 "in progress" >"$OUT" 2>"$ERR" || rc=$?
+    check "refused (over the limit, or an invalid limit), nothing changed" "1 $before" "$rc $(tasks_sum)"
+}
+
+CASES+=("adv4 finding: the advice after a lost race with local commits breaks the screenshot links")
+case_106() {
+    new_world
+    other_clone
+    cp "$FIXTURES/shot.png" "$WORK/world/grafana.png"
+    status "2026-10-12 09:00" T05 "in progress" --qa "round 1 approved by x" --attach "$WORK/world/grafana.png" --no-push >/dev/null
+    # Another session pushes meanwhile.
+    other_push 's/^Docs and tag\.$/Docs, changelog and tag./' "Plan: T07 also writes the changelog"
+    rc=0
+    status "2026-10-12 09:10" T03 testing --qa "a note" >"$OUT" 2>"$ERR" || rc=$?
+    check_status "refused: integrate the local commits first" 1 "$rc"
+    # The QA text links the local screenshots commit by its SHA. The advice "git pull --rebase" rewrites that commit:
+    # the pushed QA line then links a commit that origin never gets (the README says so for --no-push, the refusal
+    # says the opposite).
+    sha="$(grep -o 'blob/[0-9a-f]\{40\}/' "$REPO/planning/TASKS.md" | head -n 1 | cut -c6-45)"
+    check "the screenshots commit is linked" "40" "${#sha}"
+    advice="$(grep -o 'integrate them first ([^)]*)' "$ERR" || true)"
+    linked="advice without a rebase: $advice"
+    if grep -q 'git pull --rebase' "$ERR"; then
+        git -C "$REPO" pull -q --rebase origin "$BRANCH"
+        status "2026-10-12 09:11" T03 testing --qa "a note" >/dev/null 2>&1 || true
+        linked="$(git -C "$WORK/world/origin.git" merge-base --is-ancestor "$sha" "$BRANCH" 2>/dev/null && echo yes || echo "no: after \"$advice\" the QA line links ${sha:0:7}, which origin does not have")"
+    fi
+    check "the advice keeps the screenshot links working" "yes" "${linked/#advice without a rebase:*/yes}"
+}
+
+CASES+=("adv4 finding: one malformed line of areas.tsv stops the whole sync, and CI never reads the real file")
+case_107() {
+    local bad rc issues needle
+    for bad in $'T05 grafana' $'T05\tperf'; do
+        new_world
+        # A space for the tab, or an area that lib.sh does not know (a new task's area added to areas.tsv only).
+        sed "s/^T05\tgrafana\$/$bad/" "$FIXTURES/areas.tsv" >"$WORK/world/areas.tsv"
+        rc=0
+        (cd "$REPO" && BOARD_AREAS_FILE="$WORK/world/areas.tsv" "$BOARD/board.sh" sync) >"$OUT" 2>"$ERR" || rc=$?
+        issues="$(jq '.issues | length' "$GH_STUB_STATE")"
+        # Fine either way: the sync goes on without that area (a warning), or the tests workflow reads the real
+        # tools/board/areas.tsv (run.sh only ever reads the fixture), so a bad line cannot land unseen. The needle is
+        # built here so that this line does not match itself.
+        # shellcheck disable=SC2016 # a literal dollar sign
+        needle='$BOARD/areas'
+        needle+='.tsv'
+        check "${bad//$'\t'/<TAB>}: the status sync goes on, or the tests catch the real file" "yes" \
+            "$( { [[ "$rc" == 0 && "$issues" == 8 ]] || grep -qF "$needle" "$TESTS/run.sh"; } && echo yes || echo "no: exit $rc, $issues issues: $(cat "$ERR")")"
+    done
+}
+
+CASES+=("adv4 finding: a note on a done task moves its Finished date and its cycle time")
+case_108() {
+    new_world
+    status "2026-10-12 11:00" T03 "done" --qa "round 1 approved by the spec and adversarial testers" >/dev/null
+    # A week later: a note on the done task (a late finding for the record, the integrator's merge note).
+    status "2026-10-19 11:00" T03 "done" --qa "note: merged as abc1234" >/dev/null
+    board sync >/dev/null 2>&1
+    check "Finished is the day it was done" "card #4 Status=Done; Phase=B; Area=attempts; QA rounds=1; Started=2026-10-09; Finished=2026-10-12" \
+        "$(summary | grep '^card #4 ')"
+}
+
+CASES+=("adv4 finding: a task that leaves TASKS.md keeps its issue and its card without a warning")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_109() {
+    new_world
+    board sync >/dev/null 2>&1
+    # T04 (#5, needs owner) is renumbered to T08, and T07 (#8) is dropped from the plan: the sync creates [T08] and
+    # leaves #5 open in Needs owner and #8 open in Todo for good, without a word (a ghost card in a WIP column).
+    edit_heading 's/^### T04 Queue state — /### T08 Queue state — /; /^### T07 /,$d' "Renumber T04, drop T07"
+    printf 'T08\tqueues\n' | cat "$FIXTURES/areas.tsv" - >"$WORK/world/areas.tsv"
+    rc=0
+    (cd "$REPO" && BOARD_AREAS_FILE="$WORK/world/areas.tsv" "$BOARD/board.sh" sync) >"$OUT" 2>"$ERR" || rc=$?
+    check_status "the sync runs" 0 "$rc"
+    left=""
+    for issue in 5 8; do
+        id="$( ((issue == 5)) && echo T04 || echo T07)"
+        # Named by its number or its title (a warning that T06 depends on the missing T04 does not count).
+        if grep -Eq "^board: warning: .*((#|issues/)$issue([^0-9]|\$)|\\[$id\\])" "$ERR" ||
+            [[ "$(jq -r --argjson n "$issue" '.issues[] | select(.number == $n) | .state' "$GH_STUB_STATE")" == "CLOSED" ]]; then
+            left+="#$issue named "
+        else
+            left+="#$issue silent "
+        fi
+    done
+    check "the orphaned issues are closed or named" "#5 named #8 named " "$left"
+}
+
+CASES+=("adv4 finding: set-status waits for the main checkout in silence, longer than an agent's command timeout")
+case_110() {
+    new_world
+    conflicting_side
+    git -C "$REPO" checkout -q "$BRANCH"
+    git -C "$REPO" merge -q side >/dev/null 2>&1 || true
+    # BOARD_WAIT defaults to 300 s (and the lock to 120 s more); an agent's shell tool stops a command after 120 s by
+    # default. Killed while waiting, the call has printed nothing: the agent never learns that a merge holds it up.
+    BOARD_WAIT=4 status "2026-10-12 09:00" T05 "in progress" >"$OUT" 2>"$ERR" &
+    waiter=$!
+    sleep 2
+    said="$(cat "$ERR")"
+    rc=0
+    wait "$waiter" || rc=$?
+    git -C "$REPO" merge --abort
+    check "while it waits, it says what it waits for" "yes" "$([[ "$said" == *merge* ]] && echo yes || echo "no (nothing on stderr after 2 s)")"
+    check_status "refused after the wait" 1 "$rc"
+}
+
+# --- Adversarial QA, round 4: probes kept as regression tests --------------------------------------------------------
+
+CASES+=("adv4 probe: four set-status calls at once that wait for the checkout (BOARD_WAIT > 0)")
+case_111() {
+    new_world
+    # The others poll the main checkout without the lock while one commits (a slow pre-commit hook widens it).
+    printf '#!/bin/sh\nsleep 0.5\nexit 0\n' >"$REPO/.git/hooks/pre-commit"
+    chmod +x "$REPO/.git/hooks/pre-commit"
+    touch "$REPO/planning/TASKS.md"
+    local pids=() id i rcs=""
+    i=0
+    for id in T05 T06 T07 T05; do
+        i=$((i + 1))
+        BOARD_WAIT=60 status "2026-10-12 09:0$i" "$id" todo --qa "note $i of $id" >"$WORK/world/out.$i" 2>&1 &
+        pids+=("$!")
+    done
+    for i in "${!pids[@]}"; do
+        rc=0
+        wait "${pids[$i]}" || rc=$?
+        rcs+="$rc "
+    done
+    check "all four succeed" "0 0 0 0 " "$rcs"
+    check "four notes on origin" "4" "$(git -C "$WORK/world/origin.git" show "$BRANCH:planning/TASKS.md" | grep -c '^QA: .*: note [1-4] of T0[567]$')"
+    check "the main checkout is origin's head, clean" "$(git -C "$WORK/world/origin.git" rev-parse "$BRANCH") " \
+        "$(git -C "$REPO" rev-parse HEAD) $(git -C "$REPO" status --porcelain --untracked-files=no)"
+}
+
+CASES+=("adv4 probe: a note that is not UTF-8 is refused or recorded, never half-done")
+case_112() {
+    new_world
+    before="$(tasks_sum)"
+    cp "$FIXTURES/shot.png" "$WORK/world/grafana.png"
+    # `--qa "$(cat verdict.txt)"` of a Latin-1 file: python cannot write it as UTF-8.
+    rc=0
+    status "2026-10-12 09:00" T05 "in progress" --qa $'round 1 rejected by x: caf\xe9 is not UTF-8' --attach "$WORK/world/grafana.png" >"$OUT" 2>"$ERR" || rc=$?
+    if [[ "$rc" == 0 ]]; then
+        check "recorded: on origin" "$(git -C "$REPO" rev-parse HEAD)" "$(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
+    else
+        check "refused: HEAD, TASKS.md, the screenshots and origin unchanged" "$before  ${before%%$'\n'*}" \
+            "$(tasks_sum) $(git -C "$REPO" status --porcelain --untracked-files=all planning) $(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
+    fi
+}
+
 run_cases
 
 PASSED="$(grep -c '^ok$' "$RESULTS" || true)"
