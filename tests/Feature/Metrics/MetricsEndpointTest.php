@@ -12,11 +12,13 @@ use DF\HorizonObservability\Tests\Unit\Metrics\Support\ExpositionFixture;
 use DF\HorizonObservability\Tests\Unit\Metrics\Support\FakeClock;
 use DF\HorizonObservability\Tests\Unit\Metrics\Support\FakeCollector;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Testing\TestResponse;
+use Symfony\Component\Process\ExecutableFinder;
 
 /*
-| GET {base}/metrics (Arch Q1, Q2.1, 8.4): content type, no caching, HEAD, the golden exposition over HTTP, the
-| scrape timeout header, absolute counters (C3) and no foreign families (C17).
+| GET {base}/metrics (Arch Q1, Q2.1, 8.4): content type, no caching, HEAD, the golden exposition over HTTP and
+| promtool-clean, the scrape timeout header, absolute counters (C3) and no foreign families (C17).
 |
 | Every test scrapes fake collectors (quiet by default), so it does not depend on the real collectors of T04, T05,
 | T07 and T08, except "no spatie families", which also scrapes the real ones (redis group).
@@ -86,6 +88,25 @@ it('renders the golden exposition over HTTP', function (): void {
     $this->app->instance(Exporter::class, new Exporter($this->app, $clock(...), ExpositionFixture::collectors($clock)));
 
     expect(ExpositionFixture::normalize((string) metricsEndpointTestScrape()->assertOk()->getContent()))->toBe(file_get_contents(ExpositionFixture::GOLDEN));
+});
+
+it('keeps the golden exposition promtool-clean', function (): void {
+    // PROMTOOL is a command, e.g. "docker run --rm -i --entrypoint promtool quay.io/prometheus/prometheus:v3.15.0";
+    // without it, a promtool binary on the PATH; without either, the test is skipped.
+    $promtool = getenv('PROMTOOL');
+    $promtool = is_string($promtool) && $promtool !== '' ? $promtool : (new ExecutableFinder)->find('promtool');
+
+    if ($promtool === null) {
+        $this->markTestSkipped('promtool is not available; set PROMTOOL or put promtool on the PATH.');
+    }
+
+    $golden = (string) file_get_contents(ExpositionFixture::GOLDEN);
+    $result = Process::timeout(120)->input($golden)->run($promtool.' check metrics');
+    $broken = Process::timeout(120)->input(str_replace('# TYPE ho_queue_jobs_total counter', '# TYPE ho_queue_jobs_total gauge', $golden))->run($promtool.' check metrics');
+
+    expect($result->exitCode())->toBe(0, $result->output().$result->errorOutput())
+        // The check lints: a counter family renamed to gauge (a _total suffix on a gauge) is rejected.
+        ->and($broken->exitCode())->not->toBe(0);
 });
 
 it('honours X-Prometheus-Scrape-Timeout-Seconds', function (): void {
