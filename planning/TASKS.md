@@ -137,6 +137,20 @@ PHP 8.2 locally; the 11.23/5.22 facts used were checked upstream). What later ta
 
 ## Phase B: parallel work packages (all depend on T02; T10 only on T00)
 
+Review: 2026-10-17, 3 findings fixed, 1f549a8, b5cc095 (+ a2f5dbf, e8af5e0), 515c6ae. (1) `JobClassCache` took the
+scan marker of the Redis cache store (a number comes back as a string) for a dead discovery and warned "did not
+finish" whenever two requests raced. (2) `BatchLinks` read and pruned the links on the worker-side storage client
+(`worker_timeout`) instead of the scrape-timeout reader (Arch Q1.3, Q6.6), unlike every other scrape-path read.
+(3) The breaker's warning used the cache-backed throttle: with the cache on the same unreachable Redis, a worker or
+a dispatching request paid the cache timeout on top of the one `worker_timeout` (C11); new
+`FailureReporter::reportLocally()` (Add §C2.4), also for the job-class cache's store failures. Checked without
+findings: Appendix H names for C1-C6, C8-C11, C13-C20, C22, C24, C25, A01, A05; cross-task keys, labels, units,
+HELP texts and config keys; PHP 8.2 APIs. Gates: Pest 1745 + 1 skip on phpredis, 1743 + 3 skips on predis, cluster
+8/8 on both, promtool test, PHPStan 9, Pint, Rector, `php -l` on 8.2.34. Open (not fixed, for T14/T15): the
+throttled logs of the scrape and job-list paths still use the default cache, and the batch queries wait for the
+app's DB connect timeout, so an app without Redis or DB timeouts can still overrun the scrape budget (a `check`
+warning, T14; README, T15); lowest legs: CI.
+
 Integration: 2026-10-17. Merges f965a54..14782c0 (`--no-ff`, order T03, T05, T04, T07, T06, T08, T09, T11; no
 conflicts, suite green after each), integrator commits 42cc742..f5c42ed plus this TASKS update. Resolved: testbench.yaml
 without `laravel: '@testbench'` (testbench-core 9.x); `Tests\Support\Apps::DEFAULTS` pin the test environment (array
