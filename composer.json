@@ -99,7 +99,7 @@
         "test": [
             "@test:lint",
             "@test:types",
-            "@php vendor/bin/pest --exclude-group=cluster,e2e"
+            "@php vendor/bin/pest --exclude-group=cluster --exclude-group=e2e"
         ],
         "test:grafana": "@php vendor/bin/testbench horizon-observability:grafana resources/grafana --defaults --check --ansi",
         "test:lint": [
@@ -109,6 +109,6 @@
         "test:predis": "REDIS_CLIENT=predis vendor/bin/pest --group=redis",
         "test:redis": "@php vendor/bin/pest --group=redis",
         "test:types": "@php vendor/bin/phpstan analyse --memory-limit=1G --ansi",
-        "test:unit": "@php vendor/bin/pest --exclude-group=redis,cluster,e2e"
+        "test:unit": "@php vendor/bin/pest --exclude-group=redis --exclude-group=cluster --exclude-group=e2e"
     }
 }

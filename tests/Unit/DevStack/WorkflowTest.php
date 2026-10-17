@@ -102,7 +102,7 @@ it('expands the test matrix to the 10 base and 6 targeted legs of Arch 8.5', fun
 it('runs the suite without the cluster and e2e groups on every leg', function (): void {
     $steps = array_column(workflow('tests.yml')['jobs']['tests']['steps'], 'run');
 
-    expect(end($steps))->toBe('vendor/bin/pest --ci --exclude-group=cluster,e2e')
+    expect(end($steps))->toBe('vendor/bin/pest --ci --exclude-group=cluster --exclude-group=e2e')
         ->and(implode("\n", $steps))->toContain('composer update --${{ matrix.stability }} --prefer-dist');
 });
 
@@ -140,7 +140,7 @@ it('lints the golden exposition with promtool in the coverage job', function ():
     $coverage = workflow('tests.yml')['jobs']['coverage'];
 
     expect($coverage['env']['PROMTOOL'] ?? null)->toBe('docker run --rm -i --entrypoint promtool quay.io/prometheus/prometheus:v3.15.0')
-        ->and(end($coverage['steps'])['run'] ?? null)->toContain('--exclude-group=cluster,e2e');
+        ->and(end($coverage['steps'])['run'] ?? null)->toContain('--exclude-group=cluster --exclude-group=e2e');
 });
 
 it('gates style, types and composer.json in the static job', function (): void {

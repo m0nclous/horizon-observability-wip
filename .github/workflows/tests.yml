@@ -73,7 +73,7 @@ jobs:
           composer require --dev --no-update "orchestra/testbench:${{ matrix.testbench }}" ${{ matrix.predis && format('"predis/predis:{0}"', matrix.predis) || '' }}
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
       - run: composer show laravel/framework laravel/horizon orchestra/testbench pestphp/pest predis/predis
-      - run: vendor/bin/pest --ci --exclude-group=cluster,e2e
+      - run: vendor/bin/pest --ci --exclude-group=cluster --exclude-group=e2e
 
   cluster:
     name: Redis Cluster / phpredis and predis
@@ -158,7 +158,7 @@ jobs:
           extensions: redis, pcntl, posix, pdo_sqlite, mbstring
           coverage: pcov
       - run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress
-      - run: vendor/bin/pest --ci --coverage --min=85 --exclude-group=cluster,e2e
+      - run: vendor/bin/pest --ci --coverage --min=85 --exclude-group=cluster --exclude-group=e2e
 
   grafana:
     name: Grafana assets and provisioning / ${{ matrix.grafana }}

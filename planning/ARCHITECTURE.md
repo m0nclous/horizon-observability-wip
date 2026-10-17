@@ -1495,11 +1495,11 @@ They read their queues from the workbench Horizon config, use `Random\Randomizer
     "lint": ["@php vendor/bin/pint --parallel --ansi", "@php vendor/bin/rector --ansi"],
     "test:lint": ["@php vendor/bin/pint --test --ansi", "@php vendor/bin/rector --dry-run --ansi"],
     "test:types": "@php vendor/bin/phpstan analyse --memory-limit=1G --ansi",
-    "test:unit": "@php vendor/bin/pest --exclude-group=redis,cluster,e2e",
+    "test:unit": "@php vendor/bin/pest --exclude-group=redis --exclude-group=cluster --exclude-group=e2e",
     "test:redis": "@php vendor/bin/pest --group=redis",
     "test:predis": "REDIS_CLIENT=predis vendor/bin/pest --group=redis",
     "test:grafana": "@php vendor/bin/testbench horizon-observability:grafana resources/grafana --defaults --check --ansi",
-    "test": ["@test:lint", "@test:types", "@php vendor/bin/pest --exclude-group=cluster,e2e"]
+    "test": ["@test:lint", "@test:types", "@php vendor/bin/pest --exclude-group=cluster --exclude-group=e2e"]
   }
 }
 ```
@@ -1748,7 +1748,7 @@ tests:
     - composer require --dev --no-update "orchestra/testbench:${{ matrix.testbench }}" ${{ matrix.predis && format('"predis/predis:{0}"', matrix.predis) || '' }}
     - composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
     - composer show laravel/framework laravel/horizon orchestra/testbench pestphp/pest predis/predis
-    - vendor/bin/pest --ci --exclude-group=cluster,e2e
+    - vendor/bin/pest --ci --exclude-group=cluster --exclude-group=e2e
 ```
 
 The matrix gives 10 base legs plus 6 targeted legs. The prefer-lowest legs resolve:
@@ -1764,7 +1764,7 @@ Removing the static tooling is an optimisation: Composer would otherwise pick ol
 |---|---|
 | `cluster` | PHP 8.4, Laravel 13.* stable (≥ 13.20). GitHub services cannot override `command`, so a step runs `docker run -d -p 7000:7000 redis:7.4-alpine redis-server --port 7000 --cluster-enabled yes --save '' --appendonly no`, then `redis-cli -p 7000 CLUSTER ADDSLOTSRANGE 0 16383`. Then `pest --group=cluster` once with `REDIS_CLIENT=phpredis` and once with `predis`. |
 | `static` | PHP 8.4, Laravel 13: `composer validate --strict`, `composer normalize --dry-run`, `pint --test`, `rector --dry-run`, `phpstan analyse --error-format=github` (level 9). |
-| `coverage` | PHP 8.4, Laravel 13, pcov: `pest --coverage --min=85 --exclude-group=cluster,e2e`. |
+| `coverage` | PHP 8.4, Laravel 13, pcov: `pest --coverage --min=85 --exclude-group=cluster --exclude-group=e2e`. |
 | `grafana` | `composer test:grafana`. `pest --group=grafana` writes `build/grafana-rules.yml` (all expressions, macros substituted) and `build/scrape.txt` (seeded exposition). `docker run --rm --entrypoint promtool -v $PWD/build:/w quay.io/prometheus/prometheus:v3.15.0 check rules /w/grafana-rules.yml` and `… check metrics < build/scrape.txt`. Provisioning smoke: `docker compose up -d prometheus grafana`, poll `/api/health`, `GET /api/dashboards/uid/horizon-observability`, assert that `/api/v1/provisioning/alert-rules` has 4 rules, and fail on any provisioning `level=error` log line. |
 | `dist` | `git archive HEAD \| tar -t \| sort` must equal the allowlist: `src/`, `config/`, `routes/`, `resources/`, `composer.json`, `LICENSE`, `README.md`, `CHANGELOG.md`, `UPGRADE.md`. |
 | `e2e` | Schedule and dispatch only. Redis service; `composer build`; two `testbench serve` processes (`:8000`, `:8001`) and Horizon in the background; `docker compose up -d prometheus grafana` with `prometheus.replicas.yml`; then with `prometheus.yml`. `workbench:simulate-load` for about 10 minutes. It compares panel query results between the two topologies (the dedupe gate), runs `node bin/screenshot.mjs` and uploads the PNGs (visual regression of the look). Addendum: also the `docker/grafana/live-probe.json` checks (WP-L2), the `bin/perf.mjs` report on the medium profile (R2.2; non-blocking until WP11) and screenshots for `--live=poll` and `--live=stream` (Q9′ WP11). |

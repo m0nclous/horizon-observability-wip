@@ -87,7 +87,7 @@ that the next task points to. Everything here is export-ignored and will be dele
   - Screenshots: `npm i --no-save playwright@1.56.1 && npx playwright install chromium`.
   - Images: `grafana/grafana:12.4.13`, `grafana/grafana:13.2.4`, `quay.io/prometheus/prometheus:v3.15.0`.
 - Lowest-version legs locally (CI does this once T11 lands; otherwise write "lowest legs: deferred to CI" in the task note):
-  `cp -r . /tmp/ho-leg && cd /tmp/ho-leg && rm -rf vendor composer.lock && composer remove --dev --no-update larastan/larastan rector/rector driftingly/rector-laravel laravel/pint ergebnis/composer-normalize phpstan/extension-installer phpstan/phpstan-deprecation-rules && composer require --no-update "laravel/framework:^11.23" && composer require --dev --no-update "orchestra/testbench:^9.5" "pestphp/pest:^3.8" && composer update --prefer-lowest --prefer-dist -W && vendor/bin/pest --exclude-group=cluster,e2e`.
+  `cp -r . /tmp/ho-leg && cd /tmp/ho-leg && rm -rf vendor composer.lock && composer remove --dev --no-update larastan/larastan rector/rector driftingly/rector-laravel laravel/pint ergebnis/composer-normalize phpstan/extension-installer phpstan/phpstan-deprecation-rules && composer require --no-update "laravel/framework:^11.23" && composer require --dev --no-update "orchestra/testbench:^9.5" "pestphp/pest:^3.8" && composer update --prefer-lowest --prefer-dist -W && vendor/bin/pest --exclude-group=cluster --exclude-group=e2e`.
   Repeat with `^12.0` / testbench `^10.0` and `^13.0` / testbench `^11.0` (Pest `^4.1`, PHP 8.3+).
 - `composer install` resolves Laravel 13 / testbench 11 / Pest 4 on PHP 8.3. CI covers the other legs.
 - Cloud-sandbox-only workarounds (not needed locally): GitHub zipballs returned 403, so installs used
