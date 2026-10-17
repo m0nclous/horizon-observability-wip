@@ -16,7 +16,7 @@ use Laravel\Horizon\HorizonServiceProvider;
 | The maintenance state lives in the array cache, so nothing is written to the filesystem.
 */
 
-const MAINTENANCE_TOKEN = 'maintenance-token-0123456789abcdef';
+const MAINTENANCE_MODE_TEST_TOKEN = 'maintenance-token-0123456789abcdef';
 
 /**
  * Status codes of GET requests to the given paths in a fresh application that is down for maintenance.
@@ -25,7 +25,7 @@ const MAINTENANCE_TOKEN = 'maintenance-token-0123456789abcdef';
  * @param  list<string>  $paths
  * @return array<string, int>
  */
-function statusesDuringMaintenance(array $config, array $paths): array
+function maintenanceModeTestStatuses(array $config, array $paths): array
 {
     return Apps::inspect(
         [HorizonServiceProvider::class, HorizonObservabilityServiceProvider::class],
@@ -33,7 +33,7 @@ function statusesDuringMaintenance(array $config, array $paths): array
             'cache.default' => 'array',
             'app.maintenance.driver' => 'cache',
             'app.maintenance.store' => 'array',
-            'horizon-observability.token' => MAINTENANCE_TOKEN,
+            'horizon-observability.token' => MAINTENANCE_MODE_TEST_TOKEN,
             ...$config,
         ],
         static function (Application $app) use ($paths): array {
@@ -42,7 +42,7 @@ function statusesDuringMaintenance(array $config, array $paths): array
             $statuses = [];
 
             foreach ($paths as $path) {
-                $request = Request::create($path, 'GET', [], [], [], ['HTTP_AUTHORIZATION' => 'Bearer '.MAINTENANCE_TOKEN]);
+                $request = Request::create($path, 'GET', [], [], [], ['HTTP_AUTHORIZATION' => 'Bearer '.MAINTENANCE_MODE_TEST_TOKEN]);
                 $statuses[$path] = $kernel->handle($request)->getStatusCode();
             }
 
@@ -53,13 +53,13 @@ function statusesDuringMaintenance(array $config, array $paths): array
 
 it('keeps the endpoints reachable during maintenance', function (): void {
     $this->app['config']->set('app.maintenance', ['driver' => 'cache', 'store' => 'array']);
-    $this->app['config']->set('horizon-observability.token', MAINTENANCE_TOKEN);
+    $this->app['config']->set('horizon-observability.token', MAINTENANCE_MODE_TEST_TOKEN);
     $this->app->forgetInstance(Config::class);
     $this->app->maintenanceMode()->activate(['time' => time(), 'status' => 503]);
 
     expect($this->app->isDownForMaintenance())->toBeTrue();
 
-    $this->get('/horizon/observability/metrics', ['Authorization' => 'Bearer '.MAINTENANCE_TOKEN])->assertOk();
+    $this->get('/horizon/observability/metrics', ['Authorization' => 'Bearer '.MAINTENANCE_MODE_TEST_TOKEN])->assertOk();
     // The job lists and /live are reachable too: the request gets as far as Authorize (401, not 503).
     $this->get('/horizon/observability/jobs/pending')->assertUnauthorized();
     $this->get('/horizon/observability/jobs/delayed')->assertUnauthorized();
@@ -70,13 +70,13 @@ it('keeps the endpoints reachable during maintenance', function (): void {
 });
 
 it('keeps them reachable in a fresh application, also under a custom base path', function (): void {
-    expect(statusesDuringMaintenance([], ['/horizon/observability/metrics', '/horizon/metrics']))
+    expect(maintenanceModeTestStatuses([], ['/horizon/observability/metrics', '/horizon/metrics']))
         ->toBe(['/horizon/observability/metrics' => 200, '/horizon/metrics' => 503])
-        ->and(statusesDuringMaintenance(['horizon-observability.path' => 'metrics/horizon'], ['/metrics/horizon/metrics', '/horizon/observability/metrics']))
+        ->and(maintenanceModeTestStatuses(['horizon-observability.path' => 'metrics/horizon'], ['/metrics/horizon/metrics', '/horizon/observability/metrics']))
         ->toBe(['/metrics/horizon/metrics' => 200, '/horizon/observability/metrics' => 503]);
 });
 
 it('answers 503 during maintenance when opted out', function (): void {
-    expect(statusesDuringMaintenance(['horizon-observability.available_during_maintenance' => false], ['/horizon/observability/metrics', '/horizon/observability/jobs/pending']))
+    expect(maintenanceModeTestStatuses(['horizon-observability.available_during_maintenance' => false], ['/horizon/observability/metrics', '/horizon/observability/jobs/pending']))
         ->toBe(['/horizon/observability/metrics' => 503, '/horizon/observability/jobs/pending' => 503]);
 });

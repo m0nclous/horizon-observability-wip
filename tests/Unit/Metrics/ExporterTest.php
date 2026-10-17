@@ -25,7 +25,7 @@ use Illuminate\Http\Request;
 /**
  * @param  array<string, mixed>  $config  horizon-observability.* overrides
  */
-function exporterConfig(array $config): void
+function exporterTestConfig(array $config): void
 {
     foreach ($config as $key => $value) {
         config()->set('horizon-observability.'.$key, $value);
@@ -38,7 +38,7 @@ function exporterConfig(array $config): void
  * @param  array<string, FakeCollector>  $collectors
  * @param  array<string, string>  $headers
  */
-function exporterScrape(array $collectors, ?FakeClock $clock = null, array $headers = []): Exposition
+function exporterTestScrape(array $collectors, ?FakeClock $clock = null, array $headers = []): Exposition
 {
     $request = Request::create('/horizon/observability/metrics');
 
@@ -52,7 +52,7 @@ function exporterScrape(array $collectors, ?FakeClock $clock = null, array $head
 /**
  * @param  Closure(ScrapeContext): iterable<mixed>|null  $collect
  */
-function exporterFake(string $id, ?Closure $collect = null): FakeCollector
+function exporterTestCollector(string $id, ?Closure $collect = null): FakeCollector
 {
     return new FakeCollector($id, $collect ?? static fn (): array => []);
 }
@@ -60,17 +60,17 @@ function exporterFake(string $id, ?Closure $collect = null): FakeCollector
 /**
  * @return array<string, FakeCollector>
  */
-function exporterQuiet(): array
+function exporterTestQuiet(): array
 {
-    return array_map(static fn (string $id): FakeCollector => exporterFake($id), array_combine(Config::COLLECTORS, Config::COLLECTORS));
+    return array_map(static fn (string $id): FakeCollector => exporterTestCollector($id), array_combine(Config::COLLECTORS, Config::COLLECTORS));
 }
 
-function exporterSuccess(Exposition $exposition, string $collector): ?float
+function exporterTestSuccess(Exposition $exposition, string $collector): ?float
 {
     return $exposition->value('ho_exporter_collector_success', ['collector' => $collector]);
 }
 
-function exporterLog(): LogRecorder
+function exporterTestLog(): LogRecorder
 {
     $log = new LogRecorder;
     app()->instance('log', $log);
@@ -83,7 +83,7 @@ beforeEach(function (): void {
 });
 
 it('renders the golden exposition', function (): void {
-    exporterConfig(['collectors.batches' => true]);
+    exporterTestConfig(['collectors.batches' => true]);
     $clock = new FakeClock;
 
     $text = (new Exporter($this->app, $clock(...), ExpositionFixture::collectors($clock)))->scrape(Request::create('/horizon/observability/metrics'));
@@ -99,81 +99,81 @@ it('renders the golden exposition', function (): void {
 });
 
 it('isolates a throwing collector', function (): void {
-    $log = exporterLog();
-    $collectors = [...exporterQuiet(),
-        'horizon' => exporterFake('horizon', static fn (): array => [MetricFamily::of(Metric::HorizonStatus)->set([], 1)]),
-        'queues' => exporterFake('queues', static fn (): never => throw new RuntimeException("Connection refused\nsecond line")),
-        'attempts' => exporterFake('attempts', static fn (): array => [MetricFamily::of(Metric::AttemptsDropped)->set([], 3)]),
+    $log = exporterTestLog();
+    $collectors = [...exporterTestQuiet(),
+        'horizon' => exporterTestCollector('horizon', static fn (): array => [MetricFamily::of(Metric::HorizonStatus)->set([], 1)]),
+        'queues' => exporterTestCollector('queues', static fn (): never => throw new RuntimeException("Connection refused\nsecond line")),
+        'attempts' => exporterTestCollector('attempts', static fn (): array => [MetricFamily::of(Metric::AttemptsDropped)->set([], 3)]),
     ];
 
-    $exposition = exporterScrape($collectors);
+    $exposition = exporterTestScrape($collectors);
 
     expect($exposition->value('ho_horizon_status'))->toBe(1.0)
         ->and($exposition->value('ho_exporter_attempts_dropped_total'))->toBe(3.0)
-        ->and(exporterSuccess($exposition, 'horizon'))->toBe(1.0)
-        ->and(exporterSuccess($exposition, 'queues'))->toBe(0.0)
-        ->and(exporterSuccess($exposition, 'attempts'))->toBe(1.0)
-        ->and(exporterSuccess($exposition, 'job_classes'))->toBe(1.0)
+        ->and(exporterTestSuccess($exposition, 'horizon'))->toBe(1.0)
+        ->and(exporterTestSuccess($exposition, 'queues'))->toBe(0.0)
+        ->and(exporterTestSuccess($exposition, 'attempts'))->toBe(1.0)
+        ->and(exporterTestSuccess($exposition, 'job_classes'))->toBe(1.0)
         ->and($log->messages('warning'))->toBe(['horizon-observability: collector:queues failed: RuntimeException: Connection refused']);
 });
 
 it('isolates PHP warnings turned into ErrorException (C1 shape)', function (): void {
-    $collectors = [...exporterQuiet(),
-        'batches' => exporterFake('batches', static function (): array {
+    $collectors = [...exporterTestQuiet(),
+        'batches' => exporterTestCollector('batches', static function (): array {
             $stats = [];
 
             return [MetricFamily::of(Metric::BatchesRunning)->set(['batch' => 'export'], $stats['kinds']['export'])];
         }),
     ];
-    exporterConfig(['collectors.batches' => true]);
+    exporterTestConfig(['collectors.batches' => true]);
 
-    $exposition = exporterScrape($collectors);
+    $exposition = exporterTestScrape($collectors);
 
-    expect(exporterSuccess($exposition, 'batches'))->toBe(0.0)
+    expect(exporterTestSuccess($exposition, 'batches'))->toBe(0.0)
         ->and($exposition->series('ho_queue_batches_running'))->toBe([])
-        ->and(exporterSuccess($exposition, 'horizon'))->toBe(1.0);
+        ->and(exporterTestSuccess($exposition, 'horizon'))->toBe(1.0);
 });
 
 it('keeps the data of a partial failure but reports success 0', function (): void {
-    $log = exporterLog();
-    $collectors = [...exporterQuiet(),
-        'queues' => exporterFake('queues', static function (ScrapeContext $context): array {
+    $log = exporterTestLog();
+    $collectors = [...exporterTestQuiet(),
+        'queues' => exporterTestCollector('queues', static function (ScrapeContext $context): array {
             $context->reportFailure('queue:slow', new RuntimeException('NOSCRIPT'));
 
             return [MetricFamily::of(Metric::QueuePendingJobs)->set(['connection' => 'redis', 'queue' => 'default'], 4)];
         }),
-        'attempts' => exporterFake('attempts', static fn (): array => [MetricFamily::of(Metric::AttemptsDropped)->set([], 0)]),
+        'attempts' => exporterTestCollector('attempts', static fn (): array => [MetricFamily::of(Metric::AttemptsDropped)->set([], 0)]),
     ];
 
-    $exposition = exporterScrape($collectors);
+    $exposition = exporterTestScrape($collectors);
 
     expect($exposition->value('ho_queue_pending_jobs', ['connection' => 'redis', 'queue' => 'default']))->toBe(4.0)
-        ->and(exporterSuccess($exposition, 'queues'))->toBe(0.0)
-        ->and(exporterSuccess($exposition, 'attempts'))->toBe(1.0)
+        ->and(exporterTestSuccess($exposition, 'queues'))->toBe(0.0)
+        ->and(exporterTestSuccess($exposition, 'attempts'))->toBe(1.0)
         ->and($log->messages('warning'))->toBe(['horizon-observability: collector:queues:queue:slow failed: RuntimeException: NOSCRIPT']);
 });
 
 it('drops every family of a collector that fails midway', function (): void {
-    $collectors = [...exporterQuiet(),
-        'horizon' => exporterFake('horizon', static function (): Generator {
+    $collectors = [...exporterTestQuiet(),
+        'horizon' => exporterTestCollector('horizon', static function (): Generator {
             yield MetricFamily::of(Metric::HorizonStatus)->set([], 1);
 
             throw new RuntimeException('supervisors unreadable');
         }),
     ];
 
-    $exposition = exporterScrape($collectors);
+    $exposition = exporterTestScrape($collectors);
 
     expect($exposition->series('ho_horizon_status'))->toBe([])
-        ->and(exporterSuccess($exposition, 'horizon'))->toBe(0.0);
+        ->and(exporterTestSuccess($exposition, 'horizon'))->toBe(0.0);
 });
 
 it('fails a collector that builds an invalid family', function (Closure $collect, string $message): void {
-    $log = exporterLog();
+    $log = exporterTestLog();
 
-    $exposition = exporterScrape([...exporterQuiet(), 'horizon' => exporterFake('horizon', $collect)]);
+    $exposition = exporterTestScrape([...exporterTestQuiet(), 'horizon' => exporterTestCollector('horizon', $collect)]);
 
-    expect(exporterSuccess($exposition, 'horizon'))->toBe(0.0)
+    expect(exporterTestSuccess($exposition, 'horizon'))->toBe(0.0)
         ->and($exposition->series('ho_horizon_status'))->toBe([])
         ->and($log->messages('warning')[0] ?? '')->toContain($message);
 })->with([
@@ -185,32 +185,32 @@ it('fails a collector that builds an invalid family', function (Closure $collect
 ]);
 
 it('skips the remaining collectors in order once the budget is used up', function (): void {
-    $log = exporterLog();
+    $log = exporterTestLog();
     $clock = new FakeClock;
-    $collectors = [...exporterQuiet(),
-        'horizon' => exporterFake('horizon', static function () use ($clock): array {
+    $collectors = [...exporterTestQuiet(),
+        'horizon' => exporterTestCollector('horizon', static function () use ($clock): array {
             $clock->advance(7.5);
 
             return [MetricFamily::of(Metric::HorizonStatus)->set([], 1)];
         }),
-        'queues' => exporterFake('queues', static function () use ($clock): array {
+        'queues' => exporterTestCollector('queues', static function () use ($clock): array {
             $clock->advance(0.75);
 
             return [MetricFamily::of(Metric::QueuePendingJobs)->set(['connection' => 'redis', 'queue' => 'default'], 1)];
         }),
     ];
-    exporterConfig(['collectors.batches' => true]);
+    exporterTestConfig(['collectors.batches' => true]);
 
-    $exposition = exporterScrape($collectors, $clock);
+    $exposition = exporterTestScrape($collectors, $clock);
 
-    expect(exporterSuccess($exposition, 'horizon'))->toBe(1.0)
-        ->and(exporterSuccess($exposition, 'queues'))->toBe(1.0)
+    expect(exporterTestSuccess($exposition, 'horizon'))->toBe(1.0)
+        ->and(exporterTestSuccess($exposition, 'queues'))->toBe(1.0)
         ->and($exposition->value('ho_queue_pending_jobs', ['connection' => 'redis', 'queue' => 'default']))->toBe(1.0)
         ->and($exposition->value('ho_exporter_collector_duration_seconds', ['collector' => 'horizon']))->toBe(7.5)
         ->and($exposition->value('ho_exporter_collector_duration_seconds', ['collector' => 'queues']))->toBe(0.75);
 
     foreach (['attempts', 'job_classes', 'batches'] as $skipped) {
-        expect(exporterSuccess($exposition, $skipped))->toBe(0.0)
+        expect(exporterTestSuccess($exposition, $skipped))->toBe(0.0)
             ->and($exposition->value('ho_exporter_collector_duration_seconds', ['collector' => $skipped]))->toBe(0.0)
             ->and($collectors[$skipped]->runs)->toBe(0);
     }
@@ -229,8 +229,8 @@ it('derives the budget from X-Prometheus-Scrape-Timeout-Seconds', function (?str
         $request->headers->set('X-Prometheus-Scrape-Timeout-Seconds', $header);
     }
 
-    $horizon = exporterFake('horizon');
-    exporterScrape([...exporterQuiet(), 'horizon' => $horizon], new FakeClock, $header === null ? [] : ['X-Prometheus-Scrape-Timeout-Seconds' => $header]);
+    $horizon = exporterTestCollector('horizon');
+    exporterTestScrape([...exporterTestQuiet(), 'horizon' => $horizon], new FakeClock, $header === null ? [] : ['X-Prometheus-Scrape-Timeout-Seconds' => $header]);
 
     expect(Exporter::budget($request))->toBe($budget)
         ->and($horizon->context?->remaining())->toBe($budget);
@@ -251,10 +251,10 @@ it('derives the budget from X-Prometheus-Scrape-Timeout-Seconds', function (?str
 ]);
 
 it('runs neither disabled collectors nor their self-metrics', function (): void {
-    $collectors = exporterQuiet();
-    exporterConfig(['collectors.queues' => false, 'collectors.job_classes' => false, 'collectors.batches' => false]);
+    $collectors = exporterTestQuiet();
+    exporterTestConfig(['collectors.queues' => false, 'collectors.job_classes' => false, 'collectors.batches' => false]);
 
-    $exposition = exporterScrape($collectors);
+    $exposition = exporterTestScrape($collectors);
 
     expect(array_keys($exposition->series('ho_exporter_collector_success')))->toBe(['collector="attempts"', 'collector="horizon"'])
         ->and(array_keys($exposition->series('ho_exporter_collector_duration_seconds')))->toBe(['collector="attempts"', 'collector="horizon"'])
@@ -269,12 +269,12 @@ it('runs batches in auto mode only when batching is available', function (?objec
         $this->app->instance(BatchReader::class, $reader);
     }
 
-    $collectors = exporterQuiet();
-    exporterConfig(['collectors.batches' => null]);
+    $collectors = exporterTestQuiet();
+    exporterTestConfig(['collectors.batches' => null]);
 
-    $exposition = exporterScrape($collectors);
+    $exposition = exporterTestScrape($collectors);
 
-    expect(exporterSuccess($exposition, 'batches'))->toBe($success)
+    expect(exporterTestSuccess($exposition, 'batches'))->toBe($success)
         ->and($collectors['batches']->runs)->toBe($runs);
 })->with([
     'unavailable (the T07 stub)' => [null, null, 0],
@@ -297,14 +297,14 @@ it('runs batches in auto mode only when batching is available', function (?objec
 it('isolates a collector that cannot be resolved', function (): void {
     $this->app->bind(HorizonCollector::class, static fn (): never => throw new RuntimeException('bad binding'));
 
-    $exposition = exporterScrape([]);
+    $exposition = exporterTestScrape([]);
 
-    expect(exporterSuccess($exposition, 'horizon'))->toBe(0.0)
-        ->and(exporterSuccess($exposition, 'queues'))->toBe(1.0);
+    expect(exporterTestSuccess($exposition, 'horizon'))->toBe(0.0)
+        ->and(exporterTestSuccess($exposition, 'queues'))->toBe(1.0);
 });
 
 it('runs the container collectors by default', function (): void {
-    $exposition = exporterScrape([]);
+    $exposition = exporterTestScrape([]);
 
     // The stubs of T04, T05 and T08 collect nothing; batches is in auto mode and the T07 stub finds no batching.
     expect($exposition->series('ho_exporter_collector_success'))->toBe([
@@ -316,10 +316,10 @@ it('runs the container collectors by default', function (): void {
 });
 
 it('renders the self-metrics last', function (): void {
-    exporterConfig(['collectors.batches' => true]);
+    exporterTestConfig(['collectors.batches' => true]);
     $clock = new FakeClock;
 
-    $exposition = exporterScrape(ExpositionFixture::collectors($clock), $clock);
+    $exposition = exporterTestScrape(ExpositionFixture::collectors($clock), $clock);
 
     expect(array_slice($exposition->families(), -4))->toBe([
         'ho_exporter_collector_success',
@@ -330,9 +330,9 @@ it('renders the self-metrics last', function (): void {
 });
 
 it('prefixes every family with the namespace', function (string $namespace, string $prefix): void {
-    exporterConfig(['namespace' => $namespace]);
+    exporterTestConfig(['namespace' => $namespace]);
 
-    $exposition = exporterScrape([...exporterQuiet(), 'horizon' => exporterFake('horizon', static fn (): array => [MetricFamily::of(Metric::HorizonStatus)->set([], 1)])]);
+    $exposition = exporterTestScrape([...exporterTestQuiet(), 'horizon' => exporterTestCollector('horizon', static fn (): array => [MetricFamily::of(Metric::HorizonStatus)->set([], 1)])]);
 
     expect($exposition->families())->toBe([
         $prefix.'horizon_status',
@@ -349,13 +349,13 @@ it('prefixes every family with the namespace', function (string $namespace, stri
 ]);
 
 it('exports the number of config problems', function (): void {
-    exporterConfig(['namespace' => '1bad', 'exceptions' => 'everything', 'live.stream.id' => 'bad id']);
+    exporterTestConfig(['namespace' => '1bad', 'exceptions' => 'everything', 'live.stream.id' => 'bad id']);
 
-    expect(exporterScrape(exporterQuiet())->value('ho_exporter_config_problems'))->toBe(3.0);
+    expect(exporterTestScrape(exporterTestQuiet())->value('ho_exporter_config_problems'))->toBe(3.0);
 });
 
 it('exports the build info', function (): void {
-    $exposition = exporterScrape(exporterQuiet());
+    $exposition = exporterTestScrape(exporterTestQuiet());
 
     expect($exposition->series('ho_exporter_build_info'))->toBe([
         Exposition::key(['version' => '0.1.0', 'php' => PHP_VERSION, 'laravel' => '12.40.0', 'horizon' => '5.50.1', 'redis_client' => 'predis 3.0.0']) => 1.0,
@@ -363,7 +363,7 @@ it('exports the build info', function (): void {
 
     $this->app->instance(Versions::class, new Versions(config(), '11.23.0', static fn (): ?string => null, static fn (): ?string => null));
 
-    expect(array_keys(exporterScrape(exporterQuiet())->series('ho_exporter_build_info'))[0])
+    expect(array_keys(exporterTestScrape(exporterTestQuiet())->series('ho_exporter_build_info'))[0])
         ->toContain('version="unknown"')
         ->toContain('horizon="unknown"')
         ->toContain('laravel="11.23.0"');
@@ -371,10 +371,10 @@ it('exports the build info', function (): void {
 
 it('reads everything afresh on every scrape (no memo)', function (): void {
     $source = new ArrayObject(['max' => 10]);
-    $horizon = exporterFake('horizon', static fn (ScrapeContext $context): array => [
+    $horizon = exporterTestCollector('horizon', static fn (ScrapeContext $context): array => [
         MetricFamily::of(Metric::SupervisorMaxProcesses)->set(['supervisor' => 'default'], $context->remember('max', static fn (): int => $source['max'])),
     ]);
-    $collectors = [...exporterQuiet(), 'horizon' => $horizon];
+    $collectors = [...exporterTestQuiet(), 'horizon' => $horizon];
     $exporter = new Exporter($this->app, (new FakeClock)(...), $collectors);
     $request = Request::create('/horizon/observability/metrics');
 
@@ -391,9 +391,9 @@ it('reads everything afresh on every scrape (no memo)', function (): void {
 
 it('passes the request time to the collectors', function (): void {
     $this->travelTo('2026-10-17 12:00:00.250');
-    $horizon = exporterFake('horizon');
+    $horizon = exporterTestCollector('horizon');
 
-    exporterScrape([...exporterQuiet(), 'horizon' => $horizon]);
+    exporterTestScrape([...exporterTestQuiet(), 'horizon' => $horizon]);
 
     expect($horizon->context?->now()->getPreciseTimestamp(3))->toBe(1792238400250.0);
 });

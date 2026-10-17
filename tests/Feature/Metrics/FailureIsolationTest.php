@@ -23,33 +23,33 @@ use Laravel\Horizon\Contracts\SupervisorRepository;
 | exactly what the real ones read: Horizon's repositories and a reader client (C5), the job_batches table (C1).
 */
 
-const ISOLATION_TOKEN = 'isolation-token-0123456789abcdef';
+const FAILURE_ISOLATION_TEST_TOKEN = 'isolation-token-0123456789abcdef';
 
 /**
  * @param  array<string, FakeCollector>  $collectors
  */
-function isolatedScrape(array $collectors): Exposition
+function failureIsolationTestScrape(array $collectors): Exposition
 {
     app()->instance(Exporter::class, new Exporter(app(), null, $collectors));
 
-    $response = test()->get('/horizon/observability/metrics', ['Authorization' => 'Bearer '.ISOLATION_TOKEN])->assertOk();
+    $response = test()->get('/horizon/observability/metrics', ['Authorization' => 'Bearer '.FAILURE_ISOLATION_TEST_TOKEN])->assertOk();
 
     return Exposition::parse((string) $response->getContent());
 }
 
 beforeEach(function (): void {
-    config()->set('horizon-observability.token', ISOLATION_TOKEN);
+    config()->set('horizon-observability.token', FAILURE_ISOLATION_TEST_TOKEN);
     $this->app->forgetInstance(Config::class);
 });
 
-it('missing batches table keeps 200', function (): void {
+test('missing batches table keeps 200', function (): void {
     // collectors.batches = true requires batches: a missing table is a collector failure on purpose (Arch Q6.7).
     config()->set('horizon-observability.collectors.batches', true);
     $this->app->forgetInstance(Config::class);
     $log = new LogRecorder;
     $this->app->instance('log', $log);
 
-    $exposition = isolatedScrape([
+    $exposition = failureIsolationTestScrape([
         'horizon' => new FakeCollector('horizon', static fn (): array => [MetricFamily::of(Metric::HorizonStatus)->set([], 1)]),
         'batches' => new FakeCollector('batches', static fn (): array => [
             MetricFamily::of(Metric::BatchesRunning)->set(['batch' => 'export'], DB::table('job_batches')->whereNull('finished_at')->count()),
@@ -68,14 +68,14 @@ it('runs no batches collector in auto mode without batching', function (): void 
     // collectors.batches = null (auto): no table, so the collector is not run and has no self-metric (not a failure).
     $batches = new FakeCollector('batches', static fn (): array => [MetricFamily::of(Metric::BatchesRunning)->set(['batch' => 'export'], 1)]);
 
-    $exposition = isolatedScrape(['batches' => $batches]);
+    $exposition = failureIsolationTestScrape(['batches' => $batches]);
 
     expect($exposition->value('ho_exporter_collector_success', ['collector' => 'batches']))->toBeNull()
         ->and($batches->runs)->toBe(0)
         ->and($exposition->value('ho_exporter_collector_success', ['collector' => 'horizon']))->toBe(1.0);
 });
 
-it('redis down keeps 200 with collector_success=0', function (): void {
+test('redis down keeps 200 with collector_success=0', function (): void {
     // Every Redis connection points at a closed port, as during a Redis outage.
     foreach (['default', 'horizon'] as $connection) {
         config()->set('database.redis.'.$connection.'.port', 1);
@@ -89,7 +89,7 @@ it('redis down keeps 200 with collector_success=0', function (): void {
     $log = new LogRecorder;
     $this->app->instance('log', $log);
 
-    $exposition = isolatedScrape([
+    $exposition = failureIsolationTestScrape([
         // What HorizonCollector reads: Horizon's own repositories on the app's horizon connection.
         'horizon' => new FakeCollector('horizon', static fn (): array => [
             MetricFamily::of(Metric::HorizonStatus)->set([], app(Supervisors::class)->status()),

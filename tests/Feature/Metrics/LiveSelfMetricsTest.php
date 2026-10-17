@@ -22,9 +22,9 @@ pest()->group('redis');
 | exposition contract (names, absence, float precision) is pinned here.
 */
 
-const LIVE_TOKEN = 'live-self-metrics-token-0123456789';
+const LIVE_SELF_METRICS_TEST_TOKEN = 'live-self-metrics-token-0123456789';
 
-function liveReferenceCollector(): FakeCollector
+function liveSelfMetricsTestReader(): FakeCollector
 {
     return new FakeCollector('attempts', static function (): array {
         [$pushedAt, $failures] = app(RedisClients::class)->storage()->hmget(app(Keys::class)->meta(), ['live_push_at', 'live_push_failures']);
@@ -42,32 +42,32 @@ function liveReferenceCollector(): FakeCollector
     });
 }
 
-function liveScrape(): string
+function liveSelfMetricsTestScrape(): string
 {
-    app()->instance(Exporter::class, new Exporter(app(), null, ['attempts' => liveReferenceCollector()]));
+    app()->instance(Exporter::class, new Exporter(app(), null, ['attempts' => liveSelfMetricsTestReader()]));
 
-    return (string) test()->get('/horizon/observability/metrics', ['Authorization' => 'Bearer '.LIVE_TOKEN])->assertOk()->getContent();
+    return (string) test()->get('/horizon/observability/metrics', ['Authorization' => 'Bearer '.LIVE_SELF_METRICS_TEST_TOKEN])->assertOk()->getContent();
 }
 
 beforeEach(function (): void {
-    config()->set('horizon-observability.token', LIVE_TOKEN);
+    config()->set('horizon-observability.token', LIVE_SELF_METRICS_TEST_TOKEN);
     $this->app->forgetInstance(Config::class);
 });
 
-it('the live series are absent until meta.live_push_at exists', function (): void {
+test('the live series are absent until meta.live_push_at exists', function (): void {
     $meta = app(Keys::class)->meta();
     $storage = app(RedisClients::class)->storage();
 
     // A fresh install, or live mode never used: no line at all, not even HELP or TYPE.
-    $never = liveScrape();
+    $never = liveSelfMetricsTestScrape();
 
     // A stream that has only failed so far (e.g. a 401 token): the failures counter shows it.
     $storage->hset($meta, 'live_push_failures', '3');
-    $failing = Exposition::parse(liveScrape());
+    $failing = Exposition::parse(liveSelfMetricsTestScrape());
 
     // The first successful push.
     $storage->hset($meta, 'live_push_at', '1792201716.123');
-    $pushed = Exposition::parse(liveScrape());
+    $pushed = Exposition::parse(liveSelfMetricsTestScrape());
 
     expect($never)->not->toContain('ho_exporter_live_push')
         ->and(Exposition::parse($never)->value('ho_exporter_collector_success', ['collector' => 'attempts']))->toBe(1.0)
@@ -77,5 +77,5 @@ it('the live series are absent until meta.live_push_at exists', function (): voi
         ->and($pushed->value('ho_exporter_live_push_timestamp_seconds'))->toBe(1792201716.123)
         ->and($pushed->types['ho_exporter_live_push_timestamp_seconds'] ?? null)->toBe('gauge')
         ->and($pushed->value('ho_exporter_live_push_failures_total'))->toBe(3.0)
-        ->and(liveScrape())->toContain("\nho_exporter_live_push_timestamp_seconds 1792201716.123\n");
+        ->and(liveSelfMetricsTestScrape())->toContain("\nho_exporter_live_push_timestamp_seconds 1792201716.123\n");
 });

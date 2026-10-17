@@ -20,14 +20,14 @@ use Illuminate\Testing\TestResponse;
 | scrape timeout header, absolute counters (C3) and no foreign families (C17).
 */
 
-const METRICS_TOKEN = 'metrics-endpoint-token-0123456789';
+const METRICS_ENDPOINT_TEST_TOKEN = 'metrics-endpoint-token-0123456789';
 
 /**
  * @param  array<string, mixed>  $config  horizon-observability.* values
  */
-function metricsConfig(array $config = []): void
+function metricsEndpointTestConfig(array $config = []): void
 {
-    config()->set('horizon-observability.token', METRICS_TOKEN);
+    config()->set('horizon-observability.token', METRICS_ENDPOINT_TEST_TOKEN);
 
     foreach ($config as $key => $value) {
         config()->set('horizon-observability.'.$key, $value);
@@ -39,17 +39,17 @@ function metricsConfig(array $config = []): void
 /**
  * @param  array<string, string>  $headers
  */
-function scrapeMetrics(array $headers = []): TestResponse
+function metricsEndpointTestScrape(array $headers = []): TestResponse
 {
-    return test()->get('/horizon/observability/metrics', ['Authorization' => 'Bearer '.METRICS_TOKEN, ...$headers]);
+    return test()->get('/horizon/observability/metrics', ['Authorization' => 'Bearer '.METRICS_ENDPOINT_TEST_TOKEN, ...$headers]);
 }
 
 beforeEach(function (): void {
-    metricsConfig();
+    metricsEndpointTestConfig();
 });
 
 it('serves the text format 0.0.4 and forbids caching', function (): void {
-    $response = scrapeMetrics()->assertOk()
+    $response = metricsEndpointTestScrape()->assertOk()
         ->assertHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
     $text = (string) $response->getContent();
 
@@ -63,7 +63,7 @@ it('answers HEAD with the same headers and runs no collector', function (): void
     $collector = new FakeCollector('horizon', static fn (): array => [MetricFamily::of(Metric::HorizonStatus)->set([], 1)]);
     $this->app->instance(Exporter::class, new Exporter($this->app, null, ['horizon' => $collector]));
 
-    $response = $this->call('HEAD', '/horizon/observability/metrics', [], [], [], ['HTTP_AUTHORIZATION' => 'Bearer '.METRICS_TOKEN])
+    $response = $this->call('HEAD', '/horizon/observability/metrics', [], [], [], ['HTTP_AUTHORIZATION' => 'Bearer '.METRICS_ENDPOINT_TEST_TOKEN])
         ->assertOk()
         ->assertHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
 
@@ -71,18 +71,18 @@ it('answers HEAD with the same headers and runs no collector', function (): void
         ->and($response->headers->get('Cache-Control'))->toContain('no-store')
         ->and($collector->runs)->toBe(0);
 
-    scrapeMetrics()->assertOk();
+    metricsEndpointTestScrape()->assertOk();
 
     expect($collector->runs)->toBe(1);
 });
 
 it('renders the golden exposition over HTTP', function (): void {
-    metricsConfig(['collectors.batches' => true]);
+    metricsEndpointTestConfig(['collectors.batches' => true]);
     $clock = new FakeClock;
     $this->app->instance(Versions::class, ExpositionFixture::versions());
     $this->app->instance(Exporter::class, new Exporter($this->app, $clock(...), ExpositionFixture::collectors($clock)));
 
-    expect(ExpositionFixture::normalize((string) scrapeMetrics()->assertOk()->getContent()))->toBe(file_get_contents(ExpositionFixture::GOLDEN));
+    expect(ExpositionFixture::normalize((string) metricsEndpointTestScrape()->assertOk()->getContent()))->toBe(file_get_contents(ExpositionFixture::GOLDEN));
 });
 
 it('honours X-Prometheus-Scrape-Timeout-Seconds', function (): void {
@@ -96,7 +96,7 @@ it('honours X-Prometheus-Scrape-Timeout-Seconds', function (): void {
     $this->app->instance(Exporter::class, new Exporter($this->app, $clock(...), $collectors));
 
     // Timeout 2 s: budget 1.5 s. horizon uses 1.25 s, queues starts in time and ends at 1.75 s, the rest is skipped.
-    $exposition = Exposition::parse((string) scrapeMetrics(['X-Prometheus-Scrape-Timeout-Seconds' => '2'])->assertOk()->getContent());
+    $exposition = Exposition::parse((string) metricsEndpointTestScrape(['X-Prometheus-Scrape-Timeout-Seconds' => '2'])->assertOk()->getContent());
 
     expect($exposition->series('ho_exporter_collector_success'))->toBe([
         'collector="attempts"' => 0.0,
@@ -106,7 +106,7 @@ it('honours X-Prometheus-Scrape-Timeout-Seconds', function (): void {
     ])->and($collectors['attempts']->runs)->toBe(0);
 });
 
-it('counters are absolute across scrapes', function (): void {
+test('counters are absolute across scrapes', function (): void {
     // The legacy pilot pushed absolute totals through a counter's inc() into a persistent registry, so every scrape
     // added the total again (10, 20, 30). Nothing is kept between scrapes now: the exposition is the source's value.
     $source = new ArrayObject(['completed' => 10]);
@@ -121,7 +121,7 @@ it('counters are absolute across scrapes', function (): void {
     });
     $labels = ['connection' => 'redis', 'queue' => 'default', 'job_class' => 'App\\Jobs\\A'];
     $read = static function () use ($labels): array {
-        $exposition = Exposition::parse((string) scrapeMetrics()->assertOk()->getContent());
+        $exposition = Exposition::parse((string) metricsEndpointTestScrape()->assertOk()->getContent());
 
         return [
             $exposition->value('ho_queue_jobs_total', [...$labels, 'status' => 'completed']),
@@ -141,16 +141,16 @@ it('counters are absolute across scrapes', function (): void {
         ->and($written)->toBe([]);
 });
 
-it('no spatie families', function (): void {
+test('no spatie families', function (): void {
     $catalog = array_map(static fn (Metric $metric): string => 'ho_'.$metric->value, Metric::cases());
 
     // The real collectors (stubs until their tasks land) and the full fixture scrape.
-    $real = Exposition::parse((string) scrapeMetrics()->assertOk()->getContent());
+    $real = Exposition::parse((string) metricsEndpointTestScrape()->assertOk()->getContent());
 
-    metricsConfig(['collectors.batches' => true]);
+    metricsEndpointTestConfig(['collectors.batches' => true]);
     $clock = new FakeClock;
     $this->app->instance(Exporter::class, new Exporter($this->app, $clock(...), ExpositionFixture::collectors($clock)));
-    $full = Exposition::parse((string) scrapeMetrics()->assertOk()->getContent());
+    $full = Exposition::parse((string) metricsEndpointTestScrape()->assertOk()->getContent());
 
     foreach ([$real, $full] as $exposition) {
         $names = array_keys($exposition->samples);
@@ -168,14 +168,14 @@ it('no spatie families', function (): void {
 });
 
 it('answers 200 when every collector fails', function (): void {
-    metricsConfig(['collectors.batches' => true]);
+    metricsEndpointTestConfig(['collectors.batches' => true]);
     $failing = array_map(
         static fn (string $id): FakeCollector => new FakeCollector($id, static fn (): never => throw new RuntimeException($id.' is down')),
         array_combine(Config::COLLECTORS, Config::COLLECTORS),
     );
     $this->app->instance(Exporter::class, new Exporter($this->app, null, $failing));
 
-    $exposition = Exposition::parse((string) scrapeMetrics()->assertOk()->getContent());
+    $exposition = Exposition::parse((string) metricsEndpointTestScrape()->assertOk()->getContent());
 
     expect($exposition->series('ho_exporter_collector_success'))->toBe([
         'collector="attempts"' => 0.0,
@@ -187,9 +187,9 @@ it('answers 200 when every collector fails', function (): void {
 });
 
 it('uses the configured namespace and reports config problems', function (): void {
-    metricsConfig(['namespace' => 'office', 'exceptions' => 'verbose']);
+    metricsEndpointTestConfig(['namespace' => 'office', 'exceptions' => 'verbose']);
 
-    $exposition = Exposition::parse((string) scrapeMetrics()->assertOk()->getContent());
+    $exposition = Exposition::parse((string) metricsEndpointTestScrape()->assertOk()->getContent());
 
     expect($exposition->families())->toBe([
         'office_exporter_collector_success',

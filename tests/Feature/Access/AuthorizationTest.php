@@ -29,10 +29,10 @@ use Symfony\Component\HttpFoundation\Response;
 | not depend on the job-list and live controllers (T06, T12).
 */
 
-const AUTH_TOKEN = 'prometheus-token-0123456789abcdef';
-const AUTH_ROTATED = 'rotated-token-0123456789abcdef';
-const AUTH_API_TOKEN = 'grafana-api-token-0123456789abcdef';
-const AUTH_API_ROUTE = '/_access/api';
+const AUTHORIZATION_TEST_TOKEN = 'prometheus-token-0123456789abcdef';
+const AUTHORIZATION_TEST_ROTATED = 'rotated-token-0123456789abcdef';
+const AUTHORIZATION_TEST_API_TOKEN = 'grafana-api-token-0123456789abcdef';
+const AUTHORIZATION_TEST_API_ROUTE = '/_access/api';
 
 dataset('package endpoints', [
     'metrics' => ['/horizon/observability/metrics', false],
@@ -45,7 +45,7 @@ dataset('package endpoints', [
 /**
  * @param  array<string, mixed>  $config  horizon-observability.* values
  */
-function authConfig(array $config, string $environment = 'production'): void
+function authorizationTestConfig(array $config, string $environment = 'production'): void
 {
     app()['env'] = $environment;
 
@@ -59,34 +59,34 @@ function authConfig(array $config, string $environment = 'production'): void
 /**
  * @return array<string, string>
  */
-function authHeader(string $token): array
+function authorizationTestHeader(string $token): array
 {
     return ['Authorization' => 'Bearer '.$token];
 }
 
 beforeEach(function (): void {
     // An api endpoint behind the package middleware whose controller needs nothing.
-    Route::get(AUTH_API_ROUTE, static fn (): JsonResponse => new JsonResponse(['ok' => true]))
+    Route::get(AUTHORIZATION_TEST_API_ROUTE, static fn (): JsonResponse => new JsonResponse(['ok' => true]))
         ->middleware([ForceJson::class, Authorize::class.':api']);
 });
 
 it('is open in local when nothing is configured', function (): void {
-    authConfig([], 'local');
+    authorizationTestConfig([], 'local');
 
     $this->get('/horizon/observability/metrics')->assertOk()->assertHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
-    $this->get(AUTH_API_ROUTE)->assertOk()->assertExactJson(['ok' => true]);
+    $this->get(AUTHORIZATION_TEST_API_ROUTE)->assertOk()->assertExactJson(['ok' => true]);
 });
 
 it('locks every endpoint outside local when nothing is configured', function (string $url, bool $json, string $environment): void {
-    authConfig([], $environment);
+    authorizationTestConfig([], $environment);
 
-    $response = $this->get($url, authHeader(AUTH_TOKEN))->assertForbidden()->assertHeaderMissing('WWW-Authenticate');
+    $response = $this->get($url, authorizationTestHeader(AUTHORIZATION_TEST_TOKEN))->assertForbidden()->assertHeaderMissing('WWW-Authenticate');
 
     $json ? $response->assertExactJson(['message' => 'Forbidden.']) : expect($response->getContent())->toBe('Forbidden.');
 })->with('package endpoints')->with(['production', 'testing', 'staging']);
 
 it('answers 401 with a Bearer challenge when the token is missing or wrong', function (string $url, bool $json, ?string $authorization): void {
-    authConfig(['token' => AUTH_TOKEN]);
+    authorizationTestConfig(['token' => AUTHORIZATION_TEST_TOKEN]);
 
     $response = $this->get($url, $authorization === null ? [] : ['Authorization' => $authorization])
         ->assertUnauthorized()
@@ -98,99 +98,99 @@ it('answers 401 with a Bearer challenge when the token is missing or wrong', fun
 })->with('package endpoints')->with([
     'no header' => [null],
     'wrong token' => ['Bearer wrong-token-0123456789abcdef'],
-    'other scheme' => ['Basic '.base64_encode('prometheus:'.AUTH_TOKEN)],
+    'other scheme' => ['Basic '.base64_encode('prometheus:'.AUTHORIZATION_TEST_TOKEN)],
     'empty bearer' => ['Bearer '],
 ]);
 
 it('accepts a valid token', function (): void {
-    authConfig(['token' => AUTH_TOKEN]);
+    authorizationTestConfig(['token' => AUTHORIZATION_TEST_TOKEN]);
 
-    $this->get('/horizon/observability/metrics', authHeader(AUTH_TOKEN))->assertOk();
-    $this->get(AUTH_API_ROUTE, authHeader(AUTH_TOKEN))->assertOk()->assertExactJson(['ok' => true]);
+    $this->get('/horizon/observability/metrics', authorizationTestHeader(AUTHORIZATION_TEST_TOKEN))->assertOk();
+    $this->get(AUTHORIZATION_TEST_API_ROUTE, authorizationTestHeader(AUTHORIZATION_TEST_TOKEN))->assertOk()->assertExactJson(['ok' => true]);
 });
 
 it('accepts every token of a rotated list', function (string $token): void {
-    authConfig(['token' => AUTH_TOKEN.', '.AUTH_ROTATED]);
+    authorizationTestConfig(['token' => AUTHORIZATION_TEST_TOKEN.', '.AUTHORIZATION_TEST_ROTATED]);
 
-    $this->get('/horizon/observability/metrics', authHeader($token))->assertOk();
-    $this->get(AUTH_API_ROUTE, authHeader($token))->assertOk();
-})->with([AUTH_TOKEN, AUTH_ROTATED]);
+    $this->get('/horizon/observability/metrics', authorizationTestHeader($token))->assertOk();
+    $this->get(AUTHORIZATION_TEST_API_ROUTE, authorizationTestHeader($token))->assertOk();
+})->with([AUTHORIZATION_TEST_TOKEN, AUTHORIZATION_TEST_ROTATED]);
 
 it('keeps the Grafana api_token apart from the Prometheus token', function (): void {
-    authConfig(['token' => AUTH_TOKEN, 'api_token' => AUTH_API_TOKEN]);
+    authorizationTestConfig(['token' => AUTHORIZATION_TEST_TOKEN, 'api_token' => AUTHORIZATION_TEST_API_TOKEN]);
 
-    $this->get('/horizon/observability/metrics', authHeader(AUTH_TOKEN))->assertOk();
-    $this->get('/horizon/observability/metrics', authHeader(AUTH_API_TOKEN))->assertUnauthorized();
-    $this->get(AUTH_API_ROUTE, authHeader(AUTH_API_TOKEN))->assertOk();
-    $this->get(AUTH_API_ROUTE, authHeader(AUTH_TOKEN))->assertUnauthorized()->assertExactJson(['message' => 'Unauthorized.']);
-    $this->get('/horizon/observability/jobs/failed', authHeader(AUTH_TOKEN))->assertUnauthorized();
-    $this->get('/horizon/observability/live', authHeader(AUTH_TOKEN))->assertUnauthorized();
+    $this->get('/horizon/observability/metrics', authorizationTestHeader(AUTHORIZATION_TEST_TOKEN))->assertOk();
+    $this->get('/horizon/observability/metrics', authorizationTestHeader(AUTHORIZATION_TEST_API_TOKEN))->assertUnauthorized();
+    $this->get(AUTHORIZATION_TEST_API_ROUTE, authorizationTestHeader(AUTHORIZATION_TEST_API_TOKEN))->assertOk();
+    $this->get(AUTHORIZATION_TEST_API_ROUTE, authorizationTestHeader(AUTHORIZATION_TEST_TOKEN))->assertUnauthorized()->assertExactJson(['message' => 'Unauthorized.']);
+    $this->get('/horizon/observability/jobs/failed', authorizationTestHeader(AUTHORIZATION_TEST_TOKEN))->assertUnauthorized();
+    $this->get('/horizon/observability/live', authorizationTestHeader(AUTHORIZATION_TEST_TOKEN))->assertUnauthorized();
 });
 
 it('locks /metrics when only the api_token is set', function (): void {
-    authConfig(['api_token' => AUTH_API_TOKEN]);
+    authorizationTestConfig(['api_token' => AUTHORIZATION_TEST_API_TOKEN]);
 
-    $this->get('/horizon/observability/metrics', authHeader(AUTH_API_TOKEN))->assertForbidden();
-    $this->get(AUTH_API_ROUTE, authHeader(AUTH_API_TOKEN))->assertOk();
+    $this->get('/horizon/observability/metrics', authorizationTestHeader(AUTHORIZATION_TEST_API_TOKEN))->assertForbidden();
+    $this->get(AUTHORIZATION_TEST_API_ROUTE, authorizationTestHeader(AUTHORIZATION_TEST_API_TOKEN))->assertOk();
 });
 
 it('fails closed when no configured token is valid', function (): void {
-    authConfig(['token' => 'too-short'], 'local');
+    authorizationTestConfig(['token' => 'too-short'], 'local');
 
-    $this->get('/horizon/observability/metrics', authHeader('too-short'))->assertUnauthorized();
+    $this->get('/horizon/observability/metrics', authorizationTestHeader('too-short'))->assertUnauthorized();
     $this->get('/horizon/observability/metrics')->assertUnauthorized();
 });
 
 it('checks the IP allow-list on its own', function (): void {
-    authConfig(['allowed_ips' => '10.20.0.0/16, 192.168.1.10']);
+    authorizationTestConfig(['allowed_ips' => '10.20.0.0/16, 192.168.1.10']);
 
     $this->withServerVariables(['REMOTE_ADDR' => '10.20.3.4'])->get('/horizon/observability/metrics')->assertOk();
-    $this->withServerVariables(['REMOTE_ADDR' => '192.168.1.10'])->get(AUTH_API_ROUTE)->assertOk();
+    $this->withServerVariables(['REMOTE_ADDR' => '192.168.1.10'])->get(AUTHORIZATION_TEST_API_ROUTE)->assertOk();
     $this->withServerVariables(['REMOTE_ADDR' => '10.21.3.4'])->get('/horizon/observability/metrics')->assertForbidden();
     $this->withServerVariables(['REMOTE_ADDR' => '10.21.3.4'])->get('/horizon/observability/jobs/pending')->assertForbidden()->assertExactJson(['message' => 'Forbidden.']);
 });
 
 it('requires both the IP and the token when both are configured', function (string $ip, ?string $token, int $status): void {
-    authConfig(['allowed_ips' => '10.20.0.0/16', 'token' => AUTH_TOKEN]);
+    authorizationTestConfig(['allowed_ips' => '10.20.0.0/16', 'token' => AUTHORIZATION_TEST_TOKEN]);
 
     $this->withServerVariables(['REMOTE_ADDR' => $ip])
-        ->get('/horizon/observability/metrics', $token === null ? [] : authHeader($token))
+        ->get('/horizon/observability/metrics', $token === null ? [] : authorizationTestHeader($token))
         ->assertStatus($status);
 })->with([
-    'both pass' => ['10.20.3.4', AUTH_TOKEN, 200],
+    'both pass' => ['10.20.3.4', AUTHORIZATION_TEST_TOKEN, 200],
     'no token' => ['10.20.3.4', null, 401],
     'wrong token' => ['10.20.3.4', 'wrong-token-0123456789abcdef', 401],
-    'wrong IP' => ['172.16.0.1', AUTH_TOKEN, 403],
+    'wrong IP' => ['172.16.0.1', AUTHORIZATION_TEST_TOKEN, 403],
     'both wrong' => ['172.16.0.1', null, 403],
 ]);
 
 it('lets the auth callback alone decide', function (): void {
-    authConfig(['token' => AUTH_TOKEN]);
+    authorizationTestConfig(['token' => AUTHORIZATION_TEST_TOKEN]);
     HorizonObservability::auth(static fn (Request $request): bool => $request->header('X-Client-Verify') === 'SUCCESS');
 
     $this->get('/horizon/observability/metrics', ['X-Client-Verify' => 'SUCCESS'])->assertOk();
-    $this->get(AUTH_API_ROUTE, ['X-Client-Verify' => 'SUCCESS'])->assertOk();
+    $this->get(AUTHORIZATION_TEST_API_ROUTE, ['X-Client-Verify' => 'SUCCESS'])->assertOk();
     // The callback said no: 403, even with a valid token, and without a challenge.
-    $this->get('/horizon/observability/metrics', authHeader(AUTH_TOKEN))->assertForbidden()->assertHeaderMissing('WWW-Authenticate');
-    $this->get('/horizon/observability/jobs/pending', authHeader(AUTH_TOKEN))->assertForbidden()->assertExactJson(['message' => 'Forbidden.']);
+    $this->get('/horizon/observability/metrics', authorizationTestHeader(AUTHORIZATION_TEST_TOKEN))->assertForbidden()->assertHeaderMissing('WWW-Authenticate');
+    $this->get('/horizon/observability/jobs/pending', authorizationTestHeader(AUTHORIZATION_TEST_TOKEN))->assertForbidden()->assertExactJson(['message' => 'Forbidden.']);
 });
 
 it('never reads the token from the query string', function (string $parameter): void {
-    authConfig(['token' => AUTH_TOKEN]);
+    authorizationTestConfig(['token' => AUTHORIZATION_TEST_TOKEN]);
 
-    $this->get('/horizon/observability/metrics?'.$parameter.'='.AUTH_TOKEN)->assertUnauthorized();
-    $this->get(AUTH_API_ROUTE.'?'.$parameter.'='.AUTH_TOKEN)->assertUnauthorized();
+    $this->get('/horizon/observability/metrics?'.$parameter.'='.AUTHORIZATION_TEST_TOKEN)->assertUnauthorized();
+    $this->get(AUTHORIZATION_TEST_API_ROUTE.'?'.$parameter.'='.AUTHORIZATION_TEST_TOKEN)->assertUnauthorized();
 })->with(['token', 'api_token', 'access_token']);
 
 it('answers JSON on /metrics only when the client asks for it', function (): void {
-    authConfig(['token' => AUTH_TOKEN]);
+    authorizationTestConfig(['token' => AUTHORIZATION_TEST_TOKEN]);
 
     $this->getJson('/horizon/observability/metrics')->assertUnauthorized()->assertExactJson(['message' => 'Unauthorized.']);
     $this->get('/horizon/observability/jobs/pending', ['Accept' => 'text/html'])->assertUnauthorized()->assertExactJson(['message' => 'Unauthorized.']);
 });
 
 it('keeps the reason out of the body and never caches a denial', function (array $config, string $url, int $status, string $body): void {
-    authConfig($config);
+    authorizationTestConfig($config);
 
     $response = $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.7'])->get($url)->assertStatus($status);
 
@@ -199,28 +199,28 @@ it('keeps the reason out of the body and never caches a denial', function (array
 })->with([
     'locked' => [[], '/horizon/observability/metrics', 403, 'Forbidden.'],
     'IP' => [['allowed_ips' => '10.0.0.0/8'], '/horizon/observability/metrics', 403, 'Forbidden.'],
-    'token' => [['token' => AUTH_TOKEN], '/horizon/observability/metrics', 401, 'Unauthorized.'],
-    'token, JSON' => [['token' => AUTH_TOKEN], '/horizon/observability/jobs/failed', 401, '{"message":"Unauthorized."}'],
+    'token' => [['token' => AUTHORIZATION_TEST_TOKEN], '/horizon/observability/metrics', 401, 'Unauthorized.'],
+    'token, JSON' => [['token' => AUTHORIZATION_TEST_TOKEN], '/horizon/observability/jobs/failed', 401, '{"message":"Unauthorized."}'],
 ]);
 
 it('answers HEAD like GET', function (): void {
-    authConfig(['token' => AUTH_TOKEN]);
+    authorizationTestConfig(['token' => AUTHORIZATION_TEST_TOKEN]);
 
     $this->call('HEAD', '/horizon/observability/metrics')->assertUnauthorized();
-    $this->call('HEAD', '/horizon/observability/metrics', [], [], [], ['HTTP_AUTHORIZATION' => 'Bearer '.AUTH_TOKEN])->assertOk();
+    $this->call('HEAD', '/horizon/observability/metrics', [], [], [], ['HTTP_AUTHORIZATION' => 'Bearer '.AUTHORIZATION_TEST_TOKEN])->assertOk();
 });
 
 it('runs no collector for a denied request', function (): void {
-    authConfig(['token' => AUTH_TOKEN]);
+    authorizationTestConfig(['token' => AUTHORIZATION_TEST_TOKEN]);
     $collector = new FakeCollector('horizon', static fn (): array => []);
     $this->app->instance(Exporter::class, new Exporter($this->app, null, ['horizon' => $collector]));
 
     $this->get('/horizon/observability/metrics')->assertUnauthorized();
-    $this->get('/horizon/observability/metrics', authHeader('wrong-token-0123456789abcdef'))->assertUnauthorized();
+    $this->get('/horizon/observability/metrics', authorizationTestHeader('wrong-token-0123456789abcdef'))->assertUnauthorized();
 
     expect($collector->runs)->toBe(0);
 
-    $this->get('/horizon/observability/metrics', authHeader(AUTH_TOKEN))->assertOk();
+    $this->get('/horizon/observability/metrics', authorizationTestHeader(AUTHORIZATION_TEST_TOKEN))->assertOk();
 
     expect($collector->runs)->toBe(1);
 });
@@ -230,7 +230,7 @@ it('causes no cache write by the configured middleware when unauthenticated', fu
         [HorizonServiceProvider::class, HorizonObservabilityServiceProvider::class],
         [
             'cache.default' => 'array',
-            'horizon-observability.token' => AUTH_TOKEN,
+            'horizon-observability.token' => AUTHORIZATION_TEST_TOKEN,
             'horizon-observability.middleware' => ['throttle:2,1'],
         ],
         static function (Application $app): array {
@@ -250,7 +250,7 @@ it('causes no cache write by the configured middleware when unauthenticated', fu
 
             $denied = [$send(null), $send('wrong-token-0123456789abcdef'), $send(null), $send(null)];
             $writtenWhileDenied = $written;
-            $allowed = [$send(AUTH_TOKEN), $send(AUTH_TOKEN), $send(AUTH_TOKEN)];
+            $allowed = [$send(AUTHORIZATION_TEST_TOKEN), $send(AUTHORIZATION_TEST_TOKEN), $send(AUTHORIZATION_TEST_TOKEN)];
 
             return [$denied, $writtenWhileDenied, $allowed, $written];
         },
