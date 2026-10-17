@@ -42,11 +42,14 @@ it('provisions the four core rules of the dashboard as JSON', function (): void 
 it('renders the rule expressions of Arch Q5.3 per job', function (): void {
     $expressions = array_column(array_map(static fn (array $rule): array => ['uid' => $rule['uid'], 'expr' => $rule['data'][0]['model']['expr']], committedRules()), 'expr', 'uid');
 
+    // Arch Q5.3 with the replica dedupe of step 10 around every selector
     expect($expressions)->toBe([
-        'horizon-observability-no-metrics' => 'count(ho_horizon_status{job=~".+"})',
-        'horizon-observability-down' => 'min by (job) (ho_horizon_status{job=~".+"})',
-        'horizon-observability-long-wait' => 'max by (job, queue) (ho_queue_oldest_pending_job_age_seconds{job=~".+"}) / on (job, queue) max by (job, queue) (ho_horizon_wait_threshold_seconds{job=~".+"})',
-        'horizon-observability-failures' => 'sum by (job, queue) (increase(ho_queue_jobs_total{job=~".+", status=~"failed|timed_out"}[15m])) / clamp_min(sum by (job, queue) (increase(ho_queue_jobs_total{job=~".+", status=~"completed|failed|timed_out"}[15m])), 100)',
+        'horizon-observability-no-metrics' => 'count(max by (job) (ho_horizon_status{job=~".+"}))',
+        'horizon-observability-down' => 'min by (job) (max by (job) (ho_horizon_status{job=~".+"}))',
+        'horizon-observability-long-wait' => 'max by (job, queue) (max by (job, connection, queue) (ho_queue_oldest_pending_job_age_seconds{job=~".+"}))'
+            .' / on (job, queue) max by (job, queue) (max by (job, connection, queue) (ho_horizon_wait_threshold_seconds{job=~".+"}))',
+        'horizon-observability-failures' => 'sum by (job, queue) (max by (job, connection, queue, job_class, status) (increase(ho_queue_jobs_total{job=~".+", status=~"failed|timed_out"}[15m])))'
+            .' / clamp_min(sum by (job, queue) (max by (job, connection, queue, job_class, status) (increase(ho_queue_jobs_total{job=~".+", status=~"completed|failed|timed_out"}[15m]))), 100)',
     ]);
 });
 

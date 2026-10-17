@@ -21,7 +21,7 @@
               "datasourceUid": "${HORIZON_OBSERVABILITY_PROMETHEUS_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "count(ho_horizon_status{job=~\".+\"})",
+                "expr": "count(max by (job) (ho_horizon_status{job=~\".+\"}))",
                 "instant": true,
                 "range": false,
                 "refId": "A"
@@ -71,7 +71,7 @@
               "datasourceUid": "${HORIZON_OBSERVABILITY_PROMETHEUS_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "min by (job) (ho_horizon_status{job=~\".+\"})",
+                "expr": "min by (job) (max by (job) (ho_horizon_status{job=~\".+\"}))",
                 "instant": true,
                 "range": false,
                 "refId": "A"
@@ -121,7 +121,7 @@
               "datasourceUid": "${HORIZON_OBSERVABILITY_PROMETHEUS_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "max by (job, queue) (ho_queue_oldest_pending_job_age_seconds{job=~\".+\"}) / on (job, queue) max by (job, queue) (ho_horizon_wait_threshold_seconds{job=~\".+\"})",
+                "expr": "max by (job, queue) (max by (job, connection, queue) (ho_queue_oldest_pending_job_age_seconds{job=~\".+\"})) / on (job, queue) max by (job, queue) (max by (job, connection, queue) (ho_horizon_wait_threshold_seconds{job=~\".+\"}))",
                 "instant": true,
                 "range": false,
                 "refId": "A"
@@ -171,7 +171,7 @@
               "datasourceUid": "${HORIZON_OBSERVABILITY_PROMETHEUS_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "sum by (job, queue) (increase(ho_queue_jobs_total{job=~\".+\", status=~\"failed|timed_out\"}[15m])) / clamp_min(sum by (job, queue) (increase(ho_queue_jobs_total{job=~\".+\", status=~\"completed|failed|timed_out\"}[15m])), 100)",
+                "expr": "sum by (job, queue) (max by (job, connection, queue, job_class, status) (increase(ho_queue_jobs_total{job=~\".+\", status=~\"failed|timed_out\"}[15m]))) / clamp_min(sum by (job, queue) (max by (job, connection, queue, job_class, status) (increase(ho_queue_jobs_total{job=~\".+\", status=~\"completed|failed|timed_out\"}[15m]))), 100)",
                 "instant": true,
                 "range": false,
                 "refId": "A"

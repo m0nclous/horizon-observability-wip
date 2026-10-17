@@ -91,7 +91,7 @@ it('takes the job list path from horizon_info{api_path} of the selected job', fu
     $variables = array_column(Rendered::dashboard()['templating']['list'], null, 'name');
 
     expect($variables['api_path'])->toMatchArray([
-        'query' => 'query_result(group by (api_path) (last_over_time(ho_horizon_info{job=~"$prometheus_job"}[7d])))',
+        'query' => 'query_result(group by (api_path) (max by (job, url, api_path, tts_url) (last_over_time(ho_horizon_info{job=~"$prometheus_job"}[7d]))))',
         'regex' => '/api_path="([^"]+)"/',
         'hide' => 2,
         'refresh' => 1,

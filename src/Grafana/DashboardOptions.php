@@ -44,7 +44,8 @@ final readonly class DashboardOptions
      *                                         `resources/grafana/js/alert-sound.js`
      * @param  string|null  $job  the Prometheus job the dashboard selects by default and the alert rules are scoped to
      *                            (`--job`); null selects all jobs
-     * @param  bool  $dedupe  wrap every selector in a replica dedupe aggregation (WP8B, Arch Q5.6 step 10)
+     * @param  bool  $dedupe  wrap every package selector in the replica dedupe `max by (job, <labels>)` (Arch Q5.6
+     *                        step 10); off only for the pilot
      * @param  bool  $legacy  render what the pilot rendered where WP8B changed the output (metric names, ...);
      *                        TEMPORARY, set by {@see LegacyProfile} only and deleted with it at the end of WP8B
      */
@@ -64,7 +65,7 @@ final readonly class DashboardOptions
         public ?string $alertSoundScript = null,
         public LiveMode $live = LiveMode::Off,
         public ?string $job = null,
-        public bool $dedupe = false,
+        public bool $dedupe = true,
         public bool $legacy = false,
     ) {}
 
@@ -81,7 +82,7 @@ final readonly class DashboardOptions
      */
     public function promql(): Promql
     {
-        return new Promql($this->metricPrefix, $this->legacy, $this->legacy ? null : Promql::JOB_VARIABLE);
+        return new Promql($this->metricPrefix, $this->legacy, $this->legacy ? null : Promql::JOB_VARIABLE, $this->dedupe);
     }
 
     /**
@@ -90,7 +91,7 @@ final readonly class DashboardOptions
      */
     public function rulePromql(): Promql
     {
-        return new Promql($this->metricPrefix, $this->legacy, $this->legacy ? null : $this->jobRegex());
+        return new Promql($this->metricPrefix, $this->legacy, $this->legacy ? null : $this->jobRegex(), $this->dedupe);
     }
 
     /**

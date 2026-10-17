@@ -125,5 +125,4 @@ it('rejects options the renderer does not support yet', function (array $overrid
 })->with([
     'live poll' => [['live' => LiveMode::Poll], 'live'],
     'live stream' => [['live' => LiveMode::Stream], 'live'],
-    'dedupe' => [['dedupe' => true], 'dedupe'],
 ]);

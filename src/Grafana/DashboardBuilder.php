@@ -199,13 +199,12 @@ final readonly class DashboardBuilder
     }
 
     /**
-     * The options WP8B adds behaviour for are rejected until then, rather than silently ignored.
+     * The live modes arrive with WP8D; until then they are rejected rather than silently rendered as off.
      */
     private function assertSupported(): void
     {
         $unsupported = array_keys(array_filter([
             'live' => $this->options->live !== LiveMode::Off,
-            'dedupe' => $this->options->dedupe,
         ]));
 
         if ($unsupported !== []) {
