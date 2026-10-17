@@ -54,7 +54,7 @@ final readonly class AlertRulesBuilder
     private const DUPLICATES_FOR = '10m';
 
     /**
-     * @return array{apiVersion: int, groups: list<array<string, mixed>>}
+     * @return array{apiVersion: int, groups: list<array<string, mixed>>, deleteRules?: list<array{orgId: int, uid: string}>}
      */
     public function build(): array
     {
@@ -134,13 +134,39 @@ final readonly class AlertRulesBuilder
             array_push($rules, ...$this->healthRules($promql, PanelRegistry::idOf($dashboard, 'Horizon')));
         }
 
-        return ['apiVersion' => 1, 'groups' => [[
+        $provisioning = ['apiVersion' => 1, 'groups' => [[
             'orgId' => self::ORG_ID,
             'name' => self::GROUP,
             'folder' => $this->options->alertFolder,
             'interval' => Thresholds::ALERT_INTERVAL,
             'rules' => $rules,
         ]]];
+
+        $unrendered = $this->unrenderedRules($rules);
+
+        if ($unrendered !== []) {
+            $provisioning['deleteRules'] = array_map(static fn (string $uid): array => ['orgId' => self::ORG_ID, 'uid' => $uid], $unrendered);
+        }
+
+        return $provisioning;
+    }
+
+    /**
+     * The optional rules of this uid that the render leaves out (`<uid>-live` without `--live=stream`, the health
+     * rules without `--health-rules`), for the provisioning file's `deleteRules`: Grafana keeps a provisioned rule
+     * that disappears from the file, so after a switch from stream to poll the stall rule would fire once the stream
+     * command stops (its last push timestamp stays exported). Deleting a rule that does not exist is a no-op (probed on
+     * Grafana 12.4.13 and 13.2.4).
+     *
+     * @param  list<array<string, mixed>>  $rules  the rendered rules
+     * @return list<string>
+     */
+    private function unrenderedRules(array $rules): array
+    {
+        $rendered = array_column($rules, 'uid');
+        $optional = array_map(fn (string $suffix): string => $this->options->uid.'-'.$suffix, [self::LIVE_RULE, ...self::HEALTH_RULES]);
+
+        return array_values(array_filter($optional, static fn (string $uid): bool => ! in_array($uid, $rendered, true)));
     }
 
     /**

@@ -30,7 +30,7 @@ it('provisions the core rules of the dashboard as JSON, with the stall rule in s
     $group = Rendered::alerting($mode)['groups'][0];
     $live = $mode === LiveMode::Stream;
 
-    expect(array_keys(Rendered::alerting($mode)))->toBe(['apiVersion', 'groups'])
+    expect(array_keys(Rendered::alerting($mode)))->toBe(['apiVersion', 'groups', 'deleteRules'])
         ->and($group)->toMatchArray(['orgId' => 1, 'name' => 'Queues', 'folder' => 'Horizon', 'interval' => '1m'])
         ->and(array_column(committedRules($mode), 'uid'))->toBe([
             'horizon-observability-no-metrics',
@@ -43,6 +43,31 @@ it('provisions the core rules of the dashboard as JSON, with the stall rule in s
             'No queue metrics', 'Horizon is down', 'Queue wait over 2x limit', 'High failure rate',
             ...($live ? ['Live overview stalled'] : []),
         ]);
+})->with(Rendered::modes());
+
+it('deletes the optional rules a render leaves out, so a switch of mode or of --health-rules leaves none behind', function (LiveMode $mode, bool $health, array $deleted): void {
+    // Grafana keeps a provisioned rule that disappears from the file: after a switch from stream to poll the stall rule
+    // would fire once the stream command stops; deleting a rule that does not exist is a no-op (probed on 12 and 13)
+    $provisioning = (new AlertRulesBuilder(new DashboardOptions(uid: 'queues', live: $mode, healthRules: $health)))->build();
+    $rendered = array_column($provisioning['groups'][0]['rules'], 'uid');
+
+    expect($provisioning['deleteRules'] ?? [])->toBe(array_map(static fn (string $uid): array => ['orgId' => 1, 'uid' => $uid], $deleted))
+        ->and(array_intersect($rendered, $deleted))->toBe([])
+        ->and(count($rendered) + count($deleted))->toBe(4 + 1 + 2);
+})->with([
+    'poll' => [LiveMode::Poll, false, ['queues-live', 'queues-collector', 'queues-duplicates']],
+    'off with health rules' => [LiveMode::Off, true, ['queues-live']],
+    'stream' => [LiveMode::Stream, false, ['queues-collector', 'queues-duplicates']],
+    'stream with health rules' => [LiveMode::Stream, true, []],
+]);
+
+it('keeps the deleteRules of the committed renders to the rules they leave out', function (LiveMode $mode): void {
+    $deleted = array_column(Rendered::alerting($mode)['deleteRules'], 'uid');
+
+    expect($deleted)->toBe($mode === LiveMode::Stream
+        ? ['horizon-observability-collector', 'horizon-observability-duplicates']
+        : ['horizon-observability-live', 'horizon-observability-collector', 'horizon-observability-duplicates'])
+        ->and(array_unique(array_column(Rendered::alerting($mode)['deleteRules'], 'orgId')))->toBe([1]);
 })->with(Rendered::modes());
 
 it('renders the stall rule of ADDENDUM R4.11 in stream mode: the push age at scrape time', function (): void {

@@ -259,5 +259,15 @@
         }
       ]
     }
+  ],
+  "deleteRules": [
+    {
+      "orgId": 1,
+      "uid": "horizon-observability-collector"
+    },
+    {
+      "orgId": 1,
+      "uid": "horizon-observability-duplicates"
+    }
   ]
 }
