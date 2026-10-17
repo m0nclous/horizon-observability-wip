@@ -5,8 +5,9 @@
 //   node tests/e2e/first-dashboard.mjs --grafana http://localhost:3000 [--uid horizon-observability]
 //        [--timeout 240] [--screenshot build/first-dashboard.png]
 //
-// A tile counts when its text shows a value and never "No data"; the Completed tile must count more than 0 (the
-// demo jobs went through Horizon, the exporter and Prometheus). Exit 0 when every Overview tile does within
+// A tile counts when it shows a value (not "No data", "Live unavailable" or the em dash of an unknown value) and its
+// live caption has replaced the series name; the Completed tile must count more than 0 (the demo jobs went through
+// Horizon, the exporter and Prometheus). Exit 0 when every Overview tile does within
 // --timeout seconds, 1 otherwise (with the last texts), 2 without Playwright
 // (`npm i --no-save playwright@1.56.1 && npx playwright install chromium`).
 
@@ -79,7 +80,11 @@ while (Date.now() < deadline) {
   last = await read();
   const states = tiles.map((tile) => {
     const lines = values(last[`panel-${tile.id}`], tile.title);
-    const empty = lines.length === 0 || lines.some((line) => /No data/i.test(line));
+    // Not yet (or not) rendered: nothing, "No data", the em dash of an unknown value, or a series named after its
+    // query, which a stat shows while its live caption has not arrived.
+    const empty = lines.length === 0
+      || lines.some((line) => /No data|Live unavailable|[{}]|=~/.test(line))
+      || lines[lines.length - 1] === '\u2014';
     const completed = tile.title === 'Completed' ? lines.some((line) => number(line) > 0) : true;
     return !empty && completed;
   });
