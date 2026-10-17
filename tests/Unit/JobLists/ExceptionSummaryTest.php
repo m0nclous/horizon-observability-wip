@@ -40,6 +40,15 @@ it('keeps only the short class in class mode', function (string $stored, string 
     'anonymous class' => ["App\\Exceptions\\ShouldntReport@anonymous\0/app/app/Jobs/Simulated.php:40\$1a: Simulated failure in /app/app/Jobs/Simulated.php:41", 'ShouldntReport@anonymous'],
 ]);
 
+it('gives nothing in class mode for a first line that does not start with a class name', function (string $stored): void {
+    expect(ExceptionSummary::summarize($stored, ExceptionMode::ClassOnly))->toBeNull();
+})->with([
+    'an own __toString() without a class' => ['Connection to db-primary.internal:5432 refused for user billing'],
+    'a bracketed state first' => ['SQLSTATE[08006] could not connect to server db-primary.internal'],
+    'text before the first colon' => ['Payment failed for card 4111 1111: declined'],
+    'a broken byte in the class name' => ["Runtime\xffException: Boom"],
+]);
+
 it('gives nothing in none mode, without an exception and for an empty line', function (): void {
     expect(ExceptionSummary::summarize(EXCEPTION_SUMMARY_QUERY, ExceptionMode::None))->toBeNull()
         ->and(ExceptionSummary::summarize(null, ExceptionMode::Full))->toBeNull()

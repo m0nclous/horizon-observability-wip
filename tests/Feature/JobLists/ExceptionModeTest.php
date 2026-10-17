@@ -43,6 +43,16 @@ it('shows the short class only in class mode', function (): void {
         ->and($response->getContent())->not->toContain('SQLSTATE')->not->toContain('db-primary');
 });
 
+it('shows nothing in class mode when the stored line does not start with a class name', function (): void {
+    // An exception with its own __toString() is stored as whatever it returns.
+    HorizonJobs::using($this->app)->failed('App\Jobs\SyncUsers', 'default', 1700000003.0, 1700000004.0, 1, "Connection to db-primary.internal:5432 refused for user billing\nStack trace:", 'f-2');
+    exceptionModeTestUse('class');
+    $response = $this->get('/horizon/observability/jobs/failed')->assertOk();
+
+    expect($response->json('data.*.exception'))->toBe([null, 'QueryException'])
+        ->and($response->getContent())->not->toContain('db-primary')->not->toContain('billing');
+});
+
 it('shows no exception in none mode and never reads it from Redis', function (): void {
     exceptionModeTestUse('none');
     $commands = RedisCommands::start($this->app);

@@ -13,7 +13,7 @@ use DF\HorizonObservability\Config\ExceptionMode;
  *
  * - `full`: `ShortClass: message`, the first line with the namespace of the class and the trailing
  *   ` in <file>:<line>` removed, e.g. `QueryException: SQLSTATE[HY000] ...`;
- * - `class`: `ShortClass` only;
+ * - `class`: `ShortClass` only, or null when the line does not start with a class name;
  * - `none`: null (the job list does not even read the text from Redis).
  *
  * The result is valid UTF-8 and at most {@see self::MAX_BYTES} bytes: the line is cut at that many bytes, a
@@ -39,6 +39,11 @@ final class ExceptionSummary
      * everything after the NUL byte when the byte cap cut the name.
      */
     private const ANONYMOUS = '/@anonymous\x00(?:.*?\$[0-9a-f]+|.*$)/s';
+
+    /**
+     * A short PHP class name, as `class` mode returns it (optionally `@anonymous`).
+     */
+    private const SHORT_CLASS = '/^[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*(?:@anonymous)?\z/';
 
     /**
      * The location PHP appends to the message: ` in ` and an absolute path (Unix, Windows drive, UNC or a stream
@@ -70,7 +75,11 @@ final class ExceptionSummary
         $line = (string) preg_replace(self::NAMESPACE_PREFIX, '', $line);
 
         if ($mode === ExceptionMode::ClassOnly) {
-            $line = explode(': ', $line, 2)[0];
+            $line = trim(explode(': ', $line, 2)[0]);
+
+            // Only a class name: a first line that does not start with one (an exception with its own
+            // __toString(), or text that is not `Class: message`) could carry anything, so it gives nothing.
+            return preg_match(self::SHORT_CLASS, $line) === 1 ? $line : null;
         }
 
         $line = trim($line);
