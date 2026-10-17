@@ -1,0 +1,114 @@
+<?php
+
+declare(strict_types=1);
+
+namespace DF\HorizonObservability\Tests\Grafana\Support;
+
+use DF\HorizonObservability\Grafana\Json;
+
+/**
+ * The layout projection of a dashboard (Arch Q5.6 and Q5.7): what must stay equal to the legacy dashboard while
+ * WP8B changes the queries. Per panel in document order (the panels of a collapsed row right after it): id,
+ * type, title, gridPos, the row it belongs to, repeat options and the collapsed flag; the full projection adds
+ * the options without the alert sound script, the field config and the transformations.
+ */
+final class LayoutProjection
+{
+    private const LAYOUT_KEYS = ['id', 'type', 'title', 'gridPos', 'repeat', 'repeatDirection', 'maxPerRow', 'collapsed'];
+
+    private const LOOK_KEYS = ['options', 'fieldConfig', 'transformations'];
+
+    /**
+     * The layout fields only.
+     *
+     * @param  array<array-key, mixed>  $dashboard
+     * @return list<array<string, mixed>>
+     */
+    public static function layout(array $dashboard): array
+    {
+        return self::project($dashboard, self::LAYOUT_KEYS);
+    }
+
+    /**
+     * The layout fields plus the look of every panel.
+     *
+     * @param  array<array-key, mixed>  $dashboard
+     * @return list<array<string, mixed>>
+     */
+    public static function full(array $dashboard): array
+    {
+        return self::project($dashboard, [...self::LAYOUT_KEYS, ...self::LOOK_KEYS]);
+    }
+
+    /**
+     * A dashboard model as decoded JSON (associative arrays), so a render and a golden compare alike.
+     *
+     * @param  array<array-key, mixed>  $dashboard
+     * @return array<array-key, mixed>
+     */
+    public static function decoded(array $dashboard): array
+    {
+        $decoded = json_decode(Json::encode($dashboard), true, flags: JSON_THROW_ON_ERROR);
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $dashboard
+     * @param  list<string>  $keys
+     * @return list<array<string, mixed>>
+     */
+    private static function project(array $dashboard, array $keys): array
+    {
+        $projection = [];
+        $row = null;
+
+        foreach (self::panels($dashboard) as $panel) {
+            $isRow = ($panel['type'] ?? null) === 'row';
+            $projection[] = self::panel($panel, $keys, $isRow ? null : $row);
+
+            if ($isRow) {
+                $row = $panel['id'] ?? null;
+
+                foreach (self::panels($panel) as $child) {
+                    $projection[] = self::panel($child, $keys, $row);
+                }
+            }
+        }
+
+        return $projection;
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $panel
+     * @param  list<string>  $keys
+     * @return array<string, mixed>
+     */
+    private static function panel(array $panel, array $keys, mixed $row): array
+    {
+        $projected = ['row' => $row];
+
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $panel)) {
+                $projected[$key] = $panel[$key];
+            }
+        }
+
+        if (isset($projected['options']) && is_array($projected['options'])) {
+            unset($projected['options']['afterRender']);
+        }
+
+        return $projected;
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $container
+     * @return list<array<array-key, mixed>>
+     */
+    private static function panels(array $container): array
+    {
+        $panels = $container['panels'] ?? [];
+
+        return is_array($panels) ? array_values(array_filter($panels, is_array(...))) : [];
+    }
+}
