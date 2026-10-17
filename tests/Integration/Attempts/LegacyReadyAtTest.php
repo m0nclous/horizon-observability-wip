@@ -87,7 +87,12 @@ it('passes no ready_at key to the record EVAL on a modern stack', function (): v
 
 it('uses ready_at for the wait on a legacy stack and deletes it inside the EVAL (C18)', function (): void {
     $this->app->instance(Versions::class, new Versions(config(), '12.10.0'));
-    Event::listen(JobQueued::class, [LegacyReadyAt::class, 'onQueued']);
+
+    // A legacy stack under test has the listener from the provider already.
+    if (! in_array([LegacyReadyAt::class, 'onQueued'], Event::getRawListeners()[JobQueued::class] ?? [], true)) {
+        Event::listen(JobQueued::class, [LegacyReadyAt::class, 'onQueued']);
+    }
+
     $start = now()->startOfSecond()->toImmutable();
     $this->travelTo($start);
 

@@ -56,7 +56,10 @@ it('sync, deferred and background leave no keys (C6)', function (): void {
         $ran++;
     }
 
-    app(DeferredCallbackCollection::class)->invoke();
+    // Laravel 11.24+ runs defer() callbacks after the response; 11.23 has neither defer() nor deferred queues.
+    if (class_exists(DeferredCallbackCollection::class)) {
+        app(DeferredCallbackCollection::class)->invoke();
+    }
 
     expect(cache()->get('completing-job'))->toBe($ran)
         ->and(Storage::packageKeys())->toBe([])

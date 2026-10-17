@@ -22,7 +22,12 @@ use Illuminate\Support\Facades\Event;
 pest()->group('redis');
 
 beforeEach(function (): void {
-    Event::listen(JobQueued::class, [LegacyReadyAt::class, 'onQueued']);
+    // On a legacy stack (Laravel < 12.11 or Horizon < 5.49) the provider has already registered the listener; a second
+    // registration would write every key twice.
+    if (! in_array([LegacyReadyAt::class, 'onQueued'], Event::getRawListeners()[JobQueued::class] ?? [], true)) {
+        Event::listen(JobQueued::class, [LegacyReadyAt::class, 'onQueued']);
+    }
+
     $this->start = now()->startOfSecond()->toImmutable();
     $this->travelTo($this->start);
     $this->readyAt = static function (): array {
