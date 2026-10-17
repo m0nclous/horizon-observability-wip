@@ -23,6 +23,9 @@ use Orchestra\Testbench\TestCase as Orchestra;
  * - Tests in the `redis` or `cluster` group start and end with no key under that prefix. Only those keys are
  *   deleted (`SCAN` + `DEL`), never `FLUSHDB`, so a shared Redis server is safe.
  * - The package's static state is reset after every test.
+ * - The environment does not depend on the workbench ({@see Support\Apps::DEFAULTS}): the array cache, the in-memory
+ *   `testing` database (also for batches and failed jobs) and a fixed `app.key`, whether or not `composer build`
+ *   created the skeleton's SQLite file and whatever testbench.yaml sets.
  */
 abstract class TestCase extends Orchestra
 {
@@ -76,7 +79,9 @@ abstract class TestCase extends Orchestra
      */
     protected function defineEnvironment($app): void
     {
-        $app['config']->set('cache.default', 'array');
+        foreach (Support\Apps::DEFAULTS as $key => $value) {
+            $app['config']->set($key, $value);
+        }
     }
 
     protected function usesRedis(): bool

@@ -6,6 +6,7 @@ namespace DF\HorizonObservability\Tests\Support;
 
 use Closure;
 use DF\HorizonObservability\HorizonObservability;
+use DF\HorizonObservability\Tests\TestCase;
 use Illuminate\Container\Container;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
@@ -26,10 +27,27 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 final class Apps
 {
     /**
+     * Config of every test application, set before any provider boots ({@see TestCase} and {@see self::inspect()};
+     * `$config` overrides it): no test depends on the workbench state. The skeleton's `sqlite` file exists only after
+     * `composer build` and then holds a `job_batches` table and the `database` cache store's rows, which would turn
+     * batches on in auto mode and keep warnings throttled across runs; testbench 9.x gives such apps no `app.key`.
+     *
+     * @var array<string, mixed>
+     */
+    public const DEFAULTS = [
+        'app.key' => 'base64:ZIBKaaFjRAY84d2anlYbSY8TIYBWEm2aVHcbUHRTD3c=',
+        'cache.default' => 'array',
+        'database.default' => 'testing',
+        'queue.batching.database' => 'testing',
+        'queue.failed.database' => 'testing',
+    ];
+
+    /**
      * @template T
      *
      * @param  list<class-string>  $providers  registered in this order
-     * @param  array<string, mixed>  $config  set before any provider boots (and so before the booting callbacks)
+     * @param  array<string, mixed>  $config  set before any provider boots (and so before the booting callbacks), over
+     *                                      {@see self::DEFAULTS}
      * @param  Closure(Application): T  $inspect
      * @param  (Closure(Application): void)|null  $before  runs before any provider registers, e.g. to bind a
      *                                                     {@see LogRecorder} as `log`
@@ -48,7 +66,7 @@ final class Apps
                     }
 
                     $app->booting(static function (Application $app) use ($config): void {
-                        foreach ($config as $key => $value) {
+                        foreach ([...self::DEFAULTS, ...$config] as $key => $value) {
                             $app['config']->set($key, $value);
                         }
                     });
