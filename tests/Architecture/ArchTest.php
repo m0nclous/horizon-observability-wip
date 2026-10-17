@@ -63,10 +63,13 @@ arch('all package classes are final')
     ->toBeFinal()
     ->ignoring('DF\HorizonObservability\Tests');
 
+// The discovery fixtures model application code, which includes abstract base jobs (T08, Arch 8.2); Pint's
+// final_class still makes every concrete one final.
 arch('all workbench classes are final')
     ->expect('Workbench\App')
     ->classes()
-    ->toBeFinal();
+    ->toBeFinal()
+    ->ignoring('Workbench\App\Discovery');
 
 arch('config() only in Config, the provider, RoutePath and Horizon')
     ->expect(['config', Illuminate\Support\Facades\Config::class])
