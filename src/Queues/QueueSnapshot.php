@@ -58,6 +58,24 @@ final readonly class QueueSnapshot
     }
 
     /**
+     * Ready jobs of the list that were not counted by class (`job_class="(unscanned)"` of `queue_jobs_pending`):
+     * those beyond the scan limit or the byte cap. Due delayed jobs are not part of the per-class breakdown.
+     */
+    public function unscannedPending(): int
+    {
+        return max(0, $this->length - array_sum($this->pendingByClass));
+    }
+
+    /**
+     * Reserved jobs that were not counted by class (beyond the reserved scan limit, or all of them when the classes
+     * were not asked for).
+     */
+    public function unscannedReserved(): int
+    {
+        return max(0, $this->reserved - array_sum($this->reservedByClass));
+    }
+
+    /**
      * C8: seconds the oldest ready first-attempt job has waited, `now - min(first fresh readiness, earliest due)`;
      * 0 when nothing is ready; null (unknown) when jobs are ready but neither time is known within the scan window.
      */
