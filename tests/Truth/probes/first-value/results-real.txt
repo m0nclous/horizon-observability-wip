@@ -1,0 +1,9 @@
+first-value probe, Prometheus v3.15.0, scrape 5 s, window [t=10 s, t=150 s], truth: 5 completed attempts
+before up: 1
+before samples: 25
+before increase: 2.0999833333333333
+before delta: 2
+after up: 1
+after samples: 26
+after increase: 5.0622
+after delta: 5
