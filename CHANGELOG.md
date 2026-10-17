@@ -32,6 +32,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Job-class discovery that never includes non-class files, with a `bootstrap/cache` file and the
   `horizon-observability:cache` / `:clear` commands (hooked into `optimize` on Laravel 11.27.1+).
 - The "Grafana" link in Horizon's sidebar, right after "Dashboard", when a Grafana URL is configured.
+- `php artisan horizon-observability:install`: publishes the config, writes a token to `.env` (never over an
+  existing value), prints the Prometheus scrape job (10 s), the Grafana steps and the render command of each live
+  mode, and checks the setup; `--docker` writes a local Prometheus and Grafana stack preprovisioned with the
+  dashboard, the alert rules, the datasources and the plugins (`docker compose -f docker-compose.observability.yml
+  up -d`); `--demo` dispatches sample jobs. Running it again changes nothing.
+- `php artisan horizon-observability:demo`: a short burst of sample jobs (completed, failed, retried, released,
+  delayed, a batch) so an empty application shows data; refuses in production.
+- `php artisan horizon-observability:check` (`--json`, `--strict`, `--live-push-test`): configuration, access,
+  route precedence, Redis connections and timeouts, Horizon, batches, job classes, a dry run of every collector and
+  the live stream settings, with one fix line per problem; exits 1 on errors for deploy pipelines.
+- `php artisan horizon-observability:flush`: deletes exactly the package's Redis keys, live data included.
+- A "Horizon Observability" section in `php artisan about`.
 
 ### Changed
 

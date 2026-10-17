@@ -125,6 +125,18 @@ it('runs the e2e job weekly and by hand only, with the dedupe gate, screenshots 
         ->toContain('--budget docker/perf/budget.json');
 });
 
+it('times the README quick start on a fresh Laravel app weekly and by hand, on Grafana 12 and 13 (T14)', function (): void {
+    $job = workflow('tests.yml')['jobs']['first-dashboard'];
+    $runs = implode("\n", array_filter(array_column($job['steps'], 'run')));
+
+    expect($job['if'])->toBe("github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'")
+        ->and($job['strategy']['matrix']['grafana'])->toBe(['12', '13'])
+        ->and($job['services']['redis']['ports'])->toBe(['6379:6379'])
+        ->and($runs)->toContain('tests/e2e/first-dashboard.sh --grafana ${{ matrix.grafana }}')
+        ->toContain('playwright@1.56.1')
+        ->and(is_executable(dirname(__DIR__, 3).'/tests/e2e/first-dashboard.sh'))->toBeTrue();
+});
+
 it('backfills the perf data with the metric names of the mounted dashboard', function (): void {
     $runs = implode("\n", array_column(workflow('tests.yml')['jobs']['e2e']['steps'], 'run'));
     $mounted = (string) file_get_contents(dirname(__DIR__, 3).'/tests/Fixtures/grafana/legacy/queues.json');
