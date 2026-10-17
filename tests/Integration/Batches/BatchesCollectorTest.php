@@ -175,7 +175,7 @@ it('prunes the links once per scrape and reads them with one command', function 
 
     $families = batchesCollectorTestCollect();
 
-    expect($commands->names(RedisClients::STORAGE))->toBe(['ZRANGEBYSCORE', 'ZREMRANGEBYSCORE'])
+    expect($commands->names(RedisClients::STORAGE))->toBe(['ZRANGE', 'ZREMRANGEBYSCORE'])
         ->and(app(RedisClients::class)->storage()->zcard((new Keys)->batchLinks()))->toBe(1)
         ->and(array_keys($families['queue_batch_info']))->toBe(['batch="import",queue="default",connection="redis"']);
 });

@@ -17,6 +17,7 @@ use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Queue\Events\JobQueued;
 use Illuminate\Redis\Connections\Connection;
+use Illuminate\Redis\Connections\PhpRedisConnection;
 use JsonException;
 use Throwable;
 
@@ -32,13 +33,15 @@ use Throwable;
  *   {@see self::MEMO_LIMIT} batch ids) through {@see BatchKind::resolve()}; the job class is the payload
  *   `displayName` through {@see JobClassLabel::normalize()}, like every other `job_class` label.
  * - A link is written at most once per {@see self::REFRESH_SECONDS} per process, so a batch of 10 000 jobs of one
- *   class costs one `ZADD`.
+ *   class costs one `ZADD`. The first write of each hour also prunes the links older than 7 days, so the set stays
+ *   bounded when the batches collector does not run (auto mode without a batch table, DynamoDB batching).
  * - Writes go through the shared {@see CircuitBreaker}. While it is open the write is skipped without being counted
  *   as a dropped attempt: a link is refreshed by the next dispatch anyway.
  * - Nothing ever reaches the dispatching code: every failure is logged (throttled) and swallowed.
  *
- * **Reading**: links seen during the last {@see self::TTL_SECONDS} (7 days). The batches collector removes older
- * ones once per scrape ({@see self::prune()}); reads ignore them either way. Reads use no breaker; they fail visibly.
+ * **Reading**: links seen during the last {@see self::TTL_SECONDS} (7 days), with one `ZRANGE`. The batches collector
+ * also removes older ones once per scrape ({@see self::prune()}); reads ignore them either way. Reads use no breaker;
+ * they fail visibly.
  *
  * @internal
  */
@@ -68,6 +71,11 @@ final class BatchLinks
      * @var array<string, int> member => Unix seconds of the last write
      */
     private array $written = [];
+
+    /**
+     * Unix seconds of this process's last prune on the write path.
+     */
+    private ?int $prunedAt = null;
 
     private readonly Container $container;
 
@@ -122,8 +130,14 @@ final class BatchLinks
 
             $key = $this->keys()->batchLinks();
 
-            $write = function () use ($key, $now, $member): void {
-                $this->storage()->zadd($key, $now, $member);
+            $prune = $this->prunedAt === null || $now - $this->prunedAt >= self::REFRESH_SECONDS;
+            $write = function () use ($key, $now, $member, $prune): void {
+                $storage = $this->storage();
+                $storage->zadd($key, $now, $member);
+
+                if ($prune) {
+                    $storage->command('zremrangebyscore', [$key, '-inf', '('.($now - self::TTL_SECONDS)]);
+                }
             };
 
             if ($breaker->attempt('batch_links', $write)) {
@@ -132,6 +146,7 @@ final class BatchLinks
                 }
 
                 $this->written[$member] = $now;
+                $this->prunedAt = $prune ? $now : $this->prunedAt;
             }
         } catch (Throwable $e) {
             try {
@@ -185,25 +200,23 @@ final class BatchLinks
     }
 
     /**
-     * Links seen since `$now - 7 days` with the time they were last seen, sorted by link. One `ZRANGEBYSCORE`.
+     * Links seen since `$now - 7 days` with the time they were last seen, sorted by link. One `ZRANGE ... WITHSCORES`
+     * of the whole set, which the pruning keeps to about 7 days of links.
      *
      * @return list<array{link: BatchLink, seenAt: int}>
      */
     public function recent(CarbonImmutable $now): array
     {
-        $reply = $this->storage()->zrangebyscore(
-            $this->keys()->batchLinks(),
-            (string) ($now->getTimestamp() - self::TTL_SECONDS),
-            '+inf',
-            ['withscores' => true],
-        );
-
+        $storage = $this->storage();
+        // phpredis takes the WITHSCORES flag as a bool, predis as the modifier; both answer member => score.
+        $reply = $storage->command('zrange', [$this->keys()->batchLinks(), 0, -1, $storage instanceof PhpRedisConnection ? true : 'WITHSCORES']);
+        $since = $now->getTimestamp() - self::TTL_SECONDS;
         $entries = [];
 
         foreach (is_array($reply) ? $reply : [] as $member => $score) {
             $parts = Keys::splitField((string) $member);
 
-            if (count($parts) !== 4 || ! is_numeric($score)) {
+            if (count($parts) !== 4 || ! is_numeric($score) || (int) $score < $since) {
                 continue;
             }
 

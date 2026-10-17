@@ -90,14 +90,32 @@ describe('writing', function (): void {
         $this->travel(BatchLinks::REFRESH_SECONDS - 1)->seconds();
         Bus::batch([new BatchedJob])->name('Import 3')->onConnection('redis')->dispatch();
 
-        expect($commands->names(RedisClients::STORAGE))->toBe(['ZADD'])
+        // The first write of the hour also prunes.
+        expect($commands->names(RedisClients::STORAGE))->toBe(['ZADD', 'ZREMRANGEBYSCORE'])
             ->and(batchLinksTestStored())->toBe([Keys::field('Import', 'redis', 'default', BatchedJob::class) => BATCH_LINKS_TEST_NOW]);
 
         $this->travel(1)->seconds();
         Bus::batch([new BatchedJob])->name('Import 4')->onConnection('redis')->dispatch();
 
-        expect($commands->names(RedisClients::STORAGE))->toBe(['ZADD', 'ZADD'])
+        expect($commands->names(RedisClients::STORAGE))->toBe(['ZADD', 'ZREMRANGEBYSCORE', 'ZADD', 'ZREMRANGEBYSCORE'])
             ->and(batchLinksTestStored())->toBe([Keys::field('Import', 'redis', 'default', BatchedJob::class) => BATCH_LINKS_TEST_NOW + BatchLinks::REFRESH_SECONDS]);
+    });
+
+    it('prunes links older than 7 days with the first write of an hour', function (): void {
+        // Keeps the set bounded when the batches collector never runs (auto mode with DynamoDB batching).
+        batchLinksTestSeed(Keys::field('stale', 'redis', 'default', 'X'), BATCH_LINKS_TEST_NOW - BatchLinks::TTL_SECONDS - 1);
+        $batch = Bus::batch([])->name('Import')->onConnection('redis')->dispatch();
+        $commands = RedisCommands::start(app());
+        $links = app(BatchLinks::class);
+
+        $links->onQueued(batchLinksTestEvent($batch->id, queue: 'a'));
+        $links->onQueued(batchLinksTestEvent($batch->id, queue: 'b'));
+
+        expect($commands->names(RedisClients::STORAGE))->toBe(['ZADD', 'ZREMRANGEBYSCORE', 'ZADD'])
+            ->and(array_keys(batchLinksTestStored()))->toBe([
+                Keys::field('Import', 'redis', 'a', BatchedJob::class),
+                Keys::field('Import', 'redis', 'b', BatchedJob::class),
+            ]);
     });
 
     it('looks a batch up once per batch id', function (): void {
@@ -277,7 +295,7 @@ describe('reading', function (): void {
 
         app(BatchLinks::class)->forKinds(['import']);
 
-        expect($commands->names(RedisClients::STORAGE))->toBe(['ZRANGEBYSCORE']);
+        expect($commands->names(RedisClients::STORAGE))->toBe(['ZRANGE']);
     });
 
     it('prunes links older than 7 days', function (): void {
