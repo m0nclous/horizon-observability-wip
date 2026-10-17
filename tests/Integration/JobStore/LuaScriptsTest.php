@@ -137,10 +137,15 @@ it('finds the fields of a large payload in Laravel\'s order, in cjson\'s and in 
     $middle = '{"data":{"command":"'.str_repeat('x', 9000).'"},"uuid":"u-middle","displayName":"App\\\\Jobs\\\\Big","attempts":4,"pushedAt":"1699999998","tail":"'.str_repeat('y', 9000).'"}';
 
     // cjson writes the keys in the order of the server's Lua tables (Redis 7.4 puts "data" before "uuid", Valkey 8
-    // does not); $middle has the large field before the identifiers on every server.
+    // does not); $middle has every identifier outside both 4096-byte windows on every server, so the whole-payload
+    // fallback of locate() is exercised wherever $reordered happens to keep Laravel's order.
     expect(strlen($fresh))->toBeGreaterThan(2 * 4096)
-        ->and(json_decode($reordered, true))->toEqual(json_decode(str_replace('u-fresh', 'u-cjson', $fresh), true))
-        ->and(strpos($middle, '"data"'))->toBeLessThan(strpos($middle, '"uuid"'));
+        ->and(json_decode($reordered, true))->toEqual(json_decode(str_replace('u-fresh', 'u-cjson', $fresh), true));
+
+    foreach (['"uuid":', '"displayName":', '"attempts":', '"pushedAt":'] as $needle) {
+        expect(strpos($middle, $needle))->toBeGreaterThan(4096)
+            ->and(strlen($middle) - (int) strpos($middle, $needle))->toBeGreaterThan(4096);
+    }
 
     QueuePayloads::delay($redis, 'default', $fresh, 1700000001.0);
     QueuePayloads::delay($redis, 'default', $reordered, 1700000002.0);
