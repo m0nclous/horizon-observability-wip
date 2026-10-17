@@ -6,10 +6,13 @@ use Carbon\CarbonImmutable;
 use DF\HorizonObservability\Collectors\HorizonCollector;
 use DF\HorizonObservability\Collectors\QueueCollector;
 use DF\HorizonObservability\Config\Config;
+use DF\HorizonObservability\Horizon\Topology;
 use DF\HorizonObservability\Metrics\Labels;
 use DF\HorizonObservability\Metrics\Metric;
 use DF\HorizonObservability\Metrics\ScrapeContext;
+use DF\HorizonObservability\Queues\QueueInspector;
 use DF\HorizonObservability\Queues\UnsupportedTopology;
+use DF\HorizonObservability\Redis\Lua;
 use DF\HorizonObservability\Redis\RedisClients;
 use DF\HorizonObservability\Redis\RedisScriptFailed;
 use DF\HorizonObservability\Tests\Integration\Queues\Support\CollectedSamples;
@@ -176,11 +179,13 @@ it('skips the queues of connections that do not use redis', function (): void {
         ->and($samples->failures)->toBe([]);
 });
 
-it('reports queues on a Redis Cluster without a hash tag as an unsupported topology', function (): void {
+it('reports queues on a Redis Cluster without a hash tag as an unsupported topology on an older framework', function (): void {
     config()->set('database.redis.client', 'predis');
     config()->set('database.redis.clusters.queues', [['host' => '127.0.0.1', 'port' => 1]]);
     config()->set('queue.connections.redis.connection', 'queues');
     app()->forgetInstance(RedisClients::class);
+    // A framework without first-class cluster queues keeps "default" under queues:default, which spans three slots.
+    app()->bind(QueueInspector::class, static fn (): QueueInspector => new QueueInspector(app(RedisClients::class), app(Lua::class), app(Topology::class), app(Config::class), false));
 
     $samples = queueCollectorRun();
 

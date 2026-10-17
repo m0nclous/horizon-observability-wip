@@ -11,6 +11,7 @@ use DF\HorizonObservability\Horizon\Topology;
 use DF\HorizonObservability\Redis\Lua;
 use DF\HorizonObservability\Redis\RedisClients;
 use DF\HorizonObservability\Redis\RedisScriptFailed;
+use Illuminate\Queue\RedisQueue;
 use Illuminate\Redis\Connections\Connection;
 use InvalidArgumentException;
 use Predis\ClientInterface as PredisClient;
@@ -24,9 +25,12 @@ use UnexpectedValueException;
  *
  * - **Connection.** The queue connection's Redis connection comes from {@see Topology::redisConnection()} and is read
  *   through {@see RedisClients::reader()} (`redis.scrape_timeout`, never persistent); the keys are Laravel's
- *   `queues:<q>`, `:reserved` and `:delayed`, which the client prefixes like the app's own queue client does.
- * - **Cluster.** On a Redis Cluster the three keys share a slot only through a hash tag in the queue name (or the
- *   prefix); without one the queue fails with {@see UnsupportedTopology} before any command is sent.
+ *   ({@see self::queueKey()}) `queues:<q>`, `:reserved` and `:delayed`, which the client prefixes like the app's own
+ *   queue client does.
+ * - **Cluster.** On a Redis Cluster the three keys share a slot only through a hash tag. A framework with
+ *   first-class cluster queues (`RedisQueue::getQueueRedisKey()`, Laravel 13) stores a queue without one under
+ *   `queues:{<q>}`, and so does this reader. On an older framework the queue name (or the prefix) must carry the tag;
+ *   without one the queue fails with {@see UnsupportedTopology} before any command is sent.
  * - **Full mode** ({@see self::inspect()}, the queues collector): counts, the class breakdown of the first
  *   `queue_scan_limit` head payloads (at most {@see self::MAX_BYTES}), the reserved breakdown of at most
  *   {@see self::RESERVED_SCAN_LIMIT} payloads, and the readiness of the first first-attempt payload (C8).
@@ -64,12 +68,36 @@ final readonly class QueueInspector
      */
     public const LIVE_MAX_BYTES = 1048576;
 
+    /**
+     * Whether an untagged queue lives under `queues:{<q>}` on a cluster connection, as Laravel's RedisQueue keeps it.
+     */
+    private bool $clusterHashTags;
+
+    /**
+     * @param  bool|null  $clusterHashTags  whether the framework's RedisQueue wraps an untagged queue name in a hash tag
+     *                                      on a cluster connection; null = detect it (`RedisQueue::getQueueRedisKey()`,
+     *                                      the check Horizon makes too)
+     */
     public function __construct(
         private RedisClients $clients,
         private Lua $lua,
         private Topology $topology,
         private Config $config,
-    ) {}
+        ?bool $clusterHashTags = null,
+    ) {
+        $this->clusterHashTags = $clusterHashTags ?? self::tagsClusterQueues(RedisQueue::class);
+    }
+
+    /**
+     * Whether a RedisQueue class keeps an untagged queue under `queues:{<q>}` on a cluster connection: it has
+     * `getQueueRedisKey()` (first-class Redis Cluster queues, Laravel 13).
+     *
+     * @param  class-string  $class
+     */
+    public static function tagsClusterQueues(string $class): bool
+    {
+        return method_exists($class, 'getQueueRedisKey');
+    }
 
     /**
      * Whether the queues of a queue connection can be inspected: it is configured and uses the `redis` driver.
@@ -106,17 +134,25 @@ final readonly class QueueInspector
     }
 
     /**
+     * The key of a queue's ready list as Laravel's RedisQueue builds it, without the connection prefix (the reserved
+     * and delayed sets append `:reserved` and `:delayed`): `queues:<q>`, or `queues:{<q>}` on a Redis Cluster
+     * connection when the framework adds the hash tag itself and the name has none.
+     *
+     * @throws InvalidArgumentException when the queue connection is not a configured `redis` connection
+     */
+    public function queueKey(string $connection, string $queue): string
+    {
+        return $this->key($this->redisConnection($connection), $queue);
+    }
+
+    /**
      * @param  'full'|'live'  $mode
      */
     private function read(string $connection, string $queue, CarbonImmutable $now, string $mode, int $reservedScanLimit, int $maxBytes): QueueSnapshot
     {
-        $redisConnection = $this->topology->redisConnection($connection) ?? throw new InvalidArgumentException(sprintf(
-            'The queue connection "%s" is not configured or does not use the redis driver.',
-            $connection,
-        ));
-
+        $redisConnection = $this->redisConnection($connection);
         $reader = $this->clients->reader($redisConnection);
-        $key = 'queues:'.$queue;
+        $key = $this->key($redisConnection, $queue);
 
         if ($this->clients->isCluster($redisConnection) && ! $this->hasHashTag($this->prefix($reader).$key)) {
             throw UnsupportedTopology::clusterQueue($connection, $queue, $redisConnection);
@@ -131,6 +167,28 @@ final readonly class QueueInspector
         ]);
 
         return $this->snapshot($connection, $queue, $reply);
+    }
+
+    /**
+     * @throws InvalidArgumentException when the queue connection is not a configured `redis` connection
+     */
+    private function redisConnection(string $connection): string
+    {
+        return $this->topology->redisConnection($connection) ?? throw new InvalidArgumentException(sprintf(
+            'The queue connection "%s" is not configured or does not use the redis driver.',
+            $connection,
+        ));
+    }
+
+    /**
+     * `RedisQueue::getQueueRedisKey()`: the hash tag is added on a cluster connection when the framework does so and
+     * the queue name has none ({@see self::hasHashTag()} is Laravel's `Connection::hasHashTag()` rule).
+     */
+    private function key(string $redisConnection, string $queue): string
+    {
+        return $this->clusterHashTags && $this->clients->isCluster($redisConnection) && ! $this->hasHashTag($queue)
+            ? 'queues:{'.$queue.'}'
+            : 'queues:'.$queue;
     }
 
     private function snapshot(string $connection, string $queue, mixed $reply): QueueSnapshot
@@ -246,9 +304,10 @@ final readonly class QueueInspector
     }
 
     /**
-     * Whether a key that starts with $start and continues without braces is hashed by a tag inside $start: the text
-     * between the first `{` and the first `}` after it, when not empty (the Redis Cluster rule). The three queue keys
-     * differ only after `queues:<q>`, so they share a slot exactly when this holds.
+     * Whether a text holds a Redis Cluster hash tag: something between the first `{` and the first `}` after it
+     * (Laravel's `Connection::hasHashTag()`). For the start of a key that continues without braces it tells whether
+     * the key is hashed by that tag; the three queue keys differ only after `queues:<q>`, so they share a slot exactly
+     * when this holds for the prefixed `queues:<q>`.
      */
     private function hasHashTag(string $start): bool
     {
