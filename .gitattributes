@@ -26,3 +26,4 @@
 /pint.json export-ignore
 /rector.php export-ignore
 /testbench.yaml export-ignore
+/.claude export-ignore
