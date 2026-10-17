@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use SensitiveParameter;
 use Symfony\Component\HttpFoundation\IpUtils;
 use Throwable;
+use WeakMap;
 
 /**
  * Access decision of the endpoints (Arch Q2.3, C4). It runs before any Redis or DB work.
@@ -31,12 +32,20 @@ use Throwable;
  *    - With tokens and IPs, both must pass. With neither: allowed only in the `local` environment, like Horizon's
  *      default gate; 403 ("locked") everywhere else.
  *
- * The reason of a denial never reaches the response body; it goes to one throttled warning per endpoint and reason.
- * Tokens are never logged.
+ * The reason of a denial never reaches the response body; it goes to one info line per endpoint and reason. Tokens
+ * are never logged.
+ *
+ * **A denial costs no I/O** (Arch Q2.4, 8.4): no cache, Redis or DB call, so an unauthenticated flood costs the
+ * string comparisons and nothing else. The denial lines are therefore throttled in-process only, like the in-process
+ * half of {@see FailureReporter}: once per {@see FailureReporter::THROTTLE_SECONDS} per endpoint and reason for as long
+ * as the application's reporter lives. {@see FailureReporter::warnOnce()} is not used, because its cross-process
+ * throttle calls `Cache::add()` on the default store (a SELECT and an INSERT with Laravel's default `database`
+ * store). Under PHP-FPM, where nothing outlives a request, that means one info line per denied request, like the
+ * web server's access log.
  *
  * @internal
  */
-final readonly class AccessPolicy
+final class AccessPolicy
 {
     /**
      * Endpoint names of `Authorize:<endpoint>`: `metrics`, and `api` for the job lists and `/live`.
@@ -50,11 +59,29 @@ final readonly class AccessPolicy
 
     private const STATUS = ['endpoint' => 403, 'callback' => 403, 'locked' => 403, 'ip' => 403, 'token_missing' => 401, 'token_invalid' => 401];
 
+    /**
+     * Denial lines already logged: reporter (one per application) => key => monotonic seconds of the last line.
+     *
+     * @var WeakMap<FailureReporter, array<string, float>>|null
+     */
+    private static ?WeakMap $logged = null;
+
+    /**
+     * @var Closure(): float
+     */
+    private readonly Closure $clock;
+
+    /**
+     * @param  (Closure(): float)|null  $clock  monotonic seconds for the log throttle, for tests; default `hrtime()`
+     */
     public function __construct(
-        private Config $config,
-        private Application $app,
-        private FailureReporter $reporter,
-    ) {}
+        private readonly Config $config,
+        private readonly Application $app,
+        private readonly FailureReporter $reporter,
+        ?Closure $clock = null,
+    ) {
+        $this->clock = $clock ?? static fn (): float => hrtime(true) / 1e9;
+    }
 
     /**
      * @param  string  $endpoint  `metrics`, or `api` for the job lists and `/live`; anything else is denied (403)
@@ -64,7 +91,7 @@ final readonly class AccessPolicy
         [$decision, $reason] = $this->evaluate($request, $endpoint);
 
         if ($reason !== null) {
-            $this->reporter->warnOnce('access.'.$endpoint.'.'.$reason, sprintf(
+            $this->note('access.'.$endpoint.'.'.$reason, sprintf(
                 '%s request denied (%d): %s.',
                 $endpoint,
                 self::STATUS[$reason],
@@ -108,7 +135,7 @@ final readonly class AccessPolicy
             try {
                 $allowed = $callback($request) === true;
             } catch (Throwable $e) {
-                $this->reporter->report('access.callback', $e);
+                $this->note('access.callback', 'access.callback failed: '.FailureReporter::describe($e), ['exception' => $e]);
 
                 return [AccessDecision::Forbidden, null];
             }
@@ -140,6 +167,27 @@ final readonly class AccessPolicy
         }
 
         return [AccessDecision::Allowed, null];
+    }
+
+    /**
+     * One info line per key and throttle window for the lifetime of the reporter; touches neither the cache nor
+     * anything else outside the process (see the class comment).
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function note(string $key, string $message, array $context = []): void
+    {
+        $now = ($this->clock)();
+        $logged = self::$logged ??= new WeakMap;
+        $seen = $logged[$this->reporter] ?? [];
+
+        if (isset($seen[$key]) && $now - $seen[$key] < FailureReporter::THROTTLE_SECONDS) {
+            return;
+        }
+
+        $seen[$key] = $now;
+        $logged[$this->reporter] = $seen;
+        $this->reporter->info($message, $context);
     }
 
     /**

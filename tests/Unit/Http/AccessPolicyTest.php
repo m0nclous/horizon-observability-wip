@@ -8,10 +8,13 @@ use DF\HorizonObservability\Http\AccessDecision;
 use DF\HorizonObservability\Http\AccessPolicy;
 use DF\HorizonObservability\Support\FailureReporter;
 use DF\HorizonObservability\Tests\Support\LogRecorder;
+use DF\HorizonObservability\Tests\Support\RedisCommands;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Http\Request;
 
 /*
-| Arch Q2.3 and 8.4: the full decision table of the access policy and its mode() for about and check (C4).
+| Arch Q2.3 and 8.4: the full decision table of the access policy and its mode() for about and check (C4). A decision
+| costs no I/O (Q2.4): the denial lines are throttled in-process, never through the cache.
 */
 
 const ACCESS_POLICY_TOKEN = 'metrics-token-0123456789abcdef';
@@ -21,7 +24,7 @@ const ACCESS_POLICY_API_TOKEN = 'grafana-token-0123456789abcdef';
 /**
  * @param  array<string, mixed>  $config  horizon-observability.* values
  */
-function accessPolicyFor(array $config = [], string $environment = 'production'): AccessPolicy
+function accessPolicyFor(array $config = [], string $environment = 'production', ?Closure $clock = null): AccessPolicy
 {
     app()['env'] = $environment;
 
@@ -29,7 +32,7 @@ function accessPolicyFor(array $config = [], string $environment = 'production')
         config()->set('horizon-observability.'.$key, $value);
     }
 
-    return new AccessPolicy(Config::fromRepository(config()), app(), app(FailureReporter::class));
+    return new AccessPolicy(Config::fromRepository(config()), app(), app(FailureReporter::class), $clock);
 }
 
 function accessPolicyRequest(?string $authorization = null, string $ip = '10.0.0.5', string $uri = '/horizon/observability/metrics'): Request
@@ -143,10 +146,14 @@ it('allows through the callback where the built-in policy would lock', function 
 it('denies when the callback throws, and logs it', function (): void {
     $log = new LogRecorder;
     $this->app->instance('log', $log);
-    HorizonObservability::auth(static fn (): bool => throw new RuntimeException('gate exploded'));
+    $exception = new RuntimeException('gate exploded');
+    HorizonObservability::auth(static fn (): bool => throw $exception);
+    $policy = accessPolicyFor();
 
-    expect(accessPolicyFor()->decide(accessPolicyRequest(), 'metrics'))->toBe(AccessDecision::Forbidden)
-        ->and($log->messages('warning'))->toBe(['horizon-observability: access.callback failed: RuntimeException: gate exploded']);
+    expect($policy->decide(accessPolicyRequest(), 'metrics'))->toBe(AccessDecision::Forbidden)
+        ->and($policy->decide(accessPolicyRequest(), 'api'))->toBe(AccessDecision::Forbidden)
+        ->and($log->messages('info'))->toBe(['horizon-observability: access.callback failed: RuntimeException: gate exploded'])
+        ->and($log->records[0]['context'])->toBe(['exception' => $exception]);
 });
 
 it('denies an unknown endpoint', function (): void {
@@ -154,7 +161,7 @@ it('denies an unknown endpoint', function (): void {
         ->and(accessPolicyFor(['token' => ACCESS_POLICY_TOKEN])->decide(accessPolicyRequest(accessPolicyBearer(ACCESS_POLICY_TOKEN)), ''))->toBe(AccessDecision::Forbidden);
 });
 
-it('logs one throttled warning per endpoint and reason, without the token', function (): void {
+it('logs one line per endpoint and reason, without the token', function (): void {
     $log = new LogRecorder;
     $this->app->instance('log', $log);
     $policy = accessPolicyFor(['token' => ACCESS_POLICY_TOKEN, 'api_token' => ACCESS_POLICY_API_TOKEN]);
@@ -166,15 +173,83 @@ it('logs one throttled warning per endpoint and reason, without the token', func
         $policy->decide(accessPolicyRequest(accessPolicyBearer(ACCESS_POLICY_TOKEN)), 'metrics');
     }
 
-    expect($log->messages('warning'))->toBe([
+    expect($log->messages())->toBe([
         'horizon-observability: metrics request denied (401): the request has no "Authorization: Bearer" token; token is required.',
         'horizon-observability: metrics request denied (401): the bearer token matches none of the valid tokens in token.',
         'horizon-observability: api request denied (401): the bearer token matches none of the valid tokens in api_token.',
     ])
+        ->and($log->messages('info'))->toHaveCount(3)
         ->and($log->records[0]['context'])->toBe(['ip' => '10.0.0.5', 'path' => '/horizon/observability/metrics'])
         ->and(json_encode($log->records))->not->toContain(ACCESS_POLICY_TOKEN)
         ->and(json_encode($log->records))->not->toContain('wrong-token');
 });
+
+it('logs a denial reason again after the throttle window', function (): void {
+    $log = new LogRecorder;
+    $this->app->instance('log', $log);
+    $now = 50.0;
+    $policy = accessPolicyFor(['token' => ACCESS_POLICY_TOKEN], 'production', static function () use (&$now): float {
+        return $now;
+    });
+
+    $policy->decide(accessPolicyRequest(), 'metrics');
+    $now += FailureReporter::THROTTLE_SECONDS - 1;
+    $policy->decide(accessPolicyRequest(), 'metrics');
+    $now += 1;
+    $policy->decide(accessPolicyRequest(), 'metrics');
+
+    expect($log->messages())->toHaveCount(2);
+});
+
+it('throttles the denial lines per application, not per policy instance', function (): void {
+    $log = new LogRecorder;
+    $this->app->instance('log', $log);
+
+    // Authorize gets a new policy for every request; the application's reporter carries the throttle.
+    foreach (range(1, 3) as $ignored) {
+        accessPolicyFor(['token' => ACCESS_POLICY_TOKEN])->decide(accessPolicyRequest(), 'metrics');
+    }
+
+    $this->app->forgetInstance(FailureReporter::class);
+    accessPolicyFor(['token' => ACCESS_POLICY_TOKEN])->decide(accessPolicyRequest(), 'metrics');
+
+    expect($log->messages())->toHaveCount(2);
+});
+
+it('decides without touching the cache, the database or Redis', function (array $config, ?Closure $callback, string $environment, ?string $authorization): void {
+    $log = new LogRecorder;
+    $this->app->instance('log', $log);
+    $calls = [];
+    $this->app['events']->listen('Illuminate\\Cache\\Events\\*', static function (string $event) use (&$calls): void {
+        $calls[] = $event;
+    });
+    $this->app['events']->listen(QueryExecuted::class, static function () use (&$calls): void {
+        $calls[] = QueryExecuted::class;
+    });
+    $redis = RedisCommands::start($this->app);
+
+    if ($callback instanceof Closure) {
+        HorizonObservability::auth($callback);
+    }
+
+    $policy = accessPolicyFor($config, $environment);
+
+    foreach (['metrics', 'api', 'jobs'] as $endpoint) {
+        $policy->decide(accessPolicyRequest($authorization, '203.0.113.7'), $endpoint);
+    }
+
+    expect($calls)->toBe([])
+        ->and($redis->count())->toBe(0)
+        ->and($log->messages())->not->toBe([]);
+})->with([
+    'locked' => [[], null, 'production', null],
+    'token missing' => [['token' => ACCESS_POLICY_TOKEN], null, 'production', null],
+    'token invalid' => [['token' => ACCESS_POLICY_TOKEN, 'api_token' => ACCESS_POLICY_API_TOKEN], null, 'production', accessPolicyBearer('wrong-token-0123456789abcdef')],
+    'no valid token' => [['token' => 'short'], null, 'local', accessPolicyBearer('short')],
+    'IP' => [['allowed_ips' => '10.0.0.0/8', 'token' => ACCESS_POLICY_TOKEN], null, 'production', accessPolicyBearer(ACCESS_POLICY_TOKEN)],
+    'callback false' => [[], static fn (): bool => false, 'production', null],
+    'callback throws' => [[], static fn (): bool => throw new RuntimeException('gate exploded'), 'production', null],
+]);
 
 it('names the reason of every denial in the log', function (array $config, string $environment, ?Closure $callback, string $ip, string $message): void {
     $log = new LogRecorder;
@@ -186,7 +261,7 @@ it('names the reason of every denial in the log', function (array $config, strin
 
     accessPolicyFor($config, $environment)->decide(accessPolicyRequest(null, $ip), 'metrics');
 
-    expect($log->messages('warning'))->toBe(['horizon-observability: metrics request denied (403): '.$message.'.']);
+    expect($log->messages('info'))->toBe(['horizon-observability: metrics request denied (403): '.$message.'.']);
 })->with([
     'locked' => [[], 'production', null, '10.0.0.5', 'no token, IP allow-list or auth callback is configured outside the local environment; set HORIZON_OBSERVABILITY_TOKEN'],
     'ip' => [['allowed_ips' => '192.168.0.0/16'], 'production', null, '10.0.0.5', 'the client IP is not in allowed_ips; behind a proxy, check the TrustProxies configuration'],

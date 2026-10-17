@@ -9,9 +9,10 @@ use DF\HorizonObservability\Http\Middleware\Authorize;
 use DF\HorizonObservability\Http\Middleware\ForceJson;
 use DF\HorizonObservability\Metrics\Exporter;
 use DF\HorizonObservability\Tests\Support\Apps;
+use DF\HorizonObservability\Tests\Support\RedisCommands;
 use DF\HorizonObservability\Tests\Unit\Metrics\Support\FakeCollector;
-use Illuminate\Cache\Events\KeyWritten;
 use Illuminate\Contracts\Http\Kernel;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,7 +24,7 @@ use Symfony\Component\HttpFoundation\Response;
 | C4 (Arch Q2.3, Appendix H): the auth matrix over HTTP. Locked by default outside local, 401 with a Bearer
 | challenge for a missing or wrong token, rotation, the separate api_token, IPs alone and with tokens, the callback;
 | 401/403 bodies as text on /metrics and JSON on the job lists and /live; nothing behind Authorize runs for a
-| denied request, not even the configured throttle.
+| denied request, not even the configured throttle, and the denial does no cache, database or Redis work.
 |
 | Denials use the package routes. Allowed api requests use a test route with the same middleware, so the matrix does
 | not depend on the job-list and live controllers (T06, T12).
@@ -64,10 +65,21 @@ function authorizationTestHeader(string $token): array
     return ['Authorization' => 'Bearer '.$token];
 }
 
+/**
+ * Collectors that collect nothing, so allowed scrapes do not depend on the real collectors (T04, T05, T07, T08).
+ *
+ * @return array<string, FakeCollector>
+ */
+function authorizationTestQuietCollectors(): array
+{
+    return array_map(static fn (string $id): FakeCollector => new FakeCollector($id, static fn (): array => []), array_combine(Config::COLLECTORS, Config::COLLECTORS));
+}
+
 beforeEach(function (): void {
     // An api endpoint behind the package middleware whose controller needs nothing.
     Route::get(AUTHORIZATION_TEST_API_ROUTE, static fn (): JsonResponse => new JsonResponse(['ok' => true]))
         ->middleware([ForceJson::class, Authorize::class.':api']);
+    $this->app->instance(Exporter::class, new Exporter($this->app, null, authorizationTestQuietCollectors()));
 });
 
 it('is open in local when nothing is configured', function (): void {
@@ -225,45 +237,72 @@ it('runs no collector for a denied request', function (): void {
     expect($collector->runs)->toBe(1);
 });
 
-it('causes no cache write by the configured middleware when unauthenticated', function (): void {
+it('causes no cache write when unauthenticated', function (array $config, ?Closure $callback, string $ip, int $status): void {
     $result = Apps::inspect(
         [HorizonServiceProvider::class, HorizonObservabilityServiceProvider::class],
         [
             'cache.default' => 'array',
             'horizon-observability.token' => AUTHORIZATION_TEST_TOKEN,
             'horizon-observability.middleware' => ['throttle:2,1'],
+            ...$config,
         ],
-        static function (Application $app): array {
-            $written = [];
-            $app['events']->listen(KeyWritten::class, static function (KeyWritten $event) use (&$written): void {
-                $written[] = $event->key;
+        static function (Application $app) use ($callback, $ip): array {
+            $app->instance(Exporter::class, new Exporter($app, null, authorizationTestQuietCollectors()));
+
+            if ($callback instanceof Closure) {
+                HorizonObservability::auth($callback);
+            }
+
+            // Every cache operation (the array store fires an event for each), every query and every Redis command.
+            $io = [];
+            $app['events']->listen('Illuminate\\Cache\\Events\\*', static function (string $event) use (&$io): void {
+                $io[] = $event;
             });
+            $app['events']->listen(QueryExecuted::class, static function () use (&$io): void {
+                $io[] = QueryExecuted::class;
+            });
+            $redis = RedisCommands::start($app);
             $kernel = $app->make(Kernel::class);
-            $send = static function (?string $token) use ($kernel): int {
-                $server = ['REMOTE_ADDR' => '10.0.0.5'] + ($token === null ? [] : ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
-                $request = Request::create('/horizon/observability/metrics', 'GET', [], [], [], $server);
+            $send = static function (string $path, ?string $token, string $ip) use ($kernel): int {
+                $server = ['REMOTE_ADDR' => $ip] + ($token === null ? [] : ['HTTP_AUTHORIZATION' => 'Bearer '.$token]);
+                $request = Request::create($path, 'GET', [], [], [], $server);
                 $response = $kernel->handle($request);
                 $kernel->terminate($request, $response);
 
                 return $response->getStatusCode();
             };
 
-            $denied = [$send(null), $send('wrong-token-0123456789abcdef'), $send(null), $send(null)];
-            $writtenWhileDenied = $written;
-            $allowed = [$send(AUTHORIZATION_TEST_TOKEN), $send(AUTHORIZATION_TEST_TOKEN), $send(AUTHORIZATION_TEST_TOKEN)];
+            $denied = [];
 
-            return [$denied, $writtenWhileDenied, $allowed, $written];
+            foreach (['/horizon/observability/metrics', '/horizon/observability/jobs/pending', '/horizon/observability/live'] as $path) {
+                foreach ([null, 'wrong-token-0123456789abcdef', null, null] as $token) {
+                    $denied[] = $send($path, $token, $ip);
+                }
+            }
+
+            $ioWhileDenied = [$io, $redis->count()];
+            $allowed = array_map(static fn (): int => $send('/horizon/observability/metrics', AUTHORIZATION_TEST_TOKEN, '10.0.0.5'), range(1, 3));
+
+            return [$denied, $ioWhileDenied, $allowed, $io];
         },
     );
 
-    [$denied, $writtenWhileDenied, $allowed, $written] = $result;
+    [$denied, [$ioWhileDenied, $redisWhileDenied], $allowed, $io] = $result;
 
-    // Four denied requests never reached the throttle (limit 2 per minute): no 429, no rate-limiter key. The only
-    // cache writes are the markers of the throttled denial log lines (one per reason).
-    expect($denied)->toBe([401, 401, 401, 401])
-        ->and(array_filter($writtenWhileDenied, static fn (string $key): bool => ! str_starts_with($key, 'horizon-observability:log:')))->toBe([])
-        ->and($writtenWhileDenied)->toHaveCount(2)
+    // Twelve denied requests never reached the throttle (limit 2 per minute), and the denial itself, including its
+    // log line, did no cache, database or Redis work (Arch Q2.4).
+    expect(array_unique($denied))->toBe([$status])
+        ->and($ioWhileDenied)->toBe([])
+        ->and($redisWhileDenied)->toBe(0);
+
+    if ($status === 401) {
         // The throttle runs after Authorize for authorised requests: the third one is limited.
-        ->and($allowed)->toBe([200, 200, Response::HTTP_TOO_MANY_REQUESTS])
-        ->and(count($written))->toBeGreaterThan(count($writtenWhileDenied));
-});
+        expect($allowed)->toBe([200, 200, Response::HTTP_TOO_MANY_REQUESTS])
+            ->and($io)->not->toBe([]);
+    }
+})->with([
+    'token missing or wrong' => [[], null, '10.0.0.5', 401],
+    'IP not allowed' => [['horizon-observability.allowed_ips' => '10.0.0.0/8'], null, '203.0.113.7', 403],
+    'locked' => [['horizon-observability.token' => null], null, '10.0.0.5', 403],
+    'callback says no' => [[], static fn (): bool => false, '10.0.0.5', 403],
+]);
