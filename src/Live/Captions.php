@@ -62,19 +62,32 @@ final class Captions
     /**
      * Pending caption: `Oldest: 17 s \u{00B7} default`, `Oldest: 3 min \u{00B7} slow` (from 120 s, rounded
      * minutes), or `Oldest: \u{2014}`
-     * when nothing waits (age 0 or unknown) or no queue is named.
+     * when nothing waits (age 0 or unknown) or no queue is named. For whole seconds; an exact age goes through
+     * {@see self::oldestExact()}, which this delegates to.
      */
     public static function oldest(?int $ageSeconds, ?string $queue): string
     {
-        if ($ageSeconds === null || $ageSeconds <= 0 || $queue === null || $queue === '') {
+        return self::oldestExact($ageSeconds === null ? null : (float) $ageSeconds, $queue);
+    }
+
+    /**
+     * Pending caption from the exact age in seconds, the way the off-mode tile builds it from the exported age
+     * (`Tiles::pending()`): the unit comes from the exact age (seconds below {@see self::SECONDS_TEXT_LIMIT}) and the
+     * number is rounded once, `round(age)` s or `round(age / 60)` min. So 119.6 s reads `Oldest: 120 s`, 149.6 s
+     * `Oldest: 2 min` and an age in (0, 0.5) s `Oldest: 0 s`; never round the age before calling this. `Oldest:
+     * \u{2014}` when nothing waits (age 0 or less, unknown or not finite) or no queue is named.
+     */
+    public static function oldestExact(?float $ageSeconds, ?string $queue): string
+    {
+        if ($ageSeconds === null || ! is_finite($ageSeconds) || $ageSeconds <= 0 || $queue === null || $queue === '') {
             return 'Oldest: '.self::DASH;
         }
 
         if ($ageSeconds < self::SECONDS_TEXT_LIMIT) {
-            return sprintf('Oldest: %d s %s %s', $ageSeconds, self::DOT, $queue);
+            return sprintf('Oldest: %.0f s %s %s', round($ageSeconds), self::DOT, $queue);
         }
 
-        return sprintf('Oldest: %d min %s %s', (int) round($ageSeconds / 60), self::DOT, $queue);
+        return sprintf('Oldest: %.0f min %s %s', round($ageSeconds / 60), self::DOT, $queue);
     }
 
     /**

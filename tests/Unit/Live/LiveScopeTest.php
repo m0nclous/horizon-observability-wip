@@ -48,11 +48,34 @@ it('scopes by the queues of the selected running supervisors', function (): void
         ->and($scope->jobFilter)->toBeFalse();
 });
 
-it('gives an empty scope for a supervisor that is not running', function (): void {
+it('gives an empty scope for a supervisor that is neither running nor configured', function (): void {
     $repository = Mockery::mock(SupervisorRepository::class);
     $repository->shouldReceive('all')->andReturn([]);
 
     expect(liveScope(['supervisors' => ['supervisor-gone']], $repository)->queues)->toBe([]);
+});
+
+it('scopes a configured supervisor that is not running by its configured queues (Horizon stopped)', function (): void {
+    $repository = Mockery::mock(SupervisorRepository::class);
+    $repository->shouldReceive('all')->andReturn([]);
+
+    $scope = liveScope(['supervisors' => ['supervisor-slow', 'supervisor-gone']], $repository);
+
+    expect($scope->supervisors)->toBe(['supervisor-slow', 'supervisor-gone'])
+        ->and($scope->queues)->toBe([['connection' => 'redis', 'queue' => 'slow'], ['connection' => 'redis', 'queue' => 'reports']])
+        ->and(liveScope(['supervisors' => ['supervisor-default'], 'queues' => ['default', 'slow']], $repository)->queueNames())->toBe(['default']);
+});
+
+it('scopes a running supervisor by the queues it runs, not by the configured ones', function (): void {
+    // A deploy changed the config (supervisor-slow: slow,reports), but the running supervisor-slow still runs slow
+    // only; supervisor-default is not running anywhere and falls back to its configured queue.
+    $repository = Mockery::mock(SupervisorRepository::class);
+    $repository->shouldReceive('all')->andReturn([
+        (object) ['name' => 'm:supervisor-slow', 'master' => 'm', 'options' => ['connection' => 'redis', 'queue' => 'slow']],
+    ]);
+
+    expect(liveScope(['supervisors' => ['supervisor-slow']], $repository)->queueNames())->toBe(['slow'])
+        ->and(liveScope(['supervisors' => ['supervisor-slow', 'supervisor-default']], $repository)->queueNames())->toBe(['default', 'slow']);
 });
 
 it('intersects with the queue filter', function (): void {

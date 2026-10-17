@@ -124,6 +124,22 @@ that the next task points to. Everything here is export-ignored and will be dele
 - Grafana screenshots with Playwright need `locale: 'en-US'` and `timezoneId: 'UTC'` (see `planning/reference/screenshot-playwright.mjs`).
 - After `composer dump-autoload`, re-run `composer build` (testbench's purge-skeleton deletes the workbench SQLite DB).
 
+## Current state (2026-10-17 16:30 UTC)
+
+The cloud session hit its usage limit during the phase C QA rounds; work resumed afterwards. Open threads:
+- **T12** (live backend, branch `wip/T12-live`): `testing`. QA round 1 rejected (4 findings, all fixed and pushed);
+  QA round 2 (spec + adversarial testers) has not run yet.
+- **T18** (CI green, branch `wip/T18-ci-green`, draft PR #20 in the wip repo, CI green there): `testing`. QA round 1
+  rejected (fixed); QA round 2 has not run yet. Merge it first: the integration branch CI stays red until it lands.
+- **T13** (Grafana, branch `wip/T13-grafana`): `in progress`. WP8B delivered; QA round 1 rejected it (see its QA line in
+  TASKS.md). Next: fix the round 1 findings, then WP8C (performance) and WP8D (live panels, committed render `--live=poll`).
+- **Board tooling** (branch `wip/board-sync`, not merged): needs owner, stop the line, PR per task, deps/WIP gates,
+  fields, flow report, screenshots. QA rounds 1-2 rejected; the round 2 fixes were interrupted and committed as
+  "WIP: interrupted board QA round 2 fixes (unverified)". Next: finish and test those fixes, then QA round 3. Until it
+  merges, `tools/board/set-status.sh` on the integration branch is the simpler first version (no gates).
+- After a container restart the `origin` remote may point to `sushi-market/horizon-observability` again; reset it with
+  `git remote set-url origin https://github.com/m0nclous/horizon-observability-wip`.
+
 ## How to resume
 
 1. `git clone https://github.com/m0nclous/horizon-observability-wip horizon-observability && cd horizon-observability &&

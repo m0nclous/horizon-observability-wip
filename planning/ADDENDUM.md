@@ -564,7 +564,7 @@ At most one build per `ttl_ms` per scope succeeds across all replicas, measured 
 | `horizon.status` | 1, 0, −1 | As `horizon_status`. Caption `Running`, `Paused` or `Stopped`; level 0 or 2. |
 | `pending.value` | jobs, or `null` | Σ ready jobs in scope (ready = `LLEN` + due delayed). `null` when a Job or Batch filter is active, or on error. |
 | `pending.oldest_seconds` / `oldest_queue` | s, int / string or `null` | The worst queue by wait ratio; 0 and `null` when nothing waits. |
-| `pending.caption` | string | `Oldest: —` when age = 0, a filter is active or on error. `Oldest: N s · Q` when age < 120 s. `Oldest: round(N/60) min · Q` otherwise. `Live unavailable` on error. |
+| `pending.caption` | string | `Oldest: —` when age = 0, a filter is active or on error. `Oldest: N s · Q` when age < 120 s. `Oldest: round(N/60) min · Q` otherwise. `Live unavailable` on error. The unit and the number come from the **exact** age, rounded once, as the off-mode tile computes them from the exported age: N = `round(age)`, the minutes `round(age / 60)`, and "age = 0" means the exact age is 0 or less, so 119.6 s reads `120 s`, 149.6 s `2 min` and 0.3 s `0 s` (`Captions::oldestExact()`, T12 QA round 3). |
 | `pending.level` / `color` | 0, 1, 2 / `green`, `yellow`, `red` | `(ratio > 1) + (ratio > 2)`; 0 and `green` when a filter is active. |
 | `delayed.value` / `due` | jobs, or `null` | Σ (delayed − due) / Σ due; `null` when a filter is active. |
 | `reserved.value` | jobs | Σ reserved, which is busy workers. |
@@ -592,8 +592,8 @@ php artisan horizon-observability:stream
 
 - **Preconditions:** `live.enabled`, `live.stream.grafana_url` and `live.stream.token` are set. Otherwise the command exits 1 with the missing env var named. Run one or more replicas per application environment under supervisord, systemd or a Kubernetes Deployment. Horizon cannot host it.
 - **Loop** (`Live\Stream\LiveStreamer`, interval `live.stream.interval`, 1.0 s):
-  1. Leader election: `SET live:leader <host:pid:rand> NX PX 5000`. Followers retry every 2 s, so failover takes at most about 7 s.
-  2. **Lease checks.** The leader renews with `lock.lua renew` (compare-and-`PEXPIRE 5000`) at the start of every tick **and before every push call**. A renew that returns 0 means the lease was lost (expired during a long tick, or Redis failed over): the process stops at once, pushes nothing more in that tick and becomes a follower. A tick can outlast the lease (a snapshot build slowed by reader timeouts, plus up to 3 s per URL push: connect 1 s + timeout 2 s); renewing before each push makes a leader that lost its lease notice it before it pushes, with one or several URLs.
+  1. Leader election: `SET live:leader <host:pid:rand> NX PX 5000`. Followers retry every 2 s whatever the interval (a follower's wait for its next tick ends when the retry is due), so failover takes at most about 7 s.
+  2. **Lease checks.** The leader renews with `lock.lua renew` (compare-and-`PEXPIRE 5000`) at the start of every tick **and before every push call**. A renew that returns 0 means the lease was lost (expired during a long tick, or Redis failed over): the process stops at once, pushes nothing more in that tick and becomes a follower. A tick can outlast the lease (a snapshot build slowed by reader timeouts, plus up to 3 s per URL push: connect 1 s + timeout 2 s); renewing before each push makes a leader that lost its lease notice it before it pushes, with one or several URLs. While it waits for the next tick the leader also renews at least every second, so the lease never lapses between ticks at any interval up to 10 s; at intervals of 1 s or less the tick's own renew always comes first and no extra command is sent (T12 QA round 3).
   3. The leader gets the snapshot for the full scope from `LiveSnapshotCache::get(LiveScope::full())`.
   4. The leader maintains the delayed window: every 5 s it runs `LPUSH live:window:delayed "<unix_ms>:<value>"` and `LTRIM 0 178`, with a 1-hour TTL. A new leader therefore continues the window.
   5. It encodes the payload with `LineProtocol::encode()` (4.7) and pushes it with `Http::timeout(2)->connectTimeout(1)->withToken($token)->withBody($lines, 'text/plain')->post("$url/api/live/push/$id")` to each configured URL.
@@ -906,7 +906,7 @@ Other render changes:
   |---|---|
   | Ring | buckets 5 s; TTL 180 s; window 60 s (12 complete buckets) |
   | Snapshot | live head scan 20 items and 1 MB per queue; fresh copy kept `cache_ttl`; stale copy kept `max(2 s, 10 × cache_ttl)`; build lock 2 s; follower wait 500 ms |
-  | Stream | leader TTL 5 s, renewed every tick and before every push; follower retry 2 s; push timeout 2 s, connect 1 s; backoff 1, 2, 4, 8, 15 s (60 s for 401/403); lease released after 5 consecutive failed ticks, then 10 s pause; delayed window 179 × 5 s + current; "unavailable" frame every 5 s at most; tile rows 1 ms apart; `null` pushed as -1 |
+  | Stream | leader TTL 5 s, renewed every tick, before every push and at least every 1 s between ticks; follower retry 2 s, independent of the interval; push timeout 2 s, connect 1 s; backoff 1, 2, 4, 8, 15 s (60 s for 401/403); lease released after 5 consecutive failed ticks, then 10 s pause; delayed window 179 × 5 s + current; "unavailable" frame every 5 s at most; tile rows 1 ms apart; `null` pushed as -1 |
   | Live panels | stream tiles `buffer` 500 ms; value mapping -1 → "—"; #24 `maxDataPoints` 100 |
   | Extremes | buckets 15 s; merge 10 buckets; TTL 300 s |
   | Dashboard | `LOOKBACK = max(10m, 10×S)`; `busy_window = max(15s, 2×S)` |
@@ -967,6 +967,7 @@ final class Captions
 {
     public const WAIT_WARN = 1.0; public const WAIT_CRIT = 2.0; public const UTIL_WARN = 70; public const UTIL_CRIT = 90;
     public static function oldest(?int $ageSeconds, ?string $queue): string;     // "Oldest: 17 s · default" | "Oldest: 3 min · slow" | "Oldest: —"
+    public static function oldestExact(?float $ageSeconds, ?string $queue): string; // the same from the exact age, rounded once: 119.6 → "Oldest: 120 s · q" (T12)
     public static function supervisor(string $name, int $maxProcesses): string;  // "default · max 3"
     public static function rpm(?int $perMinute): string;                         // "RPM: 42" | "RPM: —"
     public static function waitLevel(?float $ratio): int;                        // 0|1|2
@@ -1445,7 +1446,7 @@ All keys sit under `{horizon-observability}:v1:` on the storage connection, as i
 | `live:snapshot:<sha1(scope)>` | string | fresh snapshot JSON (schema v1); presence means fresh | `cache_ttl` (1 s) |
 | `live:snapshot-stale:<sha1(scope)>` | string | the same JSON, served while another request rebuilds | `max(2 s, 10 × cache_ttl)` |
 | `live:snapshot-lock:<sha1(scope)>` | string | lock token | 2 s |
-| `live:leader` | string | `host:pid:rand` of the stream leader | 5 s, renewed every tick and before every push |
+| `live:leader` | string | `host:pid:rand` of the stream leader | 5 s, renewed every tick, before every push and at least every second between ticks |
 | `live:window:delayed` | list | `"<unix_ms>:<value>"`, newest first, trimmed to 179 | 1 h |
 | `meta` (existing hash) | hash | new fields `live_push_at` (Unix float) and `live_push_failures` | – |
 
