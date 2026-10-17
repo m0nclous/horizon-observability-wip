@@ -91,7 +91,7 @@ function batchScopeData(): array
  */
 function batchScopeRegex(array $values): string
 {
-    $regex = '('.implode('|', array_map(static fn (string $value): string => Promql::literalRegex($value), $values)).')';
+    $regex = '('.implode('|', array_map(Promql::literalRegex(...), $values)).')';
 
     return substr(Promql::quote($regex), 1, -1);
 }

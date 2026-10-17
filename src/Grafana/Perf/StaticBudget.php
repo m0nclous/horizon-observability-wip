@@ -154,7 +154,7 @@ final readonly class StaticBudget
         $bytes = array_sum($this->panelBytes());
 
         foreach ($this->rangeVariables() as $variable) {
-            $bytes += strlen($this->interpolate(self::string($variable['query'] ?? '')));
+            $bytes += strlen($this->interpolate($this->string($variable['query'] ?? '')));
         }
 
         return $bytes;
@@ -170,11 +170,11 @@ final readonly class StaticBudget
         $bytes = [];
 
         foreach ($this->runningPanels() as $panel) {
-            $repeat = self::string($panel['repeat'] ?? '');
+            $repeat = $this->string($panel['repeat'] ?? '');
             $copy = 0;
 
-            foreach (self::list($panel['targets'] ?? []) as $target) {
-                $expr = self::string($target['expr'] ?? '');
+            foreach ($this->list($panel['targets'] ?? []) as $target) {
+                $expr = $this->string($target['expr'] ?? '');
 
                 if ($expr !== '') {
                     $copy += strlen($this->interpolate($expr, $repeat));
@@ -205,7 +205,7 @@ final readonly class StaticBudget
                 continue;
             }
 
-            $name = self::string($variable['name'] ?? '');
+            $name = $this->string($variable['name'] ?? '');
             $expected = $type === 'query' && in_array($name, self::RANGE_VARIABLES, true) ? self::ON_TIME_RANGE_CHANGE : self::ON_LOAD;
 
             if (($variable['refresh'] ?? null) !== $expected) {
@@ -267,7 +267,7 @@ final readonly class StaticBudget
 
             while (($at = strpos($expr, $test.$switch.'batch_kind:text}"', $offset)) !== false) {
                 $offset = $at + 1;
-                $operand = self::operandBefore($expr, $at);
+                $operand = $this->operandBefore($expr, $at);
 
                 // The other filter tests chained to this one are no branch
                 if ($operand !== null && ! str_starts_with($operand, $switch) && substr_count($expr, $operand) > 1) {
@@ -306,7 +306,7 @@ final readonly class StaticBudget
         $variables = [];
 
         foreach ($this->variables() as $variable) {
-            $variables[self::string($variable['name'] ?? '')] = $variable;
+            $variables[$this->string($variable['name'] ?? '')] = $variable;
         }
 
         return (string) preg_replace_callback(
@@ -343,14 +343,14 @@ final readonly class StaticBudget
     private function allValue(array $variable): string
     {
         if (($variable['type'] ?? null) === 'textbox' || ($variable['type'] ?? null) === 'constant') {
-            return self::string($variable['query'] ?? '');
+            return $this->string($variable['query'] ?? '');
         }
 
         if (is_string($variable['allValue'] ?? null)) {
             return $variable['allValue'];
         }
 
-        $options = $this->options[self::string($variable['name'] ?? '')] ?? [];
+        $options = $this->options[$this->string($variable['name'] ?? '')] ?? [];
 
         // Grafana's Prometheus regex of a multi-value selection
         return '('.implode('|', array_map(static fn (string $option): string => (string) preg_replace('/[\\\\^$*+?.()|{}\[\]]/', '\\\\\\\\$0', $option), $options)).')';
@@ -364,7 +364,7 @@ final readonly class StaticBudget
     private function runningPanels(): array
     {
         return array_values(array_filter(
-            self::list($this->dashboard['panels'] ?? []),
+            $this->list($this->dashboard['panels'] ?? []),
             static fn (array $panel): bool => ($panel['type'] ?? null) !== 'row',
         ));
     }
@@ -378,10 +378,10 @@ final readonly class StaticBudget
     private function datasources(array $panel): array
     {
         $uids = [];
-        $default = is_array($panel['datasource'] ?? null) ? self::string($panel['datasource']['uid'] ?? '') : '';
+        $default = is_array($panel['datasource'] ?? null) ? $this->string($panel['datasource']['uid'] ?? '') : '';
 
-        foreach (self::list($panel['targets'] ?? []) as $target) {
-            $uid = is_array($target['datasource'] ?? null) ? self::string($target['datasource']['uid'] ?? '') : $default;
+        foreach ($this->list($panel['targets'] ?? []) as $target) {
+            $uid = is_array($target['datasource'] ?? null) ? $this->string($target['datasource']['uid'] ?? '') : $default;
             $uids[$uid === '' ? $default : $uid] = true;
         }
 
@@ -395,7 +395,7 @@ final readonly class StaticBudget
      */
     private function copies(array $panel): int
     {
-        return self::string($panel['repeat'] ?? '') === '' ? 1 : $this->repeats;
+        return $this->string($panel['repeat'] ?? '') === '' ? 1 : $this->repeats;
     }
 
     /**
@@ -416,7 +416,7 @@ final readonly class StaticBudget
     {
         $templating = $this->dashboard['templating'] ?? [];
 
-        return self::list(is_array($templating) ? ($templating['list'] ?? []) : []);
+        return $this->list(is_array($templating) ? ($templating['list'] ?? []) : []);
     }
 
     /**
@@ -428,13 +428,13 @@ final readonly class StaticBudget
     {
         $expressions = [];
 
-        foreach (self::list($this->dashboard['panels'] ?? []) as $panel) {
-            foreach ([$panel, ...self::list($panel['panels'] ?? [])] as $item) {
-                foreach (self::list($item['targets'] ?? []) as $target) {
-                    $expr = self::string($target['expr'] ?? '');
+        foreach ($this->list($this->dashboard['panels'] ?? []) as $panel) {
+            foreach ([$panel, ...$this->list($panel['panels'] ?? [])] as $item) {
+                foreach ($this->list($item['targets'] ?? []) as $target) {
+                    $expr = $this->string($target['expr'] ?? '');
 
                     if ($expr !== '') {
-                        $expressions['panel '.json_encode($item['id'] ?? null).' '.self::string($target['refId'] ?? '')] = $expr;
+                        $expressions['panel '.json_encode($item['id'] ?? null).' '.$this->string($target['refId'] ?? '')] = $expr;
                     }
                 }
             }
@@ -442,7 +442,7 @@ final readonly class StaticBudget
 
         foreach ($this->variables() as $variable) {
             if (($variable['type'] ?? null) === 'query') {
-                $expressions['variable '.self::string($variable['name'] ?? '')] = self::string($variable['query'] ?? '');
+                $expressions['variable '.$this->string($variable['name'] ?? '')] = $this->string($variable['query'] ?? '');
             }
         }
 
@@ -452,7 +452,7 @@ final readonly class StaticBudget
     /**
      * The balanced parenthesised operand that ends right before $offset, or null.
      */
-    private static function operandBefore(string $expr, int $offset): ?string
+    private function operandBefore(string $expr, int $offset): ?string
     {
         if ($offset === 0 || $expr[$offset - 1] !== ')') {
             return null;
@@ -485,12 +485,12 @@ final readonly class StaticBudget
     /**
      * @return list<array<array-key, mixed>>
      */
-    private static function list(mixed $items): array
+    private function list(mixed $items): array
     {
         return is_array($items) ? array_values(array_filter($items, is_array(...))) : [];
     }
 
-    private static function string(mixed $value): string
+    private function string(mixed $value): string
     {
         return is_string($value) ? $value : '';
     }
