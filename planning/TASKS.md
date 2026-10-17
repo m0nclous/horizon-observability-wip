@@ -456,7 +456,7 @@ batch-link write interrupted by SIGALRM can desync the private client.
 
 ## Phase D: honesty (owner decision 13)
 
-### T16 Exporter truth tests — `in progress` (depends on T03–T08, T12)
+### T16 Exporter truth tests — `testing` (depends on T03–T08, T12)
 Scenario engine in `tests/Truth/` (scenario DSL: queues, jobs with outcomes, durations, delays, batches; a deterministic
 clock where possible; real worker via RunsWorker) + expected-value model. Truth tests per metric family of the catalog
 (Appendix B/B′): exact equality with the scenario's expected values; invariants; cross-check with Horizon's JobRepository/
