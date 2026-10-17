@@ -13,7 +13,9 @@
 # Performance profile: docker/perf/README.md.
 #
 # Host ports are configurable (REDIS_PORT, PROMETHEUS_PORT, GRAFANA_PORT, APP_PORT, PERF_PROMETHEUS_PORT), so
-# several stacks can run side by side with COMPOSE_PROJECT_NAME.
+# several stacks can run side by side with COMPOSE_PROJECT_NAME. testbench.yaml points the workbench at
+# 127.0.0.1:6379: a REDIS_PORT in the shell reaches artisan commands (Horizon, the load simulation), but `composer serve`
+# only sees it with PHP's variables_order=EGPCS (e.g. PHP_INI_SCAN_DIR with that one line), as in the app image.
 #
 # Until T13 renders resources/grafana, Grafana provisions the pilot's dashboard and alert rules
 # (tests/Fixtures/grafana/legacy) with placeholder provisioning from docker/grafana/provisioning. T13 switches the
@@ -32,7 +34,7 @@ x-app: &app
   depends_on: [redis]
   extra_hosts: ['host.docker.internal:host-gateway']
   environment:
-    # A process environment variable wins over the testbench.yaml env entry (verified in T11).
+    # Wins over the testbench.yaml env entry, for web requests too thanks to the image's variables_order=EGPCS.
     REDIS_HOST: redis
     REDIS_PORT: 6379
   volumes:

@@ -12,5 +12,10 @@ RUN apt-get update \
     && php -m | grep -qi pdo_sqlite \
     && curl -fsSL https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
+# A process environment variable (REDIS_HOST=redis in docker-compose.yml) overrides the testbench.yaml env entry for
+# artisan commands, but not for web requests: testbench disables getenv() and the built-in web server does not copy the
+# environment into $_SERVER. With E in variables_order, $_ENV carries it to both (verified in T11).
+RUN echo 'variables_order = "EGPCS"' > "$PHP_INI_DIR/conf.d/zz-workbench.ini"
+
 ENV COMPOSER_ALLOW_SUPERUSER=1
 WORKDIR /app
