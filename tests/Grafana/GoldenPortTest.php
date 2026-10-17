@@ -6,6 +6,7 @@ use DF\HorizonObservability\Grafana\DashboardBuilder;
 use DF\HorizonObservability\Grafana\Json;
 use DF\HorizonObservability\Grafana\LiveMode;
 use DF\HorizonObservability\Grafana\PanelRegistry;
+use DF\HorizonObservability\Grafana\Resources;
 use DF\HorizonObservability\Tests\Grafana\Support\JsonDiff;
 use DF\HorizonObservability\Tests\Grafana\Support\LegacyFixtures;
 
@@ -13,6 +14,14 @@ use DF\HorizonObservability\Tests\Grafana\Support\LegacyFixtures;
  * Arch Q5.6 M1: the PHP port renders the legacy dashboard exactly as
  * `python3 legacy/grafana/generate_queues_dashboard.py --prefix office` did.
  */
+
+/**
+ * A string as the dashboard JSON prints it.
+ */
+function jsonString(string $value): string
+{
+    return json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS);
+}
 
 function renderLegacy(array $overrides = []): string
 {
@@ -91,6 +100,11 @@ it('takes the legacy literals from the options', function (array $overrides, Clo
         fn (string $golden): string => (string) preg_replace('#/metrics/horizon/(\w+)-jobs\?#', '${api_path}/jobs/$1?', $golden),
     ],
     'busy window' => [['busyWindow' => '30s'], fn (string $golden): string => str_replace('[15s]', '[30s]', $golden)],
+    // Arch Q5.6 step 1: the English script of resources/grafana/js changes only panel #23 afterRender
+    'alert sound script' => [
+        ['alertSoundScript' => Resources::alertSoundScript()],
+        fn (string $golden): string => str_replace(jsonString(LegacyFixtures::read('alert-sound.js')), jsonString(Resources::alertSoundScript()), $golden),
+    ],
     'refresh' => [['refresh' => '30s'], fn (string $golden): string => str_replace('"refresh": "15s"', '"refresh": "30s"', $golden)],
     'alert rule selector' => [
         ['alertRuleUidRegex' => 'queues-(down|failures)'],
