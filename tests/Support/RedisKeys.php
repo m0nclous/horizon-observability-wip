@@ -20,7 +20,7 @@ final class RedisKeys
         return new Client([
             'host' => (string) (getenv('REDIS_HOST') ?: '127.0.0.1'),
             'port' => (int) (getenv('REDIS_PORT') ?: 6379),
-            'database' => $database ?? (int) (getenv('REDIS_DB') ?: 0),
+            'database' => $database ?? self::env('REDIS_DB', 0),
         ]);
     }
 
@@ -31,7 +31,18 @@ final class RedisKeys
      */
     public static function databases(): array
     {
-        return array_values(array_unique([(int) (getenv('REDIS_DB') ?: 0), (int) (getenv('REDIS_CACHE_DB') ?: 1)]));
+        return array_values(array_unique([self::env('REDIS_DB', 0), self::env('REDIS_CACHE_DB', 1)]));
+    }
+
+    /**
+     * An integer environment variable, or the default when it is not set. `?:` would also replace "0", so
+     * REDIS_CACHE_DB=0 read as database 1 and the cache keys in database 0 outlived the test (T18 QA round 2).
+     */
+    private static function env(string $name, int $default): int
+    {
+        $value = getenv($name);
+
+        return $value === false || $value === '' ? $default : (int) $value;
     }
 
     /**
