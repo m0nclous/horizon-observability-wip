@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\HorizonObservabilityServiceProvider;
+use DF\HorizonObservability\Metrics\Exporter;
 use DF\HorizonObservability\Tests\Support\Apps;
+use DF\HorizonObservability\Tests\Unit\Metrics\Support\FakeCollector;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Request;
@@ -13,7 +15,8 @@ use Laravel\Horizon\HorizonServiceProvider;
 /*
 | Arch Q2.4: with available_during_maintenance (the default) the endpoints stay reachable during "php artisan down",
 | so queue visibility survives a deploy; everything else answers 503. The opt-out restores the 503.
-| The maintenance state lives in the array cache, so nothing is written to the filesystem.
+| The maintenance state lives in the array cache, so nothing is written to the filesystem; the scrapes use quiet fake
+| collectors.
 */
 
 const MAINTENANCE_MODE_TEST_TOKEN = 'maintenance-token-0123456789abcdef';
@@ -37,6 +40,7 @@ function maintenanceModeTestStatuses(array $config, array $paths): array
             ...$config,
         ],
         static function (Application $app) use ($paths): array {
+            $app->instance(Exporter::class, new Exporter($app, null, FakeCollector::quiet()));
             $app->maintenanceMode()->activate(['time' => time(), 'retry' => null, 'status' => 503, 'secret' => null, 'template' => null, 'redirect' => null, 'refresh' => null, 'except' => []]);
             $kernel = $app->make(Kernel::class);
             $statuses = [];
@@ -55,6 +59,7 @@ it('keeps the endpoints reachable during maintenance', function (): void {
     $this->app['config']->set('app.maintenance', ['driver' => 'cache', 'store' => 'array']);
     $this->app['config']->set('horizon-observability.token', MAINTENANCE_MODE_TEST_TOKEN);
     $this->app->forgetInstance(Config::class);
+    $this->app->instance(Exporter::class, new Exporter($this->app, null, FakeCollector::quiet()));
     $this->app->maintenanceMode()->activate(['time' => time(), 'status' => 503]);
 
     expect($this->app->isDownForMaintenance())->toBeTrue();

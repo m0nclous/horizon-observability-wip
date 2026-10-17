@@ -65,21 +65,12 @@ function authorizationTestHeader(string $token): array
     return ['Authorization' => 'Bearer '.$token];
 }
 
-/**
- * Collectors that collect nothing, so allowed scrapes do not depend on the real collectors (T04, T05, T07, T08).
- *
- * @return array<string, FakeCollector>
- */
-function authorizationTestQuietCollectors(): array
-{
-    return array_map(static fn (string $id): FakeCollector => new FakeCollector($id, static fn (): array => []), array_combine(Config::COLLECTORS, Config::COLLECTORS));
-}
-
 beforeEach(function (): void {
     // An api endpoint behind the package middleware whose controller needs nothing.
     Route::get(AUTHORIZATION_TEST_API_ROUTE, static fn (): JsonResponse => new JsonResponse(['ok' => true]))
         ->middleware([ForceJson::class, Authorize::class.':api']);
-    $this->app->instance(Exporter::class, new Exporter($this->app, null, authorizationTestQuietCollectors()));
+    // Allowed scrapes collect nothing, so the matrix does not depend on the real collectors (T04, T05, T07, T08).
+    $this->app->instance(Exporter::class, new Exporter($this->app, null, FakeCollector::quiet()));
 });
 
 it('is open in local when nothing is configured', function (): void {
@@ -225,7 +216,7 @@ it('answers HEAD like GET', function (): void {
 it('runs no collector for a denied request', function (): void {
     authorizationTestConfig(['token' => AUTHORIZATION_TEST_TOKEN]);
     $collector = new FakeCollector('horizon', static fn (): array => []);
-    $this->app->instance(Exporter::class, new Exporter($this->app, null, ['horizon' => $collector]));
+    $this->app->instance(Exporter::class, new Exporter($this->app, null, [...FakeCollector::quiet(), 'horizon' => $collector]));
 
     $this->get('/horizon/observability/metrics')->assertUnauthorized();
     $this->get('/horizon/observability/metrics', authorizationTestHeader('wrong-token-0123456789abcdef'))->assertUnauthorized();
@@ -247,7 +238,7 @@ it('causes no cache write when unauthenticated', function (array $config, ?Closu
             ...$config,
         ],
         static function (Application $app) use ($callback, $ip): array {
-            $app->instance(Exporter::class, new Exporter($app, null, authorizationTestQuietCollectors()));
+            $app->instance(Exporter::class, new Exporter($app, null, FakeCollector::quiet()));
 
             if ($callback instanceof Closure) {
                 HorizonObservability::auth($callback);

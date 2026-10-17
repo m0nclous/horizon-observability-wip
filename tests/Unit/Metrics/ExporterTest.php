@@ -277,7 +277,7 @@ it('runs batches in auto mode only when batching is available', function (?objec
     expect(exporterTestSuccess($exposition, 'batches'))->toBe($success)
         ->and($collectors['batches']->runs)->toBe($runs);
 })->with([
-    'unavailable (the T07 stub)' => [null, null, 0],
+    'the container reader, no batches table' => [null, null, 0],
     'available' => [new class
     {
         public function available(): bool
@@ -296,23 +296,37 @@ it('runs batches in auto mode only when batching is available', function (?objec
 
 it('isolates a collector that cannot be resolved', function (): void {
     $this->app->bind(HorizonCollector::class, static fn (): never => throw new RuntimeException('bad binding'));
+    $log = exporterTestLog();
 
-    $exposition = exporterTestScrape([]);
+    // Only horizon comes from the container.
+    $exposition = exporterTestScrape(array_diff_key(exporterTestQuiet(), ['horizon' => true]));
 
     expect(exporterTestSuccess($exposition, 'horizon'))->toBe(0.0)
-        ->and(exporterTestSuccess($exposition, 'queues'))->toBe(1.0);
+        ->and(exporterTestSuccess($exposition, 'queues'))->toBe(1.0)
+        ->and($log->messages('warning'))->toBe(['horizon-observability: collector:horizon failed: RuntimeException: bad binding']);
 });
 
 it('runs the container collectors by default', function (): void {
+    // Bound in place of the real classes (other tasks' code that may need Redis), resolved through Exporter::COLLECTORS.
+    $collectors = exporterTestQuiet();
+
+    foreach (Exporter::COLLECTORS as $id => $class) {
+        $this->app->instance($class, $collectors[$id]);
+    }
+
+    exporterTestConfig(['collectors.batches' => true]);
+
     $exposition = exporterTestScrape([]);
 
-    // The stubs of T04, T05 and T08 collect nothing; batches is in auto mode and the T07 stub finds no batching.
-    expect($exposition->series('ho_exporter_collector_success'))->toBe([
-        'collector="attempts"' => 1.0,
-        'collector="horizon"' => 1.0,
-        'collector="job_classes"' => 1.0,
-        'collector="queues"' => 1.0,
-    ]);
+    expect(array_keys(Exporter::COLLECTORS))->toBe(Config::COLLECTORS)
+        ->and($exposition->series('ho_exporter_collector_success'))->toBe([
+            'collector="attempts"' => 1.0,
+            'collector="batches"' => 1.0,
+            'collector="horizon"' => 1.0,
+            'collector="job_classes"' => 1.0,
+            'collector="queues"' => 1.0,
+        ])
+        ->and(array_map(static fn (FakeCollector $collector): int => $collector->runs, $collectors))->toBe(array_fill_keys(Config::COLLECTORS, 1));
 });
 
 it('renders the self-metrics last', function (): void {
