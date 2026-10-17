@@ -42,10 +42,12 @@ jobs:
           - {laravel: '11.*', testbench: '^9.5'}
           - {laravel: '12.*', testbench: '^10.0'}
           - {laravel: '13.*', testbench: '^11.0'}
-          # The oldest supported point of every shim, the second client and the other servers.
-          - {php: '8.2', laravel: '^11.23', testbench: '^9.5', stability: prefer-lowest, client: predis, predis: '^2.0.2', redis: 'redis:6.2-alpine'}
-          - {php: '8.2', laravel: '^12.0', testbench: '^10.0', stability: prefer-lowest, client: phpredis, redis: 'redis:6.2-alpine'}
-          - {php: '8.3', laravel: '^13.0', testbench: '^11.0', stability: prefer-lowest, client: phpredis, redis: 'valkey/valkey:7.2-alpine'}
+          # The oldest supported point of every shim, the second client and the other servers. `floor` is what each
+          # prefer-lowest leg must resolve. Pest ^3.0 on the L11 leg: Pest 3.8 needs collision 8.7, which conflicts with
+          # Laravel < 11.39.1, so with the package's own Pest range the leg would test 11.39.1 instead of 11.23.0.
+          - {php: '8.2', laravel: '^11.23', testbench: '^9.5', pest: '^3.0', stability: prefer-lowest, client: predis, predis: '^2.0.2', redis: 'redis:6.2-alpine', floor: 'laravel/framework:11.23.0 laravel/horizon:5.29.1 predis/predis:2.0.2'}
+          - {php: '8.2', laravel: '^12.0', testbench: '^10.0', stability: prefer-lowest, client: phpredis, redis: 'redis:6.2-alpine', floor: 'laravel/framework:12.0.1 laravel/horizon:5.30.3'}
+          - {php: '8.3', laravel: '^13.0', testbench: '^11.0', stability: prefer-lowest, client: phpredis, redis: 'valkey/valkey:7.2-alpine', floor: 'laravel/framework:13.0.0 laravel/horizon:5.44.0'}
           - {php: '8.4', laravel: '12.*', testbench: '^10.0', stability: prefer-stable, client: predis, predis: '^3.0', redis: 'redis:7.4-alpine'}
           - {php: '8.5', laravel: '13.*', testbench: '^11.0', stability: prefer-stable, client: predis, predis: '^3.0', redis: 'valkey/valkey:8-alpine'}
           - {php: '8.4', laravel: '13.*', testbench: '^11.0', stability: prefer-stable, client: phpredis, redis: 'redis:8-alpine'}
@@ -66,20 +68,31 @@ jobs:
           extensions: redis, pcntl, posix, pdo_sqlite, mbstring
           coverage: none
       # The static tooling is dropped: it keeps the resolution fast and honest (Arch 8.5).
-      # Composer >= 2.9 refuses versions with security advisories: every Laravel 11 release (past its security support)
-      # and the oldest 12.x/13.x points. The matrix tests the supported range, so this step resolves without the policy
-      # (COMPOSER_NO_BLOCKING on Composer >= 2.10, COMPOSER_NO_SECURITY_BLOCKING on 2.9).
+      # Composer 2.10 refuses versions with security advisories: every Laravel 11 release (past its security support)
+      # and the oldest 12.x/13.x points. The matrix tests the supported range, so this step lifts the advisories policy
+      # only. Not COMPOSER_NO_BLOCKING (or the older COMPOSER_NO_SECURITY_BLOCKING): both disable every policy, the
+      # malware list included, for all packages the leg installs. The floor check below fails if the policy still moves
+      # a prefer-lowest leg.
       - name: Resolve the leg
         env:
-          COMPOSER_NO_BLOCKING: '1'
-          COMPOSER_NO_SECURITY_BLOCKING: '1'
+          COMPOSER_POLICY_ADVISORIES_BLOCK: '0'
         run: |
           composer remove --dev --no-update larastan/larastan rector/rector driftingly/rector-laravel laravel/pint ergebnis/composer-normalize phpstan/extension-installer phpstan/phpstan-deprecation-rules
           composer require --no-update "laravel/framework:${{ matrix.laravel }}"
-          composer require --dev --no-update "orchestra/testbench:${{ matrix.testbench }}" ${{ matrix.predis && format('"predis/predis:{0}"', matrix.predis) || '' }}
+          composer require --dev --no-update "orchestra/testbench:${{ matrix.testbench }}" ${{ matrix.pest && format('"pestphp/pest:{0}"', matrix.pest) || '' }} ${{ matrix.predis && format('"predis/predis:{0}"', matrix.predis) || '' }}
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
       - name: Resolved versions
-        run: composer show | grep -E '^(laravel/framework|laravel/horizon|orchestra/testbench|pestphp/pest|predis/predis) '
+        env:
+          FLOOR: ${{ matrix.floor }}
+        run: |
+          composer show | grep -E '^(laravel/framework|laravel/horizon|orchestra/testbench|pestphp/pest|predis/predis) '
+          for pin in $FLOOR; do
+            resolved="$(composer show | awk -v name="${pin%%:*}" '$1 == name { print $2 }')"
+            if [ "$resolved" != "${pin#*:}" ]; then
+              echo "::error::${pin%%:*} resolved ${resolved:-nothing} instead of the floor ${pin#*:}"
+              exit 1
+            fi
+          done
       - run: vendor/bin/pest --ci --exclude-group=cluster --exclude-group=e2e
 
   cluster:

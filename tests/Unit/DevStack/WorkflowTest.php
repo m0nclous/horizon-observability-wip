@@ -121,6 +121,26 @@ it('resolves the legs past the advisory block of Composer without turning off it
         ->and($narrow)->toBeTrue();
 });
 
+it('fails a prefer-lowest leg that does not resolve the oldest point of its shims (T18)', function (): void {
+    $tests = workflow('tests.yml')['jobs']['tests'];
+    $lowest = array_values(array_filter(workflowLegs($tests['strategy']['matrix']), static fn (array $leg): bool => $leg['stability'] === 'prefer-lowest'));
+    $resolved = array_values(array_filter($tests['steps'], static fn (array $step): bool => ($step['name'] ?? null) === 'Resolved versions'))[0] ?? [];
+    $resolve = array_values(array_filter($tests['steps'], static fn (array $step): bool => ($step['name'] ?? null) === 'Resolve the leg'))[0] ?? [];
+
+    // Laravel 11.23 is the declared floor (the first with JobAttempted, owner decision 3); the shims below 11.27.1
+    // (no ServiceProvider::optimizes()) run only there. With Pest ^3.8 (collision 8.7) the leg would resolve 11.39.1.
+    expect(array_map(static fn (array $leg): string => $leg['laravel'].' => '.($leg['floor'] ?? ''), $lowest))->toBe([
+        '^11.23 => laravel/framework:11.23.0 laravel/horizon:5.29.1 predis/predis:2.0.2',
+        '^12.0 => laravel/framework:12.0.1 laravel/horizon:5.30.3',
+        '^13.0 => laravel/framework:13.0.0 laravel/horizon:5.44.0',
+    ])
+        ->and($lowest[0]['pest'] ?? null)->toBe('^3.0')
+        ->and(array_filter(workflowLegs($tests['strategy']['matrix']), static fn (array $leg): bool => isset($leg['floor']) && $leg['stability'] !== 'prefer-lowest'))->toBe([])
+        ->and($resolve['run'] ?? '')->toContain('${{ matrix.pest && format(\'"pestphp/pest:{0}"\', matrix.pest) || \'\' }}')
+        ->and($resolved['env']['FLOOR'] ?? null)->toBe('${{ matrix.floor }}')
+        ->and($resolved['run'] ?? '')->toContain('for pin in $FLOOR; do')->toContain('exit 1');
+});
+
 it('checks the Grafana assets and the e2e flow on Grafana 12.4.13 and 13.2.4', function (string $job): void {
     $definition = workflow('tests.yml')['jobs'][$job];
 
