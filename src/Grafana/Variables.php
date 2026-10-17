@@ -45,9 +45,12 @@ final readonly class Variables
      */
     public function all(): array
     {
-        return [
+        return array_values(array_filter([
             // The Prometheus datasource by type, not uid: the dashboard imports into any Grafana unchanged
             $this->datasource('datasource', 'prometheus', $this->options->prometheusDatasourceRegex),
+            // Hidden: the Prometheus job (scrape job of the package endpoint) every query is scoped to, so one
+            // Grafana serves several applications; All by default, ?var-prometheus_job=<job> or --job pins one
+            $this->options->legacy ? null : $this->scope(),
             $this->filter('supervisor', 'Supervisor', $this->supervisorQuery(), '/supervisor="([^"]+)"/', '.*'),
             // Kinds with batches in the period; the batch tables repeat by it. Batches have no queue or
             // supervisor, so the filter does not narrow the other panels.
@@ -70,6 +73,34 @@ final readonly class Variables
             // Hidden: the Infinity datasource with the application's job lists, by type: in a production Grafana
             // the datasource is created in the UI and has its own uid
             $this->datasource('app_api', 'yesoreyeram-infinity-datasource', $this->options->infinityDatasourceRegex),
+        ]));
+    }
+
+    /**
+     * The hidden `prometheus_job` variable (Arch Q5.2): the jobs that export the Horizon status, "All" as `.+`.
+     *
+     * @return array<string, mixed>
+     */
+    private function scope(): array
+    {
+        $query = Promql::call('label_values', Promql::vector($this->promql->metric('horizon_status')), 'job');
+        $job = $this->options->job;
+
+        return [
+            'current' => $job === null ? ['text' => 'All', 'value' => '$__all'] : ['text' => $job, 'value' => $job],
+            'datasource' => Common::prometheus(),
+            'definition' => $query,
+            'hide' => 2,
+            'includeAll' => true,
+            'allValue' => '.+',
+            'multi' => false,
+            'name' => 'prometheus_job',
+            'options' => [],
+            'query' => $query,
+            'refresh' => 1,
+            'regex' => '',
+            'sort' => 1,
+            'type' => 'query',
         ];
     }
 
@@ -111,15 +142,12 @@ final readonly class Variables
      */
     private function jobQuery(): string
     {
-        $families = Promql::re('__name__', implode('|', array_map(
-            $this->promql->metric(...),
-            ['queue_jobs_total', 'queue_jobs_pending', 'queue_jobs_reserved'],
-        )));
-        $seen = Promql::group(Promql::vector('', $families, Promql::re('queue', '$queue')), 'queue', 'job_class');
+        $families = ['queue_jobs_total', 'queue_jobs_pending', 'queue_jobs_reserved'];
+        $seen = Promql::group($this->promql->anyOf($families, Promql::re('queue', '$queue')), 'queue', 'job_class');
         $neverRan = Promql::withLabel(
             Promql::unlessOn(
                 Promql::group($this->promql->selector('queue_job_classes'), 'job_class'),
-                Promql::group(Promql::vector('', $families), 'job_class'),
+                Promql::group($this->promql->anyOf($families), 'job_class'),
                 'job_class',
             ),
             'queue',

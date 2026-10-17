@@ -173,7 +173,6 @@ final readonly class DashboardBuilder
     {
         $unsupported = array_keys(array_filter([
             'live' => $this->options->live !== LiveMode::Off,
-            'job' => $this->options->job !== null,
             'dedupe' => $this->options->dedupe,
         ]));
 

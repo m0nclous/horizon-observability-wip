@@ -33,6 +33,7 @@ final class GrafanaCommand extends Command
         {--check : Render in memory and exit 1 when the files differ from the render}
         {--uid=horizon-observability : Dashboard uid ([A-Za-z0-9_-], at most 29 characters); the alert rule uids start with it}
         {--title=Queues : Dashboard title}
+        {--job= : Prometheus job (scrape job of the package endpoint) the dashboard selects by default and the alert rules are scoped to; empty = all jobs}
         {--folder=Horizon : Grafana folder of the alert rules}
         {--prometheus-datasource= : Name regex of the Prometheus datasource (default: Grafana\'s default datasource)}
         {--infinity-datasource= : Name regex of the Infinity datasource of the job lists (default: the first one)}';
@@ -128,6 +129,8 @@ final class GrafanaCommand extends Command
             throw new InvalidArgumentException('--folder must not contain "$": Grafana would read it as an environment variable.');
         }
 
+        $job = $this->text('job', required: false);
+
         return new DashboardOptions(
             metricPrefix: $config->prefix(),
             uid: $uid,
@@ -135,6 +138,7 @@ final class GrafanaCommand extends Command
             prometheusDatasourceRegex: $this->text('prometheus-datasource', required: false),
             infinityDatasourceRegex: $this->text('infinity-datasource', required: false),
             alertFolder: $folder,
+            job: $job === '' ? null : $job,
         );
     }
 

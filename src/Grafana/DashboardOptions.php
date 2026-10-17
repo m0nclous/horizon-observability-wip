@@ -34,7 +34,8 @@ final readonly class DashboardOptions
      * @param  string  $alertDatasourceUid  Prometheus datasource uid of the alert rules (Grafana interpolates `${ENV}` at provisioning)
      * @param  string|null  $alertSoundScript  `afterRender` JavaScript of the hidden alert sound panel; null reads
      *                                         `resources/grafana/js/alert-sound.js`
-     * @param  string|null  $job  job regex every selector is scoped to; null renders no job matcher (WP8B)
+     * @param  string|null  $job  the Prometheus job the dashboard selects by default and the alert rules are scoped to
+     *                            (`--job`); null selects all jobs
      * @param  bool  $dedupe  wrap every selector in a replica dedupe aggregation (WP8B, Arch Q5.6 step 10)
      * @param  bool  $legacy  render what the pilot rendered where WP8B changed the output (metric names, ...);
      *                        TEMPORARY, set by {@see LegacyProfile} only and deleted with it at the end of WP8B
@@ -61,11 +62,28 @@ final readonly class DashboardOptions
     ) {}
 
     /**
-     * The PromQL builder for this render.
+     * The PromQL builder of the dashboard: selectors scoped to the `prometheus_job` variable.
      */
     public function promql(): Promql
     {
-        return new Promql($this->metricPrefix, $this->legacy);
+        return new Promql($this->metricPrefix, $this->legacy, $this->legacy ? null : Promql::JOB_VARIABLE);
+    }
+
+    /**
+     * The PromQL builder of the alert rules, which Grafana does not interpolate: selectors scoped to
+     * {@see jobRegex()}.
+     */
+    public function rulePromql(): Promql
+    {
+        return new Promql($this->metricPrefix, $this->legacy, $this->legacy ? null : $this->jobRegex());
+    }
+
+    /**
+     * The job regex of the alert rules (Arch Q5.3 `J`): `.+`, or the exact `--job`.
+     */
+    public function jobRegex(): string
+    {
+        return $this->job === null ? '.+' : Promql::literalRegex($this->job);
     }
 
     /**

@@ -16,9 +16,9 @@ namespace DF\HorizonObservability\Grafana;
  * ({@see filtered()}). Every vector selector of a package family is written by {@see selector()}; {@see metric()}
  * gives the bare name only where a name is needed as text (a `__name__` regex, an alert summary).
  *
- * Seams for WP8B: the job scope matcher and the replica dedupe wrappers (Arch Q5.6 steps 4 and 10) belong in
- * {@see selector()}, the one place every package selector comes from, and in {@see filtered()}; the legacy
- * profile has neither.
+ * Every package selector carries the job scope first (Arch Q5.6 step 4): `job=~"$prometheus_job"` in the
+ * dashboard, the rendered job regex in the alert rules. The replica dedupe wrappers (step 10) belong in
+ * {@see selector()} as well, the one place every package selector comes from.
  *
  * @internal
  */
@@ -83,9 +83,16 @@ final readonly class Promql
     private array $jobMetrics;
 
     /**
-     * @param  bool  $legacy  the pilot's family names (TEMPORARY, {@see DashboardOptions::$legacy})
+     * The dashboard's job scope: the hidden `prometheus_job` variable (Arch Q5.2).
      */
-    public function __construct(private string $prefix, public bool $legacy = false)
+    public const JOB_VARIABLE = '$prometheus_job';
+
+    /**
+     * @param  bool  $legacy  the pilot's family names (TEMPORARY, {@see DashboardOptions::$legacy})
+     * @param  string|null  $jobRegex  the `job` regex every package selector is scoped to: {@see JOB_VARIABLE} in the
+     *                                 dashboard, the rendered regex in the alert rules; null scopes nothing (the pilot)
+     */
+    public function __construct(private string $prefix, public bool $legacy = false, private ?string $jobRegex = null)
     {
         $this->queueMetrics = $this->names(self::QUEUE_FAMILIES);
         $this->jobMetrics = $this->names(self::JOB_FAMILIES);
@@ -124,7 +131,36 @@ final readonly class Promql
      */
     public function selector(string $family, string ...$matchers): string
     {
-        return self::vector($this->metric($family), ...$matchers);
+        return self::vector($this->metric($family), ...$this->scoped($matchers));
+    }
+
+    /**
+     * A selector of several package families by `__name__`: `{__name__=~"ho_a|ho_b", job=~"$prometheus_job"}`.
+     *
+     * @param  list<string>  $families
+     */
+    public function anyOf(array $families, string ...$matchers): string
+    {
+        return self::vector('', self::re('__name__', implode('|', array_map($this->metric(...), $families))), ...$this->scoped($matchers));
+    }
+
+    /**
+     * The job scope in front of a selector's own matchers.
+     *
+     * @param  array<string>  $matchers
+     * @return list<string>
+     */
+    private function scoped(array $matchers): array
+    {
+        return $this->jobRegex === null ? array_values($matchers) : [self::re('job', $this->jobRegex), ...array_values($matchers)];
+    }
+
+    /**
+     * A job name as an exact regex (Go's `regexp.QuoteMeta`): the alert rules scope a pinned `--job` with it.
+     */
+    public static function literalRegex(string $value): string
+    {
+        return (string) preg_replace('/[\\\\.+*?()|\[\]{}^$]/', '\\\\$0', $value);
     }
 
     /**
@@ -155,6 +191,13 @@ final readonly class Promql
             }
 
             $own = $labels === '' ? '' : substr($labels, 1, -1);
+            $scope = $this->jobRegex === null ? '' : self::re('job', $this->jobRegex);
+
+            // The job scope stays the first matcher
+            if ($scope !== '' && str_starts_with($own, $scope)) {
+                $matchers = [$scope, ...$matchers];
+                $own = ltrim(substr($own, strlen($scope)), ', ');
+            }
 
             return $name.'{'.implode(', ', $own === '' ? $matchers : [...$matchers, $own]).'}';
         }, $expr);

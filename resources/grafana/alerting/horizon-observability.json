@@ -21,7 +21,7 @@
               "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "count(ho_horizon_status)",
+                "expr": "count(ho_horizon_status{job=~\".+\"})",
                 "instant": true,
                 "range": false,
                 "refId": "A"
@@ -71,7 +71,7 @@
               "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "min(ho_horizon_status)",
+                "expr": "min(ho_horizon_status{job=~\".+\"})",
                 "instant": true,
                 "range": false,
                 "refId": "A"
@@ -121,7 +121,7 @@
               "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "max by (queue) (ho_queue_oldest_pending_job_age_seconds) / on (queue) max by (queue) (ho_horizon_wait_threshold_seconds)",
+                "expr": "max by (queue) (ho_queue_oldest_pending_job_age_seconds{job=~\".+\"}) / on (queue) max by (queue) (ho_horizon_wait_threshold_seconds{job=~\".+\"})",
                 "instant": true,
                 "range": false,
                 "refId": "A"
@@ -171,7 +171,7 @@
               "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "sum by (queue) (increase(ho_queue_jobs_total{status=~\"failed|timed_out\"}[15m])) / clamp_min(sum by (queue) (increase(ho_queue_jobs_total{status=~\"completed|failed|timed_out\"}[15m])), 100)",
+                "expr": "sum by (queue) (increase(ho_queue_jobs_total{job=~\".+\", status=~\"failed|timed_out\"}[15m])) / clamp_min(sum by (queue) (increase(ho_queue_jobs_total{job=~\".+\", status=~\"completed|failed|timed_out\"}[15m])), 100)",
                 "instant": true,
                 "range": false,
                 "refId": "A"
