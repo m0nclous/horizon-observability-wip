@@ -63,6 +63,45 @@ final readonly class Topology
     }
 
     /**
+     * The supervisors `php artisan horizon` starts, in config order: the name as the metric labels and the running
+     * supervisors carry it (the part after the last `:`, as {@see Supervisors::snapshot()} strips the master), the
+     * queue connection and the split queues. For readers that must scope by supervisor while it is not running
+     * (Horizon stopped): its queues still fill up.
+     *
+     * @return list<array{name: string, connection: string, queues: list<string>}>
+     */
+    public function supervisors(): array
+    {
+        $result = [];
+
+        foreach ($this->supervisorOptions() as $options) {
+            if ((int) $options->maxProcesses <= 0 || ! is_string($options->connection) || $options->connection === '') {
+                continue;
+            }
+
+            $name = (string) $options->name;
+            $position = strrpos($name, ':');
+            $queues = [];
+
+            foreach (explode(',', (string) $options->queue) as $queue) {
+                $queue = trim($queue);
+
+                if ($queue !== '' && ! in_array($queue, $queues, true)) {
+                    $queues[] = $queue;
+                }
+            }
+
+            $result[] = [
+                'name' => $position === false ? $name : substr($name, $position + 1),
+                'connection' => $options->connection,
+                'queues' => $queues,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
      * The same queues as a flat list.
      *
      * @return list<array{connection: string, queue: string}>
