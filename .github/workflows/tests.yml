@@ -172,6 +172,8 @@ jobs:
     env:
       GRAFANA_IMAGE: ${{ matrix.grafana }}
       PROMETHEUS_IMAGE: quay.io/prometheus/prometheus:v3.15.0
+      # The truth tests of the grafana group evaluate the rendered expressions with promtool (skipped without one)
+      PROMTOOL: docker run --rm -i --entrypoint promtool quay.io/prometheus/prometheus:v3.15.0
     steps:
       - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
@@ -180,7 +182,7 @@ jobs:
           extensions: redis, pcntl, posix, pdo_sqlite, mbstring
           coverage: none
       - run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress
-      # Arch Q5.7 item 1; the static performance gates join with WP8C.
+      # Arch Q5.7 item 1; the static performance gates (ADDENDUM R2.2 step 6) are tests/Grafana/PerfBudgetTest.
       - name: Committed assets equal the render (composer test:grafana)
         run: composer test:grafana
       - name: Grafana contract tests
