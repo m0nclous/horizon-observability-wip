@@ -49,7 +49,8 @@ use Laravel\Horizon\Horizon;
  * The routes and the Horizon menu middleware are registered from an *application booting callback*: it runs after
  * every provider's `register()` and before any provider's `boot()`, so the routes precede Horizon's catch-all route
  * in either provider order, with and without `route:cache`, and the middleware is in `horizon.middleware` before
- * Horizon reads it.
+ * Horizon reads it. A provider registered too late (after boot, or from another provider's `boot()`, when the
+ * booting callbacks have already fired) still registers everything, from a `booted` fallback, and logs a warning.
  */
 final class HorizonObservabilityServiceProvider extends ServiceProvider
 {
@@ -58,6 +59,11 @@ final class HorizonObservabilityServiceProvider extends ServiceProvider
      * it lands.
      */
     private const GRAFANA_COMMAND = 'DF\\HorizonObservability\\Console\\GrafanaCommand';
+
+    /**
+     * Whether the booting callback (or its late fallback) has run for this provider instance.
+     */
+    private bool $wired = false;
 
     public function register(): void
     {
@@ -87,9 +93,19 @@ final class HorizonObservabilityServiceProvider extends ServiceProvider
 
         if ($this->app->isBooted()) {
             $this->beforeProvidersBoot(late: true);
-        } else {
-            $this->app->booting(fn () => $this->beforeProvidersBoot());
+
+            return;
         }
+
+        $this->app->booting(fn () => $this->beforeProvidersBoot());
+
+        // Registered while the providers boot (e.g. from another provider's boot()): the booting callbacks have
+        // already fired and this one never runs, so wire up late, with the warning, instead of registering nothing.
+        $this->app->booted(function (): void {
+            if (! $this->wired) {
+                $this->beforeProvidersBoot(late: true);
+            }
+        });
     }
 
     public function boot(): void
@@ -132,9 +148,19 @@ final class HorizonObservabilityServiceProvider extends ServiceProvider
             }
         }
 
-        if ($config->get('horizon-observability.collectors.batches') !== false) {
+        if ($this->batchesEnabled($config->get('horizon-observability.collectors.batches'))) {
             Event::listen(JobQueued::class, [BatchLinks::class, 'onQueued']);
         }
+    }
+
+    /**
+     * Boot-time reading of `collectors.batches` (true, false or null = auto): off only for a value that casts to
+     * false (`false`, `0`, `'false'`, `'off'`, ...), as {@see Config} reads it; null, `'auto'` and anything
+     * unparsable keep the auto default, so the links are recorded.
+     */
+    private function batchesEnabled(mixed $value): bool
+    {
+        return $value === null || Config::flag($value, true);
     }
 
     /**
@@ -177,6 +203,7 @@ final class HorizonObservabilityServiceProvider extends ServiceProvider
      */
     private function beforeProvidersBoot(bool $late = false): void
     {
+        $this->wired = true;
         $config = self::repository($this->app);
 
         if (! Config::flag($config->get('horizon-observability.enabled', true), true)) {

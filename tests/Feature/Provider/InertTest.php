@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use DF\HorizonObservability\Attempts\AttemptTracker;
+use DF\HorizonObservability\Attempts\LegacyReadyAt;
 use DF\HorizonObservability\Batches\BatchLinks;
 use DF\HorizonObservability\HorizonObservabilityServiceProvider;
+use DF\HorizonObservability\Support\Versions;
 use DF\HorizonObservability\Tests\Support\Apps;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
@@ -74,7 +76,7 @@ it('is inert when disabled', function (array $providers, mixed $enabled): void {
         ->and($state['middleware'])->toBe(['web'])
         ->and($state['listeners'])->toBe([])
         ->and($state['maintenance'])->toBe([])
-        ->and($state['commands'])->toHaveCount(6);
+        ->and($state['commands'])->toHaveCount(count(HorizonObservabilityServiceProvider::packageCommands()));
 })->with('provider orders')->with(['false' => [false], 'string false' => ['false'], 'zero' => ['0']]);
 
 it('wires everything when enabled', function (array $providers): void {
@@ -82,16 +84,22 @@ it('wires everything when enabled', function (array $providers): void {
         'routes' => packageRoutes($app),
         'listeners' => packageListeners($app),
         'maintenance' => (new PreventRequestsDuringMaintenance($app))->getExcludedPaths(),
+        'legacy' => ! $app->make(Versions::class)->payloadCarriesDelay(),
     ]);
 
+    // The legacy ready_at listener exists only below Laravel 12.11 or Horizon 5.49 (Arch Q6.8, lowest CI legs).
+    $listeners = [
+        'Illuminate\\Queue\\Events\\JobAttempted => '.AttemptTracker::class.'@onAttempted',
+        'Illuminate\\Queue\\Events\\JobExceptionOccurred => '.AttemptTracker::class.'@onExceptionOccurred',
+        'Illuminate\\Queue\\Events\\JobProcessing => '.AttemptTracker::class.'@onProcessing',
+        'Illuminate\\Queue\\Events\\JobQueued => '.BatchLinks::class.'@onQueued',
+        ...($state['legacy'] ? ['Illuminate\\Queue\\Events\\JobQueued => '.LegacyReadyAt::class.'@onQueued'] : []),
+        'Illuminate\\Queue\\Events\\JobTimedOut => '.AttemptTracker::class.'@onTimedOut',
+    ];
+    sort($listeners);
+
     expect($state['routes'])->toBe(['horizon-observability.metrics', 'horizon-observability.jobs', 'horizon-observability.live'])
-        ->and($state['listeners'])->toBe([
-            'Illuminate\\Queue\\Events\\JobAttempted => '.AttemptTracker::class.'@onAttempted',
-            'Illuminate\\Queue\\Events\\JobExceptionOccurred => '.AttemptTracker::class.'@onExceptionOccurred',
-            'Illuminate\\Queue\\Events\\JobProcessing => '.AttemptTracker::class.'@onProcessing',
-            'Illuminate\\Queue\\Events\\JobQueued => '.BatchLinks::class.'@onQueued',
-            'Illuminate\\Queue\\Events\\JobTimedOut => '.AttemptTracker::class.'@onTimedOut',
-        ])
+        ->and($state['listeners'])->toBe($listeners)
         ->and($state['maintenance'])->toBe(['horizon/observability/metrics', 'horizon/observability/jobs/*', 'horizon/observability/live']);
 })->with('provider orders');
 
@@ -104,6 +112,41 @@ it('skips the listeners of disabled collectors and the maintenance exception on 
 
     expect($state)->toBe([[], []]);
 });
+
+it('adds the legacy ready_at listener below Laravel 12.11 (Arch Q6.8)', function (): void {
+    $listeners = Apps::inspect(
+        [HorizonServiceProvider::class, HorizonObservabilityServiceProvider::class],
+        ['horizon-observability.collectors.batches' => false],
+        static fn (Application $app): array => packageListeners($app),
+        static function (Application $app): void {
+            // After every register() (which binds the Versions singleton) and before any boot().
+            $app->booting(static function (Application $app): void {
+                $app->instance(Versions::class, new Versions($app['config'], '11.23.0'));
+            });
+        },
+    );
+
+    expect($listeners)->toContain('Illuminate\\Queue\\Events\\JobQueued => '.LegacyReadyAt::class.'@onQueued')
+        ->and($listeners)->toHaveCount(5);
+});
+
+it('reads collectors.batches at boot as Config does', function (mixed $batches, bool $listens): void {
+    $listeners = Apps::inspect([HorizonServiceProvider::class, HorizonObservabilityServiceProvider::class], [
+        'horizon-observability.collectors.attempts' => false,
+        'horizon-observability.collectors.batches' => $batches,
+    ], static fn (Application $app): array => packageListeners($app));
+
+    expect($listeners)->toBe($listens ? ['Illuminate\\Queue\\Events\\JobQueued => '.BatchLinks::class.'@onQueued'] : []);
+})->with([
+    'auto (null)' => [null, true],
+    'auto (string)' => ['auto', true],
+    'true' => [true, true],
+    'false' => [false, false],
+    'string false' => ['false', false],
+    'zero' => [0, false],
+    'string zero' => ['0', false],
+    'off' => ['off', false],
+]);
 
 it('leaves /live out of the maintenance exception when live is disabled', function (): void {
     $paths = Apps::inspect([HorizonServiceProvider::class, HorizonObservabilityServiceProvider::class], [

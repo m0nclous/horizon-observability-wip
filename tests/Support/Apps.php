@@ -31,16 +31,22 @@ final class Apps
      * @param  list<class-string>  $providers  registered in this order
      * @param  array<string, mixed>  $config  set before any provider boots (and so before the booting callbacks)
      * @param  Closure(Application): T  $inspect
+     * @param  (Closure(Application): void)|null  $before  runs before any provider registers, e.g. to bind a
+     *                                                     {@see LogRecorder} as `log`
      * @return T
      */
-    public static function inspect(array $providers, array $config, Closure $inspect): mixed
+    public static function inspect(array $providers, array $config, Closure $inspect, ?Closure $before = null): mixed
     {
         $previous = Container::getInstance();
         HorizonObservability::flushState();
 
         try {
             $app = Testbench::create(
-                resolvingCallback: static function (Application $app) use ($config): void {
+                resolvingCallback: static function (Application $app) use ($config, $before): void {
+                    if ($before instanceof Closure) {
+                        $before($app);
+                    }
+
                     $app->booting(static function (Application $app) use ($config): void {
                         foreach ($config as $key => $value) {
                             $app['config']->set($key, $value);

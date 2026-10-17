@@ -12,6 +12,7 @@ use DF\HorizonObservability\Support\FailureReporter;
 use DF\HorizonObservability\Support\Versions;
 use DF\HorizonObservability\Tests\Support\Apps;
 use DF\HorizonObservability\Tests\Support\LogRecorder;
+use DF\HorizonObservability\Tests\Support\RegistersInBootProvider;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\ServiceProvider;
@@ -56,18 +57,20 @@ it('logs the config problems once when the snapshot is first built', function ()
         ->and($log->records[0]['context']['problems'])->toHaveCount(2);
 });
 
-it('registers the six commands available before the grafana command lands', function (): void {
+it('registers the seven commands, grafana once its class exists (T13)', function (): void {
+    $grafana = class_exists('DF\\HorizonObservability\\Console\\GrafanaCommand');
     $commands = array_values(array_filter(array_keys(Artisan::all()), static fn (string $name): bool => str_starts_with($name, 'horizon-observability:')));
     sort($commands);
 
-    expect($commands)->toBe([
+    expect($commands)->toBe(array_values(array_filter([
         'horizon-observability:cache',
         'horizon-observability:check',
         'horizon-observability:clear',
         'horizon-observability:flush',
+        $grafana ? 'horizon-observability:grafana' : null,
         'horizon-observability:install',
         'horizon-observability:stream',
-    ])->and(HorizonObservabilityServiceProvider::packageCommands())->toHaveCount(class_exists('DF\\HorizonObservability\\Console\\GrafanaCommand') ? 7 : 6);
+    ])))->and(HorizonObservabilityServiceProvider::packageCommands())->toHaveCount($grafana ? 7 : 6);
 });
 
 it('exits 1 from the stream command stub', function (): void {
@@ -104,11 +107,12 @@ it('adds an about section', function (): void {
     expect($about['horizon_observability'] ?? null)->toMatchArray([
         'enabled' => 'yes',
         'endpoints' => url('horizon/observability'),
-        'access' => 'locked',
         'namespace' => 'ho',
         'live' => 'enabled',
         'config_problems' => '0',
-    ]);
+    ])
+        // No token outside "local": locked. T03 may add a hint (e.g. the env var to set) after the word.
+        ->and($about['horizon_observability']['access'] ?? null)->toStartWith('locked');
 });
 
 it('warns once when registered after boot', function (): void {
@@ -120,6 +124,50 @@ it('warns once when registered after boot', function (): void {
     expect($log->messages('warning'))->toBe(["horizon-observability: provider registered after boot; Horizon's catch-all route may shadow the endpoints."])
         ->and($this->app['router']->getRoutes()->hasNamedRoute('horizon-observability.metrics'))->toBeTrue();
 });
+
+it('still registers the routes, with the warning, when registered from another provider\'s boot()', function (): void {
+    [$routes, $warnings, $metrics] = Apps::inspect(
+        [HorizonServiceProvider::class, RegistersInBootProvider::class],
+        [],
+        static function (Application $app): array {
+            /** @var LogRecorder $log */
+            $log = $app->make('log');
+
+            return [
+                array_values(array_filter(
+                    array_map(static fn ($route): string => (string) $route->getName(), $app['router']->getRoutes()->getRoutes()),
+                    static fn (string $name): bool => str_starts_with($name, 'horizon-observability.'),
+                )),
+                $log->messages('warning'),
+                Apps::match($app['router']->getRoutes(), '/horizon/observability/metrics'),
+            ];
+        },
+    );
+
+    // Horizon booted first, so its catch-all wins: the warning says so instead of silently registering nothing.
+    expect($routes)->toBe(['horizon-observability.metrics', 'horizon-observability.jobs', 'horizon-observability.live'])
+        ->and($warnings)->toBe(["horizon-observability: provider registered after boot; Horizon's catch-all route may shadow the endpoints."])
+        ->and($metrics)->toBe('horizon.index');
+});
+
+it('wires up once and quietly in both provider orders (the late fallback stays idle)', function (array $providers): void {
+    $log = new LogRecorder;
+
+    $metrics = Apps::inspect(
+        $providers,
+        [],
+        static fn (Application $app): ?string => Apps::match($app['router']->getRoutes(), '/horizon/observability/metrics'),
+        static function (Application $app) use ($log): void {
+            $app->instance('log', $log);
+        },
+    );
+
+    expect($metrics)->toBe('horizon-observability.metrics')
+        ->and($log->messages('warning'))->toBe([]);
+})->with([
+    'Horizon first' => [[HorizonServiceProvider::class, HorizonObservabilityServiceProvider::class]],
+    'package first' => [[HorizonObservabilityServiceProvider::class, HorizonServiceProvider::class]],
+]);
 
 it('answers 403 from the authorize stub before anything else', function (): void {
     $this->get('/horizon/observability/metrics')->assertForbidden()->assertSeeText('Forbidden.');
