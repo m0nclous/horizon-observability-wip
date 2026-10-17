@@ -22,7 +22,8 @@ use Throwable;
  * self-metrics, read from the storage written by the workers.
  *
  * Per scrape: the reset guard `EVAL`, the five counter hashes, the creation times, one `extremes_read` `EVAL`, `meta`
- * and the job-class set (read only), on the short-timeout reader of the storage connection. Values are absolute (no registry, C3).
+ * and the job-class set (read only), on the short-timeout reader of the storage connection. Values are absolute (no
+ * registry, C3).
  * - Every (connection, queue, job_class) of `queue_jobs_total` is zero-filled with all five statuses, so the first
  *   failure or timeout of a known class is visible to `increase()`, and has a duration histogram (all zero until
  *   its first duration); every queue of those has a wait histogram (all zero until its first wait).
@@ -285,7 +286,9 @@ final readonly class AttemptsCollector implements Collector
         $held = [];
 
         foreach ($created as $field => $at) {
-            if (is_numeric($at) && is_finite((float) $at) && $now - (float) $at < self::NEW_SERIES_HOLD_SECONDS && (float) $at - $now < self::NEW_SERIES_HOLD_SECONDS) {
+            $age = is_numeric($at) ? $now - (float) $at : INF;
+
+            if (is_finite($age) && abs($age) < self::NEW_SERIES_HOLD_SECONDS) {
                 $held[$field] = true;
             }
         }

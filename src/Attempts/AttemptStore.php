@@ -26,8 +26,8 @@ use Illuminate\Redis\Connections\Connection;
  * worker. The `EVAL` goes through Laravel's normalised `Connection::eval()` on phpredis and predis alike (C2).
  *
  * Reads (for the attempts collector): the counter hashes, the creation times of the series, the job-class set, the
- * merged extremes of the last 150 seconds (`extremes_read.lua`) and `meta`, all on a reader client of the storage connection with
- * `redis.scrape_timeout`, without the breaker: read failures fail the collector visibly.
+ * merged extremes of the last 150 seconds (`extremes_read.lua`) and `meta`, all on a reader client of the storage
+ * connection with `redis.scrape_timeout`, without the breaker: read failures fail the collector visibly.
  *
  * A container singleton whose constructor touches neither Redis nor {@see Config}: the config snapshot is resolved
  * per call.
