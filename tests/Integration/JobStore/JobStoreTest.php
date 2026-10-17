@@ -160,6 +160,40 @@ it('reads the next chunk when expired hashes leave the page short', function ():
         ->and(array_count_values($commands->names())['ZRANGEBYSCORE'] ?? 0)->toBe(2);
 });
 
+it('reads whole chunks after a short first read, so a small page over expired hashes stays bounded', function (): void {
+    // Horizon stopped: nothing trims its sets while the job hashes expire, so the newest ids have no hash. A page of
+    // one row (Grafana's health check asks for limit=1) must not cost one round trip per expired id.
+    $jobs = HorizonJobs::using($this->app);
+    $jobs->pending(pushedAt: 1700000000.0, id: 'p-live');
+    $jobs->orphans('pending_jobs', array_map(static fn (int $index): float => 1700001000.0 + $index, range(1, 1200)));
+    $commands = RedisCommands::start($this->app);
+
+    expect(jobStoreTestIds(jobStoreTestQuery(JobList::Pending, limit: 1)))->toBe(['p-live'])
+        // 1 id, then chunks of 500: 1 + 500 + 500 + 200 ids.
+        ->and(array_count_values($commands->names())['ZRANGEBYSCORE'] ?? 0)->toBe(4);
+});
+
+it('makes at most 20 ZRANGEBYSCORE calls per request, however small the page', function (): void {
+    $jobs = HorizonJobs::using($this->app);
+    $jobs->orphans('pending_jobs', array_map(static fn (int $index): float => 1700001000.0 + $index, range(1, JobStore::SCAN_LIMIT)));
+    $commands = RedisCommands::start($this->app);
+
+    expect(jobStoreTestIds(jobStoreTestQuery(JobList::Pending, limit: 1)))->toBe([])
+        ->and(array_count_values($commands->names())['ZRANGEBYSCORE'] ?? 0)->toBe(20);
+});
+
+it('treats a time that is not a finite number as missing', function (): void {
+    $jobs = HorizonJobs::using($this->app);
+    $jobs->completed(completedAt: 1700000002.0, id: 'c-corrupt-start');
+    $jobs->completed(completedAt: 1700000001.0, id: 'c-corrupt-end');
+    $jobs->connection()->hset('c-corrupt-start', 'reserved_at', '1e999');
+    $jobs->connection()->hset('c-corrupt-end', 'completed_at', '1e999');
+
+    expect(app(JobStore::class)->rows(jobStoreTestQuery(JobList::Completed), null, null))->toBe([
+        jobStoreTestRow('c-corrupt-start', 'App\Jobs\SendInvoice', 'default', ['created_at' => 1700000000.0, 'completed_at' => 1700000002.0]),
+    ]);
+});
+
 it('scans a filtered list in chunks of 500 ids', function (): void {
     $jobs = HorizonJobs::using($this->app);
     $jobs->pending('App\Jobs\Rare', 'default', 1700000000.0, 'p-rare');

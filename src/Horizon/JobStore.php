@@ -28,8 +28,8 @@ use RedisCluster;
  *
  * - The ids come from Horizon's sorted sets `pending_jobs`, `completed_jobs` and `failed_jobs`, whose score is minus
  *   the time the job was pushed, completed or failed, so the newest come first and the period `[from, to]` is a
- *   score range. They are read in chunks of {@see self::CHUNK}, at most {@see self::SCAN_LIMIT} per request: with a
- *   filter, a matching job older than that is not listed.
+ *   score range. They are read in chunks of {@see self::CHUNK}, at most {@see self::SCAN_LIMIT} ids in at most 20
+ *   calls per request: with a filter, a matching job older than that is not listed.
  * - Each id is read with one `HMGET` of light fields, never the payload, pipelined per chunk (a transaction on a
  *   phpredis cluster, as Horizon does). A hash that has expired while its id is still in the set is skipped, like
  *   a hash without its list's time field.
@@ -62,6 +62,11 @@ final readonly class JobStore
      * Ids read per request at most (20 chunks).
      */
     public const SCAN_LIMIT = 10000;
+
+    /**
+     * `ZRANGEBYSCORE` calls per request at most (Arch Q6.11: 10 000 / 500).
+     */
+    private const MAX_CALLS = self::SCAN_LIMIT / self::CHUNK;
 
     /**
      * Job hashes per `job_details.lua` call.
@@ -109,9 +114,11 @@ final readonly class JobStore
         $rows = [];
         $offset = 0;
 
-        while ($offset < self::SCAN_LIMIT && count($rows) < $query->limit) {
-            // Without a filter every live hash is a row, so read no more ids than the page still needs.
-            $count = min($queueSet === null && $classSet === null ? $query->limit - count($rows) : self::CHUNK, self::CHUNK, self::SCAN_LIMIT - $offset);
+        for ($calls = 0; $calls < self::MAX_CALLS && $offset < self::SCAN_LIMIT && count($rows) < $query->limit; $calls++) {
+            // Without a filter every live hash is a row, so the first read takes no more ids than the page needs.
+            // Later reads (after expired hashes) take whole chunks: a small page over a set of expired ids (Horizon
+            // stopped, so nothing trims its sets) still costs at most MAX_CALLS round trips, not one per id.
+            $count = min($calls === 0 && $queueSet === null && $classSet === null ? $query->limit : self::CHUNK, self::CHUNK, self::SCAN_LIMIT - $offset);
             $ids = $this->ids($redis, $set, $min, $max, $offset, $count);
             $offset += $count;
 
@@ -227,11 +234,12 @@ final readonly class JobStore
     }
 
     /**
-     * Horizon's `microtime(true)` string as Unix seconds; null when it is missing, empty or not positive.
+     * Horizon's `microtime(true)` string as Unix seconds; null when it is missing, empty, not positive or not finite
+     * (a corrupt `1e999` would make the runtime INF, which JSON cannot encode).
      */
     private function time(?string $value): ?float
     {
-        return is_numeric($value) && (float) $value > 0 ? (float) $value : null;
+        return is_numeric($value) && is_finite((float) $value) && (float) $value > 0 ? (float) $value : null;
     }
 
     /**

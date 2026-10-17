@@ -104,6 +104,18 @@ it('answers HEAD without a body', function (): void {
     expect($response->getContent())->toBe('');
 });
 
+it('answers 200 with a null runtime when a stored time is not a finite number', function (): void {
+    // round(INF - x, 3) is INF, which JSON cannot encode: the list would fail until the hash expires.
+    $jobs = HorizonJobs::using($this->app);
+    $jobs->completed(id: 'c-1');
+    $jobs->connection()->hset('c-1', 'reserved_at', '1e999');
+
+    $this->get('/horizon/observability/jobs/completed')
+        ->assertOk()
+        ->assertJsonPath('data.0.id', 'c-1')
+        ->assertJsonPath('data.0.runtime', null);
+});
+
 it('caps the rows at the limit', function (): void {
     $jobs = HorizonJobs::using($this->app);
 
