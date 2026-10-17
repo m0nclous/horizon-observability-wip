@@ -147,8 +147,8 @@ final class TextFormat
         $name = $prefix.$metric->value;
         $out = sprintf("# HELP %s %s\n# TYPE %s %s\n", $name, self::escapeHelp($metric->help()), $name, $metric->type()->value);
 
-        foreach (self::sorted($samples) as $sample) {
-            $out .= $name.$sample->suffix.self::labels($sample->labels).' '.self::number($sample->value)."\n";
+        foreach ($this->sorted($samples) as $sample) {
+            $out .= $name.$sample->suffix.$this->labels($sample->labels).' '.self::number($sample->value)."\n";
         }
 
         return $out;
@@ -161,7 +161,7 @@ final class TextFormat
      * @param  list<Sample>  $samples
      * @return list<Sample>
      */
-    private static function sorted(array $samples): array
+    private function sorted(array $samples): array
     {
         $groups = [];
 
@@ -181,7 +181,7 @@ final class TextFormat
     /**
      * @param  array<string, string>  $labels
      */
-    private static function labels(array $labels): string
+    private function labels(array $labels): string
     {
         $pairs = [];
 
