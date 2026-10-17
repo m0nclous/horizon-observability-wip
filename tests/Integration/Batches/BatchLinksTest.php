@@ -255,8 +255,9 @@ describe('writing', function (): void {
 
         $breaker = app(CircuitBreaker::class);
 
+        // Not even the failing write counts: exporter_attempts_dropped_total counts attempts only.
         expect($breaker->isOpen())->toBeTrue()
-            ->and($breaker->takeDropped())->toBe(1)
+            ->and($breaker->takeDropped())->toBe(0)
             ->and($elapsed)->toBeLessThan(1.0)
             ->and($log->messages('warning'))->toHaveCount(1)
             ->and($log->messages('warning')[0])->toStartWith('horizon-observability: breaker:batch_links failed: ');

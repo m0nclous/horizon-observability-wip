@@ -83,7 +83,7 @@ final readonly class AttemptStore
         ?string $uuid,
         CarbonImmutable $now,
     ): bool {
-        return $this->breaker->attempt('attempts', function () use ($connection, $queue, $jobClass, $status, $durationSeconds, $startedAt, $readyAt, $uuid, $now): void {
+        return $this->breaker->attempt(CircuitBreaker::ATTEMPTS, function () use ($connection, $queue, $jobClass, $status, $durationSeconds, $startedAt, $readyAt, $uuid, $now): void {
             $config = $this->container->make(Config::class);
             $ring = new AttemptRing($this->keys, $config);
             $unix = $now->getTimestamp();

@@ -39,8 +39,9 @@ use Throwable;
  * - A link is written at most once per {@see self::REFRESH_SECONDS} per process, so a batch of 10 000 jobs of one
  *   class costs one `ZADD`. The first write of each hour also prunes the links older than 7 days, so the set stays
  *   bounded when the batches collector does not run (auto mode without a batch table, DynamoDB batching).
- * - Writes go through the shared {@see CircuitBreaker}. While it is open the write is skipped without being counted
- *   as a dropped attempt: a link is refreshed by the next dispatch anyway.
+ * - Writes go through the shared {@see CircuitBreaker}. While it is open the write is skipped; neither a skipped nor
+ *   a failed link write counts as a dropped attempt (only {@see CircuitBreaker::ATTEMPTS} does): a link is refreshed
+ *   by the next dispatch anyway.
  * - Nothing ever reaches the dispatching code: every failure is logged (throttled) and swallowed.
  *
  * **Reading**: links seen during the last {@see self::TTL_SECONDS} (7 days), at most the {@see self::MAX_LINKS} most

@@ -14,7 +14,9 @@ use Throwable;
  *
  * - A write that throws (anything: a connection or timeout error, a Lua failure, a missing connection) opens the
  *   breaker for {@see self::COOLDOWN_SECONDS}; one warning is logged per opening.
- * - While open, writes are skipped and counted as dropped; {@see self::attempt()} returns false.
+ * - While open, writes are skipped; {@see self::attempt()} returns false. Only the {@see self::ATTEMPTS} operation's
+ *   skipped or failed writes count as dropped (`exporter_attempts_dropped_total`, "job attempts not recorded"); a
+ *   dropped ready_at or batch-link write is not an attempt.
  * - After the cooldown the next write probes. Success closes the breaker and logs one info line with the outage
  *   length and the attempts dropped meanwhile; failure re-opens it without a new warning.
  * - {@see self::takeDropped()} hands the dropped count to the write that persists it (`meta.dropped` inside the record
@@ -28,6 +30,11 @@ use Throwable;
 final class CircuitBreaker
 {
     public const COOLDOWN_SECONDS = 30.0;
+
+    /**
+     * The operation of `AttemptStore::record()`, the only one whose drops are counted.
+     */
+    public const ATTEMPTS = 'attempts';
 
     /**
      * @var Closure(): float
@@ -63,9 +70,10 @@ final class CircuitBreaker
     public function attempt(string $operation, Closure $write): bool
     {
         $now = ($this->clock)();
+        $counted = $operation === self::ATTEMPTS ? 1 : 0;
 
         if ($this->retryAt !== null && $now < $this->retryAt) {
-            $this->dropped++;
+            $this->dropped += $counted;
             $this->droppedWhileOpen++;
 
             return false;
@@ -77,7 +85,7 @@ final class CircuitBreaker
         try {
             $write();
         } catch (Throwable $e) {
-            $this->dropped += $this->taken + 1;
+            $this->dropped += $this->taken + $counted;
             $this->droppedWhileOpen++;
             $this->retryAt = $now + self::COOLDOWN_SECONDS;
 
@@ -117,7 +125,7 @@ final class CircuitBreaker
     }
 
     /**
-     * Writes dropped since the last call; resets the count.
+     * Attempts dropped since the last call; resets the count.
      */
     public function takeDropped(): int
     {
