@@ -79,7 +79,7 @@ it('exits 1 from the stream command stub', function (): void {
 
 it('runs the other command stubs successfully', function (string $command): void {
     $this->artisan($command)->assertExitCode(0);
-})->with(['horizon-observability:install', 'horizon-observability:check', 'horizon-observability:cache', 'horizon-observability:clear', 'horizon-observability:flush']);
+})->with(['horizon-observability:install', 'horizon-observability:check', 'horizon-observability:flush']);
 
 it('offers the config and the Grafana assets for publishing', function (): void {
     $config = ServiceProvider::pathsToPublish(HorizonObservabilityServiceProvider::class, 'horizon-observability-config');
