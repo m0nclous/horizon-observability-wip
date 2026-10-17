@@ -1,5 +1,6 @@
 {
   "user": "m0nclous",
+  "tokens": {"bot-token": "github-actions[bot]", "readonly-token": null},
   "repo": "m0nclous/board-fixture",
   "labels": [
     {"name": "bug", "color": "d73a4a", "description": "Something isn't working"}

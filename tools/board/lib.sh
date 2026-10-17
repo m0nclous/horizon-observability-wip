@@ -4,8 +4,13 @@
 #
 # A task is a heading "### Txx Title — `status`" with an optional tail "(depends on T02, T03–T08)",
 # "(depends only on T00; ...)" or "(depends on everything)". Tasks without such a tail inherit the dependencies of
-# their phase heading "## Phase B: ... (all depend on T02; ...)". Right under a heading, set-status.sh adds the lines
+# their phase heading "## Phase B: ... (all depend on T02; ...)"; any other "## " heading ends the phase (its tasks
+# have no phase and no inherited dependencies). Right under a heading, set-status.sh adds the lines
 # "QA: <stamp>: text", "Owner question: <stamp>: text" and "Owner answer: <stamp>: text", newest first.
+#
+# Dependency lists: ids (also lowercase), ranges with a hyphen, an en dash or an em dash (spaced or not), "..", "to",
+# "through" or "thru" (T03–T08, T02 – T04, T00 through T02), separated by commas, "and", "&", "+" or "/". Anything
+# else in the clause is reported as a warning, so that a typo cannot silently drop a dependency.
 #
 # awk runs with LC_ALL=C (byte semantics) so mawk, gawk and BSD awk read the em and en dashes the same way.
 
@@ -13,6 +18,7 @@ BOARD_STATUSES="todo|in progress|testing|needs owner|done"
 BOARD_AREAS="exporter attempts queues http batches discovery horizon-ui grafana live ci docs process"
 
 # Prints one tab-separated line per task: id, title, status, phase, dependencies (space-separated ids, may be empty).
+# Warnings (unparsed dependency text) go to stderr.
 board_parse_tasks() {
     local file="$1"
     [[ -f "$file" ]] || {
@@ -20,34 +26,64 @@ board_parse_tasks() {
         return 1
     }
     LC_ALL=C awk -v statuses="$BOARD_STATUSES" '
-        # Every id of a list such as "T03–T08, T10 and T12" (en dash or hyphen ranges), space-separated.
-        function expand(clause,    out, id, range, lo, hi, width, k) {
+        function warn(message) {
+            printf "board: warning: %s\n", message > "/dev/stderr"
+        }
+        # Every id of a list such as "T03–T08, T10 and T12", space-separated. Sets "leftover" to the text that is
+        # neither an id, a range nor a separator.
+        function expand(clause,    out, rest, id, range, lo, hi, width, k, tmp) {
             out = ""
-            while (match(clause, /T[0-9]+/)) {
-                id = substr(clause, RSTART, RLENGTH)
-                clause = substr(clause, RSTART + RLENGTH)
-                if (match(clause, /^(-|–)T[0-9]+/)) {
-                    range = substr(clause, RSTART, RLENGTH)
-                    clause = substr(clause, RSTART + RLENGTH)
-                    match(range, /T[0-9]+$/)
-                    hi = substr(range, RSTART + 1, RLENGTH - 1) + 0
-                    lo = substr(id, 2) + 0
-                    width = length(id) - 1
-                    for (k = lo; k <= hi; k++) {
-                        out = out " " sprintf("T%0" width "d", k)
-                    }
-                } else {
+            leftover = ""
+            rest = clause
+            sub(/^(all depend|depends) (only )?on/, "", rest)
+            while (match(rest, /[Tt][0-9]+/)) {
+                leftover = leftover " " substr(rest, 1, RSTART - 1)
+                id = "T" substr(rest, RSTART + 1, RLENGTH - 1)
+                rest = substr(rest, RSTART + RLENGTH)
+                range = ""
+                if (match(rest, /^ *(-|–|—|\.\.) *[Tt][0-9]+/) || match(rest, /^ +(to|through|thru) +[Tt][0-9]+/)) {
+                    range = substr(rest, RSTART, RLENGTH)
+                    rest = substr(rest, RSTART + RLENGTH)
+                }
+                if (range == "") {
                     out = out " " id
+                    continue
+                }
+                match(range, /[0-9]+$/)
+                hi = substr(range, RSTART) + 0
+                lo = substr(id, 2) + 0
+                width = length(id) - 1
+                if (hi < lo) {
+                    leftover = leftover " " id range
+                    tmp = lo
+                    lo = hi
+                    hi = tmp
+                }
+                for (k = lo; k <= hi; k++) {
+                    out = out " " sprintf("T%0" width "d", k)
                 }
             }
+            leftover = leftover " " rest
+            gsub(/[,&+\/]/, " ", leftover)
+            gsub(/(^| )and( |$)/, " ", leftover)
+            gsub(/(^| )and( |$)/, " ", leftover)
+            gsub(/[ \t]+/, " ", leftover)
+            sub(/^ /, "", leftover)
+            sub(/ $/, "", leftover)
             return out
         }
-        /^## Phase / {
-            phase = $3
-            sub(/:$/, "", phase)
+        /^## / {
+            phase = ""
             phase_deps = ""
-            if (match($0, /all depend on [^;)]*/)) {
-                phase_deps = expand(substr($0, RSTART, RLENGTH))
+            if ($2 == "Phase") {
+                phase = $3
+                sub(/:$/, "", phase)
+                if (match($0, /all depend (only )?on [^;)]*/)) {
+                    phase_deps = expand(substr($0, RSTART, RLENGTH))
+                    if (leftover != "") {
+                        warn("phase " phase ": unparsed text in \"" substr($0, RSTART, RLENGTH) "\": " leftover)
+                    }
+                }
             }
             next
         }
@@ -55,17 +91,24 @@ board_parse_tasks() {
             if (match($0, " — `(" statuses ")`") == 0) {
                 next
             }
+            id = $2
+            start = 5 + length(id) + 1
+            title = substr($0, start, RSTART - start)
             status = substr($0, RSTART, RLENGTH)
             tail = substr($0, RSTART + RLENGTH)
             sub(/^[^`]*`/, "", status)
             sub(/`$/, "", status)
-            id = $2
-            title = substr($0, 5 + length(id) + 1)
-            sub(/ — .*/, "", title)
             deps = phase_deps
             if (match(tail, /depends (only )?on [^;)]*/)) {
                 clause = substr(tail, RSTART, RLENGTH)
-                deps = (clause ~ /everything/) ? "*" : expand(clause)
+                if (clause ~ /everything/) {
+                    deps = "*"
+                } else {
+                    deps = expand(clause)
+                    if (leftover != "") {
+                        warn(id ": unparsed text in \"" clause "\": " leftover)
+                    }
+                }
             }
             n++
             ids[n] = id
@@ -101,15 +144,12 @@ board_parse_tasks() {
 }
 
 # Prints the notes of every task, oldest first per task: id, kind (qa, question, answer), text (without the prefix).
+# Notes belong to the task heading above them; any other heading ends the task.
 board_parse_notes() {
     local file="$1"
     LC_ALL=C awk '
-        /^### T[0-9]+ / {
-            current = $2
-            next
-        }
-        /^##? / {
-            current = ""
+        /^#+ / {
+            current = ($1 == "###" && $2 ~ /^T[0-9]+$/) ? $2 : ""
             next
         }
         current != "" {
@@ -198,6 +238,50 @@ board_ids_with_status() {
         [[ "${TASK_STATUS[$id]}" == "$status" && "$id" != "$except" ]] && out+=("$id")
     done
     echo "${out[*]}"
+}
+
+# The verdict of a QA text: "rejected" (the whole words "rejected", "changes requested" or "not approved"),
+# "approved" (the whole word "approved") or nothing. Rejected wins when a text says both.
+board_qa_verdict() {
+    local text="${1,,}"
+    if [[ "$text" =~ (^|[^a-z])(rejected|changes[[:space:]]+requested|not[[:space:]]+approved)([^a-z]|$) ]]; then
+        echo rejected
+    elif [[ "$text" =~ (^|[^a-z])approved([^a-z]|$) ]]; then
+        echo approved
+    fi
+}
+
+# The round number of a QA text ("round 2 approved by ..." -> 2), or nothing.
+board_qa_round() {
+    local text="${1,,}"
+    if [[ "$text" =~ (^|[^a-z])round[[:space:]]+([0-9]+)([^0-9]|$) ]]; then
+        echo "$((10#${BASH_REMATCH[2]}))"
+    fi
+}
+
+# Counts the QA rounds of every task into QA_ROUNDS and QA_REJECTED: one round per distinct "round N" of the task's
+# QA lines that carries a verdict; a round is rejected when any of its lines rejects (the spec and the adversarial
+# tester may write one line each). QA lines without "round N" are notes, not rounds.
+board_count_rounds() {
+    local id kind text round verdict
+    local -A seen=()
+    declare -gA QA_ROUNDS=() QA_REJECTED=()
+    for id in "${TASK_IDS[@]}"; do
+        seen=()
+        while IFS=$'\t' read -r kind text; do
+            [[ "$kind" == "qa" ]] || continue
+            round="$(board_qa_round "$text")"
+            verdict="$(board_qa_verdict "$text")"
+            [[ -n "$round" && -n "$verdict" ]] || continue
+            [[ "${seen[$round]:-}" == "rejected" ]] || seen[$round]="$verdict"
+        done <<<"${TASK_NOTES[$id]:-}"
+        QA_ROUNDS[$id]=0
+        QA_REJECTED[$id]=0
+        for round in "${!seen[@]}"; do
+            QA_ROUNDS[$id]=$((QA_ROUNDS[$id] + 1))
+            [[ "${seen[$round]}" != "rejected" ]] || QA_REJECTED[$id]=$((QA_REJECTED[$id] + 1))
+        done
+    done
 }
 
 # Loads tools/board/areas.tsv ("Txx<TAB>area" lines, # comments) into TASK_AREA.

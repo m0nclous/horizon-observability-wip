@@ -6,6 +6,8 @@ name: board
 # variable BOARD_NUMBER (the number in the board URL). Optional variables: BOARD_OWNER (default: the repository owner),
 # INTEGRATION_BRANCH (default: claude/hopeful-hawking-njeu3v), BOARD_WIP_IN_PROGRESS (2), BOARD_WIP_TESTING (3).
 # workflow_run only fires from the copy of this file on the default branch.
+# Owner questions are posted with this workflow's GITHUB_TOKEN (github-actions[bot]): GitHub notifies nobody of their
+# own comments, and every other write uses the owner's PROJECT_TOKEN.
 
 on:
   push:
@@ -39,6 +41,9 @@ jobs:
       || (github.event_name == 'push' && github.ref_name == (vars.INTEGRATION_BRANCH || 'claude/hopeful-hawking-njeu3v'))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
     # A pending sync is replaced by a newer one, which reads the newer TASKS.md: nothing is lost.
     concurrency:
       group: board-sync
@@ -52,6 +57,7 @@ jobs:
         run: tools/board/board.sh sync
         env:
           BOARD_BRANCH: ${{ github.ref_name }}
+          BOARD_NOTIFY_TOKEN: ${{ github.token }}
 
   ci:
     name: Stop the line
@@ -66,10 +72,12 @@ jobs:
       group: board-ci
       cancel-in-progress: false
     steps:
-      # The branch head, so that board.sh can ignore a run of an older commit.
+      # The branch head and its history: a run of an older commit decides only when the commits after it change
+      # nothing but TASKS.md and screenshots (which the tests workflow ignores on push).
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
       - name: Open, comment on or close the stop-the-line issue
         run: tools/board/board.sh ci
         env:

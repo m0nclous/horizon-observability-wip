@@ -7,7 +7,8 @@ board.sh sees the issues, labels, comments and board items of the first. Only th
 are implemented, with gh's flags and output shapes (`--json` field selection, `--jq` through jq, `--format json` for
 projects); anything else exits 64 so that an unexpected call fails the test. Nothing here touches the network.
 
-GH_STUB_FAIL="issue pin" makes every call starting with those arguments fail (exit 1).
+GH_STUB_FAIL="issue pin" makes every call starting with those arguments fail (exit 1). Comments are written as the
+login that "tokens" in the state maps $GH_TOKEN to (default: "user"), so tests can see which token posted them.
 """
 
 import json
@@ -17,7 +18,7 @@ import subprocess
 import sys
 
 VALUE_FLAGS = {
-    "--add-label", "--attempt", "--body", "--color", "--comment", "--data-type", "--date", "--description",
+    "-f", "--method", "--add-label", "--attempt", "--body", "--color", "--comment", "--data-type", "--date", "--description",
     "--field-id", "--format", "--id", "--jq", "--json", "--label", "--limit", "--name", "--number", "--owner",
     "--project-id", "--reason", "--remove-label", "--repo", "--single-select-option-id", "--single-select-options",
     "--state", "--text", "--title", "--url",
@@ -137,9 +138,21 @@ class Stub:
             "state": issue["state"],
             "url": "https://github.com/%s/issues/%d" % (repo, issue["number"]),
             "labels": labels,
-            "comments": [{"author": {"login": self.state["user"]}, "body": body} for body in issue["comments"]],
+            "comments": [
+                {"author": {"login": comment["author"]}, "body": comment["body"],
+                 "url": "https://github.com/%s/issues/%d#issuecomment-%d" % (repo, issue["number"], comment["id"])}
+                for comment in issue["comments"]
+            ],
             "isPinned": issue.get("pinned", False),
         }
+
+    def add_comment(self, issue, body):
+        self.state["comment_serial"] = self.state.get("comment_serial", 5000) + 1
+        author = self.state.get("tokens", {}).get(os.environ.get("GH_TOKEN", ""), self.state["user"])
+        if author is None:
+            fail("HTTP 403: Resource not accessible by integration")
+        issue["comments"].append({"id": self.state["comment_serial"], "author": author, "body": body})
+        return self.state["comment_serial"]
 
     def require_labels(self, names):
         for name in names:
@@ -147,9 +160,26 @@ class Stub:
                 fail("could not add label: '%s' not found" % name)
 
     def cmd_api(self, args, opts, positional):
-        if positional != ["user"]:
+        if positional == ["user"] and "--method" not in opts:
+            self.emit({"login": self.state["user"]}, opts)
+            return
+        # PATCH repos/<repo>/issues/comments/<id> -f body=...: edits a comment.
+        match = re.fullmatch(r"repos/([^/]+/[^/]+)/issues/comments/(\d+)", positional[0]) if len(positional) == 1 else None
+        if match is None or one(opts, "--method") != "PATCH":
             unsupported(args)
-        self.emit({"login": self.state["user"]}, opts)
+        if match.group(1) != self.state["repo"]:
+            fail("gh: Not Found (HTTP 404)")
+        fields = dict(value.split("=", 1) for value in opts.get("-f", []))
+        if set(fields) != {"body"}:
+            unsupported(args)
+        for issue in self.state["issues"]:
+            for comment in issue["comments"]:
+                if comment["id"] == int(match.group(2)):
+                    comment["body"] = fields["body"]
+                    self.save()
+                    self.emit({"id": comment["id"], "body": comment["body"]}, opts)
+                    return
+        fail("gh: Not Found (HTTP 404)")
 
     def cmd_repo(self, args, opts, positional):
         if positional != ["view"]:
@@ -228,7 +258,7 @@ class Stub:
                 sys.stderr.write("! Issue #%d is already closed\n" % issue["number"])
                 return
             if "--comment" in opts:
-                issue["comments"].append(one(opts, "--comment"))
+                self.add_comment(issue, one(opts, "--comment"))
             reason = one(opts, "--reason", "completed")
             if reason not in ("completed", "not planned"):
                 fail("invalid reason: " + reason)
@@ -243,9 +273,9 @@ class Stub:
             body = one(opts, "--body")
             if body is None:
                 fail("body required when not running interactively")
-            issue["comments"].append(body)
+            comment = self.add_comment(issue, body)
             self.save()
-            print("https://github.com/%s/issues/%d#issuecomment-%d" % (self.state["repo"], issue["number"], len(issue["comments"])))
+            print("https://github.com/%s/issues/%d#issuecomment-%d" % (self.state["repo"], issue["number"], comment))
         elif verb == "pin" and len(rest) == 1:
             issue = self.issue(rest[0], opts)
             if not issue.get("pinned") and sum(1 for other in self.state["issues"] if other.get("pinned")) >= 3:

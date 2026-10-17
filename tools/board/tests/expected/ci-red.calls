@@ -1,4 +1,4 @@
-gh label list --repo m0nclous/board-fixture --limit 1000 --json name,color,description --jq '.[] | [.name, (.color | ascii_downcase), .description] | @tsv'
+gh label list --repo m0nclous/board-fixture --limit 1000 --json name,color,description --jq '.[] | [.name, (.color | ascii_downcase), (.description // "")] | map(gsub("[\n\u001f]"; " ")) | join("\u001f")'
 gh label create stop-the-line --repo m0nclous/board-fixture --color b60205 --description 'The integration branch is red: nothing moves to done' --force
 gh issue list --repo m0nclous/board-fixture --state open --label stop-the-line --limit 100 --json number --jq '.[].number'
 gh issue create --repo m0nclous/board-fixture --title '[CI] The integration branch is red' --body '<ci body>' --label stop-the-line

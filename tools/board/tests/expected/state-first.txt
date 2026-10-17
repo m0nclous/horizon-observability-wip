@@ -34,4 +34,4 @@ card #4 Status=Testing; Phase=B; Area=attempts; QA rounds=0; Started=2026-10-09
 card #5 Phase=B; Area=queues; QA rounds=0; Started=2026-10-10
 card #6 Status=Todo; Phase=B; Area=grafana; QA rounds=0
 card #7 Status=Todo; Phase=C; Area=live; QA rounds=0
-card #8 Status=Todo; Phase=C; QA rounds=0
+card #8 Status=Todo; Phase=C; Area=docs; QA rounds=0

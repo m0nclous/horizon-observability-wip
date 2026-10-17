@@ -5,11 +5,16 @@
 # PHP 8.3 / L13 / phpredis and the lowest leg PHP 8.2 / L11 / predis) and grafana on 13.2.4 only. Pushes to master
 # and claude/** (the merge into the integration branch), the schedule and manual runs keep the full matrix; a red push
 # run of the integration branch stops the line (.github/workflows/board.yml).
+# A push that changes only the task list or QA screenshots (tools/board/set-status.sh) runs nothing: the verdict of
+# the last run stands (board.sh ci treats those paths alike: BOARD_ONLY_PATHS).
 name: tests
 
 on:
   push:
     branches: [master, 'claude/**']
+    paths-ignore:
+      - planning/TASKS.md
+      - planning/screenshots/**
   pull_request:
   workflow_dispatch:
   schedule:

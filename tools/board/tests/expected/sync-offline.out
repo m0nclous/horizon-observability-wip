@@ -95,4 +95,5 @@ board   T07 add https://github.com/m0nclous/board-fixture/issues/<new>
 dry-run: gh project item-add 5 --owner m0nclous --url https://github.com/m0nclous/board-fixture/issues/\<new\>
 dry-run: set Status of https://github.com/m0nclous/board-fixture/issues/<new> to "Todo"
 dry-run: set Phase of https://github.com/m0nclous/board-fixture/issues/<new> to "C"
+dry-run: set Area of https://github.com/m0nclous/board-fixture/issues/<new> to "docs"
 dry-run: set QA rounds of https://github.com/m0nclous/board-fixture/issues/<new> to "0"

@@ -32,7 +32,7 @@ Green: no open `stop-the-line` issue.
 | #5 T04 Queue state | needs owner | queues | 0 | 2026-10-10 |  |  |
 | #6 T05 Grafana port | todo, ready | grafana | 0 |  |  |  |
 | #7 T06 Live backend | todo, blocked by T02, T03, T04, T05 | live | 0 |  |  |  |
-| #8 T07 Release | todo, blocked by T02, T03, T04, T05, T06 |  | 0 |  |  |  |
+| #8 T07 Release | todo, blocked by T02, T03, T04, T05, T06 | docs | 0 |  |  |  |
 
 ## Quality
 

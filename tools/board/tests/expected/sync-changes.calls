@@ -8,5 +8,5 @@ gh issue comment 5 --repo m0nclous/board-fixture --body '**Owner answer:** 2026-
 gh issue edit 6 --repo m0nclous/board-fixture --add-label 'in progress' --remove-label ready
 gh project item-edit --id PVTI_111 --project-id PVT_board5 --field-id PVTSSF_status --single-select-option-id st_progress
 gh project item-edit --id PVTI_111 --project-id PVT_board5 --field-id PVTF_104 --date 2026-10-12
-gh issue comment 7 --repo m0nclous/board-fixture --body '**Blocked** by T02, T04, T05: this task becomes ready when they are done.\n\n<!-- blocked:T02,T04,T05 -->'
-gh issue comment 8 --repo m0nclous/board-fixture --body '**Blocked** by T02, T04, T05, T06: this task becomes ready when they are done.\n\n<!-- blocked:T02,T04,T05,T06 -->'
+gh api --method PATCH repos/m0nclous/board-fixture/issues/comments/5004 -f 'body=**Blocked** by T02, T04, T05: this task becomes ready when they are done.\n\n<!-- blocked:T02,T04,T05 -->'
+gh api --method PATCH repos/m0nclous/board-fixture/issues/comments/5005 -f 'body=**Blocked** by T02, T04, T05, T06: this task becomes ready when they are done.\n\n<!-- blocked:T02,T04,T05,T06 -->'

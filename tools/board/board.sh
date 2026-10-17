@@ -7,14 +7,16 @@
 # - `sync` keeps one issue "[Txx] Title" per "### Txx Title — `status`" heading, labelled task, "phase: <phase>", the
 #   status label (in progress, testing, needs owner) and, for todo tasks, ready (every dependency done) or blocked; the
 #   issue is closed while the task is done. Every "QA:", "Owner question:" and "Owner answer:" line becomes one comment
-#   (questions mention the owner), and a blocked task gets one "Blocked by ..." comment per set of missing
-#   dependencies. On the board, the card sits in the Status column of the task and carries the fields Phase, Area
-#   (tools/board/areas.tsv), QA rounds, Started and Finished (from the "board: Txx -> ..." commits); missing fields
-#   are created.
+#   (questions mention the owner and are posted with BOARD_NOTIFY_TOKEN, so that the owner is notified), and a blocked
+#   task gets one "Blocked by ..." comment, edited when the missing dependencies change. On the board, the card sits
+#   in the Status column of the task and carries the fields Phase, Area (tools/board/areas.tsv), QA rounds, Started
+#   and Finished (from the "board: Txx -> ..." commits); missing fields are created, a field that cannot be written
+#   (another type) is skipped with a warning.
 # - `report` rewrites the body of the issue "[Board] Flow report": CI state, WIP per column against the limits, and
 #   per task status, area, QA rounds, start, finish and cycle time, plus the QA rejection rate.
 # - `ci` reads a completed run of the tests workflow (CI_* variables): red opens "[CI] The integration branch is red"
-#   (label stop-the-line) or comments on it once per run; green closes it.
+#   (label stop-the-line) or comments on it once per run; green closes it. A run of an older commit decides only when
+#   the commits after it change nothing but the task list and the screenshots (which the tests workflow ignores).
 #
 # Usage:
 #   tools/board/board.sh sync [--dry-run]
@@ -30,6 +32,8 @@
 #   BOARD_NUMBER            project number from the board URL (.../projects/<number>); empty = issues only, no board
 #   BOARD_BRANCH            branch used for links to TASKS.md (default: the current git branch)
 #   BOARD_MENTION           login that owner questions mention (default: the owner of BOARD_REPO)
+#   BOARD_NOTIFY_TOKEN      token for the owner-question comments (GitHub notifies nobody of their own comments, so
+#                           the workflow passes github-actions' GITHUB_TOKEN); empty = GH_TOKEN
 #   BOARD_AREAS_FILE        task -> area map (default: tools/board/areas.tsv next to this script)
 #   BOARD_WIP_IN_PROGRESS   WIP limit of In Progress for the report (default 2, as in set-status.sh)
 #   BOARD_WIP_TESTING       WIP limit of Testing for the report (default 3, as in set-status.sh)
@@ -58,6 +62,10 @@ CI_MARKER="<!-- board:stop-the-line -->"
 REPORT_LABEL="report"
 REPORT_TITLE="[Board] Flow report"
 REPORT_MARKER="<!-- board:report -->"
+BLOCKED_MARKER="<!-- blocked:"
+# Paths that the tests workflow ignores on push (.github/workflows/tests.yml, paths-ignore): commits that change only
+# these leave the verdict of the previous tests run standing.
+BOARD_ONLY_PATHS=("$TASKS_FILE" "$(dirname "$TASKS_FILE")/screenshots")
 
 STATUS_ORDER=("todo" "in progress" "testing" "needs owner" "done")
 # Status in TASKS.md => Status option on the board.
@@ -83,6 +91,14 @@ declare -A LABEL_TEXT=(
 FIELDS=("Phase" "Area" "QA rounds" "Started" "Finished")
 declare -A FIELD_KIND=([Status]="single" [Phase]="single" [Area]="single" [QA rounds]="number" [Started]="date" [Finished]="date")
 declare -A DATA_TYPE=([single]="SINGLE_SELECT" [number]="NUMBER" [date]="DATE")
+# The type that `gh project field-list` reports for each kind (it does not report the data type of a plain field).
+declare -A FIELD_TYPE_OF=([single]="ProjectV2SingleSelectField" [number]="ProjectV2Field" [date]="ProjectV2Field")
+
+# gh's --jq prints raw strings; @tsv would escape backslashes and tabs. Fields are separated by US (\u001f), lists
+# inside a field by RS (\u001e).
+US=$'\x1f'
+RS=$'\x1e'
+
 
 usage() {
     sed -n '/^# Usage:/,/^# --dry-run/p' "$0" | sed 's/^# \{0,1\}//'
@@ -145,28 +161,17 @@ load_tasks() {
     board_load_areas "$AREAS_FILE" || exit 1
 
     PHASES=()
-    local id
+    local id no_area=()
     for id in "${TASK_IDS[@]}"; do
-        [[ " ${PHASES[*]} " == *" ${TASK_PHASE[$id]} "* ]] || PHASES+=("${TASK_PHASE[$id]}")
+        [[ -z "${TASK_PHASE[$id]}" || " ${PHASES[*]} " == *" ${TASK_PHASE[$id]} "* ]] || PHASES+=("${TASK_PHASE[$id]}")
+        [[ -n "${TASK_AREA[$id]:-}" ]] || no_area+=("$id")
     done
+    if [[ ${#no_area[@]} -gt 0 && -f "$AREAS_FILE" ]]; then
+        warn "no area for ${no_area[*]} in $AREAS_FILE; add a line \"Txx<TAB>area\" for every task (the Area field stays empty)"
+    fi
 
-    # A QA round is a QA line that says "approved" or "rejected" (rejected wins when it says both).
-    declare -gA QA_ROUNDS=() QA_REJECTED=()
-    local kind text
-    for id in "${TASK_IDS[@]}"; do
-        QA_ROUNDS[$id]=0
-        QA_REJECTED[$id]=0
-        while IFS=$'\t' read -r kind text; do
-            [[ "$kind" == "qa" ]] || continue
-            text="${text,,}"
-            if [[ "$text" == *rejected* ]]; then
-                QA_ROUNDS[$id]=$((QA_ROUNDS[$id] + 1))
-                QA_REJECTED[$id]=$((QA_REJECTED[$id] + 1))
-            elif [[ "$text" == *approved* ]]; then
-                QA_ROUNDS[$id]=$((QA_ROUNDS[$id] + 1))
-            fi
-        done <<<"${TASK_NOTES[$id]:-}"
-    done
+    # A QA round is a distinct "round N" of a task's QA lines with a verdict (rejected wins), see lib.sh.
+    board_count_rounds
 }
 
 # Started = the first "board: Txx -> in progress" commit, Finished = the last "board: Txx -> done" commit (author
@@ -218,8 +223,8 @@ load_labels() {
     offline && return 0
     local out name color description
     out="$(gh label list --repo "$REPO" --limit 1000 --json name,color,description \
-        --jq '.[] | [.name, (.color | ascii_downcase), .description] | @tsv')"
-    while IFS=$'\t' read -r name color description; do
+        --jq '.[] | [.name, (.color | ascii_downcase), (.description // "")] | map(gsub("[\n\u001f]"; " ")) | join("\u001f")')"
+    while IFS="$US" read -r name color description; do
         [[ -z "$name" ]] || LABEL_HAVE[$name]="$color $description"
     done <<<"$out"
 }
@@ -234,14 +239,14 @@ ensure_label() {
 }
 
 # Loads the task issues ("[Txx] ..." with the task label) into ISSUE_NUMBER, ISSUE_STATE, ISSUE_URL, ISSUE_TITLE and
-# ISSUE_LABELS (unit-separated names). The newest issue of a task wins.
+# ISSUE_LABELS (RS-separated names). The newest issue of a task wins.
 load_issues() {
     declare -gA ISSUE_NUMBER=() ISSUE_STATE=() ISSUE_URL=() ISSUE_TITLE=() ISSUE_LABELS=()
     offline && return 0
     local out number state url title labels id re='^\[(T[0-9]+)\] '
     out="$(gh issue list --repo "$REPO" --state all --label "$TASK_LABEL" --limit 1000 --json number,state,url,title,labels \
-        --jq '.[] | [.number, .state, .url, .title, ([.labels[].name] | join("\u001f"))] | @tsv')"
-    while IFS=$'\t' read -r number state url title labels; do
+        --jq '.[] | [(.number | tostring), .state, .url, .title, ([.labels[].name] | join("\u001e"))] | map(gsub("[\n\u001f]"; " ")) | join("\u001f")')"
+    while IFS="$US" read -r number state url title labels; do
         [[ "$title" =~ $re ]] || continue
         id="${BASH_REMATCH[1]}"
         [[ -z "${ISSUE_NUMBER[$id]:-}" ]] || continue
@@ -270,8 +275,9 @@ managed_label() {
     esac
 }
 
+# The comments of an issue as a JSON array of {url, body}.
 comments_of() {
-    gh issue view "$1" --repo "$REPO" --json comments --jq '.comments[].body'
+    gh issue view "$1" --repo "$REPO" --json comments --jq '[.comments[] | {url, body}]'
 }
 
 # Open stop-the-line issues, oldest first.
@@ -291,22 +297,27 @@ normalize_owner() {
 }
 
 load_fields() {
-    declare -gA FIELD_ID=() OPTION_ID=()
-    local json name id option
+    declare -gA FIELD_ID=() FIELD_TYPE=() OPTION_ID=()
+    local json name id type option
     json="$(gh project field-list "$BOARD_NUMBER" --owner "$BOARD_OWNER" --limit 100 --format json)"
-    while IFS=$'\t' read -r name id _; do
-        [[ -z "$name" ]] || FIELD_ID[$name]="$id"
-    done <<<"$(jq -r '.fields[] | [.name, .id, .type] | @tsv' <<<"$json")"
-    while IFS=$'\t' read -r name option id; do
+    while IFS="$US" read -r name id type; do
+        [[ -z "$name" ]] || {
+            FIELD_ID[$name]="$id"
+            FIELD_TYPE[$name]="$type"
+        }
+    done <<<"$(jq -r '.fields[] | [.name, .id, .type] | map(gsub("[\n\u001f]"; " ")) | join("\u001f")' <<<"$json")"
+    while IFS="$US" read -r name option id; do
         [[ -z "$name" ]] || OPTION_ID[$name|$option]="$id"
-    done <<<"$(jq -r '.fields[] | .name as $field | (.options // [])[] | [$field, .name, .id] | @tsv' <<<"$json")"
+    done <<<"$(jq -r '.fields[] | .name as $field | (.options // [])[] | [$field, .name, .id] | map(gsub("[\n\u001f]"; " ")) | join("\u001f")' <<<"$json")"
     [[ -n "${FIELD_ID[Status]:-}" ]] || die "the board has no Status field"
+    [[ "${FIELD_TYPE[Status]}" == "ProjectV2SingleSelectField" ]] || die "the board's Status field is not a single select field"
 }
 
 ensure_fields() {
     local name created=0 args
     for name in "${FIELDS[@]}"; do
         [[ -z "${FIELD_ID[$name]:-}" ]] || continue
+        [[ "$name" != "Phase" || ${#PHASES[@]} -gt 0 ]] || continue
         args=(project field-create "$BOARD_NUMBER" --owner "$BOARD_OWNER" --name "$name" --data-type "${DATA_TYPE[${FIELD_KIND[$name]}]}")
         case "$name" in
             Phase) args+=(--single-select-options "$(printf '%s,' "${PHASES[@]}" | sed 's/,$//')") ;;
@@ -320,19 +331,29 @@ ensure_fields() {
         load_fields
     fi
 
+    # A field of the same name but another type (made by hand) is left alone: one field must not stop the sync.
+    declare -gA FIELD_SKIP=()
+    for name in "${FIELDS[@]}"; do
+        [[ -n "${FIELD_ID[$name]:-}" ]] || continue
+        if [[ "${FIELD_TYPE[$name]}" != "${FIELD_TYPE_OF[${FIELD_KIND[$name]}]}" ]]; then
+            warn "the board's field \"$name\" is a ${FIELD_TYPE[$name]}, not a ${DATA_TYPE[${FIELD_KIND[$name]}]} field; the sync leaves it alone (delete or rename it, and the next sync creates it)"
+            FIELD_SKIP[$name]=1
+        fi
+    done
+
     # Single-select options cannot be added from gh: name the missing ones once.
     local status phase area id
     for status in "${STATUS_ORDER[@]}"; do
         [[ -n "${OPTION_ID[Status|${COLUMN[$status]}]:-}" ]] ||
             warn "the board's Status field has no option \"${COLUMN[$status]}\"; add it in the board settings"
     done
-    if [[ -n "${FIELD_ID[Phase]:-}" ]]; then
+    if [[ -n "${FIELD_ID[Phase]:-}" && -z "${FIELD_SKIP[Phase]:-}" ]]; then
         for phase in "${PHASES[@]}"; do
             [[ -n "${OPTION_ID[Phase|$phase]:-}" ]] ||
                 warn "the board's Phase field has no option \"$phase\"; add it in the board settings"
         done
     fi
-    if [[ -n "${FIELD_ID[Area]:-}" ]]; then
+    if [[ -n "${FIELD_ID[Area]:-}" && -z "${FIELD_SKIP[Area]:-}" ]]; then
         for area in $(for id in "${TASK_IDS[@]}"; do echo "${TASK_AREA[$id]:-}"; done | sort -u); do
             [[ -n "${OPTION_ID[Area|$area]:-}" ]] ||
                 warn "the board's Area field has no option \"$area\"; add it in the board settings"
@@ -345,18 +366,18 @@ load_items() {
     declare -gA ITEM_ID=() ITEM_VALUE=()
     local json url id key value
     json="$(gh project item-list "$BOARD_NUMBER" --owner "$BOARD_OWNER" --limit 1000 --format json)"
-    while IFS=$'\t' read -r url id; do
+    while IFS="$US" read -r url id; do
         [[ -z "$url" ]] || ITEM_ID[$url]="$id"
-    done <<<"$(jq -r '.items[] | select(.content.url != null) | [.content.url, .id] | @tsv' <<<"$json")"
-    while IFS=$'\t' read -r url key value; do
+    done <<<"$(jq -r '.items[] | select(.content.url != null) | [.content.url, .id] | join("\u001f")' <<<"$json")"
+    while IFS="$US" read -r url key value; do
         [[ -z "$url" ]] || ITEM_VALUE[$url|$key]="$value"
     done <<<"$(jq -r '.items[] | select(.content.url != null) | .content.url as $url | to_entries[]
         | select(.value | type == "string" or type == "number")
-        | [$url, (.key | ascii_downcase), (.value | tostring)] | @tsv' <<<"$json")"
+        | [$url, (.key | ascii_downcase), (.value | tostring)] | map(gsub("[\n\u001f]"; " ")) | join("\u001f")' <<<"$json")"
 }
 
 load_board() {
-    declare -gA FIELD_ID=() OPTION_ID=() ITEM_ID=() ITEM_VALUE=()
+    declare -gA FIELD_ID=() FIELD_TYPE=() FIELD_SKIP=() OPTION_ID=() ITEM_ID=() ITEM_VALUE=()
     [[ -n "$BOARD_NUMBER" ]] || return 0
     [[ -n "$BOARD_OWNER" ]] || die "BOARD_NUMBER needs BOARD_OWNER"
     offline && return 0
@@ -369,8 +390,9 @@ load_board() {
 
 # set_field <id> <item> <url> <field> <value>: sets (or clears, for an empty value) one field unless it already holds it.
 set_field() {
-    local id="$1" item="$2" url="$3" name="$4" value="$5" key option="" args field
+    local id="$1" item="$2" url="$3" name="$4" value="$5" key option="" args field error
     key="${name,,}"
+    [[ -z "${FIELD_SKIP[$name]:-}" ]] || return 0
     [[ "${ITEM_VALUE[$url|$key]:-}" != "$value" ]] || return 0
     field="${FIELD_ID[$name]:-}"
     if [[ -n "$value" && -n "$field" && "${FIELD_KIND[$name]}" == "single" ]]; then
@@ -403,7 +425,12 @@ set_field() {
         esac
     fi
     echo "field   $id $name = ${value:-(empty)}"
-    gh "${args[@]}" >/dev/null
+    if ! error="$(gh "${args[@]}" 2>&1 >/dev/null)"; then
+        # Named once, then skipped for the rest of the run, so that one field cannot stop the status sync.
+        warn "could not write the board field \"$name\" (${error//$'\n'/ }); the sync skips it for this run"
+        FIELD_SKIP[$name]=1
+        return 0
+    fi
     ITEM_VALUE[$url|$key]="$value"
 }
 
@@ -439,15 +466,18 @@ Status, labels, QA and owner comments and the board card are synced from that fi
 EOF
 }
 
-# Posts every note of the task and the current "Blocked by" list that the issue does not have yet. Hidden markers
-# make the comments idempotent.
+# Posts every note of the task that the issue does not have yet (hidden markers make it idempotent), and keeps the
+# task's one "Blocked by" comment current: posted for a blocked todo task, edited when the missing dependencies
+# change, turned into "Ready" when they are all done. Owner questions go out with BOARD_NOTIFY_TOKEN when it is set:
+# GitHub does not notify the owner of comments made with the owner's own token.
 sync_comments() {
-    local id="$1" number="$2" fresh="$3" missing="$4"
-    local notes="${TASK_NOTES[$id]:-}" existing="" kind text marker body
-    [[ -n "$notes" || -n "$missing" ]] || return 0
+    local id="$1" number="$2" fresh="$3" missing="$4" post_blocked="$5" had_blocked="$6"
+    local notes="${TASK_NOTES[$id]:-}" comments="[]" existing kind text marker body url current
+    [[ -n "$notes" || -n "$missing" || "$had_blocked" == 1 ]] || return 0
     if [[ "$fresh" == 0 ]] && ! offline; then
-        existing="$(comments_of "$number")"
+        comments="$(comments_of "$number")"
     fi
+    existing="$(jq -r '.[].body' <<<"$comments")"
 
     while IFS=$'\t' read -r kind text; do
         [[ -n "$kind" ]] || continue
@@ -467,26 +497,49 @@ sync_comments() {
         esac
         [[ "$existing" != *"$marker"* ]] || continue
         echo "comment $id: $kind: $text"
+        if [[ "$kind" == "question" && -n "${BOARD_NOTIFY_TOKEN:-}" ]] &&
+            GH_TOKEN="$BOARD_NOTIFY_TOKEN" run gh issue comment "$number" --repo "$REPO" --body "$body"$'\n\n'"$marker" >/dev/null; then
+            continue
+        elif [[ "$kind" == "question" && -n "${BOARD_NOTIFY_TOKEN:-}" ]]; then
+            warn "could not post the owner question of $id with BOARD_NOTIFY_TOKEN; posted with GH_TOKEN, so the owner is not notified"
+        fi
         run gh issue comment "$number" --repo "$REPO" --body "$body"$'\n\n'"$marker" >/dev/null
     done <<<"$notes"
 
+    url="$(jq -r --arg marker "$BLOCKED_MARKER" '[.[] | select(.body | contains($marker))] | last | .url // empty' <<<"$comments")"
     if [[ -n "$missing" ]]; then
-        marker="<!-- blocked:${missing// /,} -->"
-        [[ "$existing" != *"$marker"* ]] || return 0
+        marker="$BLOCKED_MARKER${missing// /,} -->"
+        body="**Blocked** by ${missing// /, }: this task becomes ready when they are done."
+    elif [[ -n "$url" ]]; then
+        marker="$BLOCKED_MARKER -->"
+        body="**Ready:** every dependency is done."
+    else
+        return 0
+    fi
+    if [[ -n "$url" ]]; then
+        current="$(jq -r --arg url "$url" '.[] | select(.url == $url) | .body' <<<"$comments")"
+        [[ "$current" != *"$marker"* ]] || return 0
+        if [[ -n "$missing" ]]; then
+            echo "comment $id: edit: blocked by $missing"
+        else
+            echo "comment $id: edit: ready"
+        fi
+        run gh api --method PATCH "repos/$REPO/issues/comments/${url##*#issuecomment-}" -f "body=$body"$'\n\n'"$marker" >/dev/null
+    elif [[ "$post_blocked" == 1 ]]; then
         echo "comment $id: blocked by $missing"
-        run gh issue comment "$number" --repo "$REPO" \
-            --body "**Blocked** by ${missing// /, }: this task becomes ready when they are done."$'\n\n'"$marker" >/dev/null
+        run gh issue comment "$number" --repo "$REPO" --body "$body"$'\n\n'"$marker" >/dev/null
     fi
 }
 
 sync_task() {
     local id="$1"
     local title="${TASK_TITLE[$id]}" status="${TASK_STATUS[$id]}" phase="${TASK_PHASE[$id]}"
-    local full="[$id] $title" number state url fresh=0 missing="" label args
-    local -a want=("$TASK_LABEL" "phase: $phase") have=()
+    local full="[$id] $title" number state url fresh=0 missing label args had_blocked=0
+    local -a want=("$TASK_LABEL") have=()
+    [[ -z "$phase" ]] || want+=("phase: $phase")
     [[ -z "${STATUS_LABEL[$status]:-}" ]] || want+=("${STATUS_LABEL[$status]}")
+    missing="$(board_missing_deps "$id")"
     if [[ "$status" == "todo" ]]; then
-        missing="$(board_missing_deps "$id")"
         if [[ -n "$missing" ]]; then
             want+=("$BLOCKED_LABEL")
         else
@@ -516,7 +569,8 @@ sync_task() {
         echo "update  $full ($status) #$number"
         args=()
         [[ "${ISSUE_TITLE[$id]}" == "$full" ]] || args+=(--title "$full")
-        IFS=$'\x1f' read -ra have <<<"${ISSUE_LABELS[$id]}"
+        IFS="$RS" read -ra have <<<"${ISSUE_LABELS[$id]}"
+        ! contains "$BLOCKED_LABEL" "${have[@]}" || had_blocked=1
         for label in "${want[@]}"; do
             if ! contains "$label" "${have[@]}"; then
                 args+=(--add-label "$label")
@@ -538,7 +592,7 @@ sync_task() {
         run gh issue reopen "$number" --repo "$REPO" >/dev/null
     fi
 
-    sync_comments "$id" "$number" "$fresh" "$missing"
+    sync_comments "$id" "$number" "$fresh" "$missing" "$([[ "$status" == "todo" ]] && echo 1 || echo 0)" "$had_blocked"
 
     if [[ -n "$BOARD_NUMBER" ]]; then
         place_on_board "$id" "$url" "$status"
@@ -686,13 +740,13 @@ cmd_report() {
     ensure_label "$REPORT_LABEL"
     load_issues
 
-    local ci body found="" number="" state="" current=""
+    local ci body found="" number="" state="" pinned="" current=""
     if offline; then
         ci="unknown"
     else
         ci="$(open_ci_issues | tr '\n' ' ' | sed 's/ $//')"
-        found="$(gh issue list --repo "$REPO" --state all --label "$REPORT_LABEL" --limit 100 --json number,state,title \
-            --jq "[.[] | select(.title == \"$REPORT_TITLE\")] | sort_by(.number) | .[0] // empty | [.number, .state] | @tsv")"
+        found="$(gh issue list --repo "$REPO" --state all --label "$REPORT_LABEL" --limit 100 --json number,state,title,isPinned \
+            --jq "[.[] | select(.title == \"$REPORT_TITLE\")] | sort_by(.number) | .[0] // empty | [.number, .state, .isPinned] | @tsv")"
     fi
     body="$(build_report "$ci")"
 
@@ -709,7 +763,7 @@ cmd_report() {
         return 0
     fi
 
-    IFS=$'\t' read -r number state <<<"$found"
+    IFS=$'\t' read -r number state pinned <<<"$found"
     current="$(gh issue view "$number" --repo "$REPO" --json body --jq .body)"
     if [[ "$current" != "$body" ]]; then
         echo "report  update #$number"
@@ -719,6 +773,11 @@ cmd_report() {
     fi
     if [[ "$state" == "CLOSED" ]]; then
         run gh issue reopen "$number" --repo "$REPO" >/dev/null
+    fi
+    # A pin that failed before (at most 3 pinned issues) is tried again on every run.
+    if [[ "$pinned" != "true" ]]; then
+        echo "report  pin #$number"
+        run gh issue pin "$number" --repo "$REPO" >/dev/null || warn "could not pin #$number (at most 3 issues can be pinned)"
     fi
 }
 
@@ -733,13 +792,25 @@ cmd_ci() {
     [[ -n "$CI_CONCLUSION" && "$CI_RUN_ID" =~ ^[0-9]+$ ]] || die "ci needs CI_CONCLUSION and a numeric CI_RUN_ID"
     CI_RUN_URL="${CI_RUN_URL:-https://github.com/$REPO/actions/runs/$CI_RUN_ID}"
 
-    # The run of the branch head decides: an event about an older commit (a late or re-run job) changes nothing.
-    local head
+    # The run of the branch head decides. A run of an older commit decides too when the commits after it change only
+    # the paths that the tests workflow ignores on push (status changes, screenshots): they get no run of their own.
+    # Otherwise (code changed since, or the commit is not in the branch's history) the newer run decides.
+    local head pathspec=(":/") path
     if [[ -n "$CI_HEAD_SHA" ]]; then
         head="$(git rev-parse HEAD 2>/dev/null || true)"
         if [[ -n "$head" && "$head" != "$CI_HEAD_SHA" ]]; then
-            echo "ci      ignoring tests run $CI_RUN_ID of ${CI_HEAD_SHA:0:7}: the branch head is ${head:0:7}, its run decides"
-            return 0
+            if ! git cat-file -e "$CI_HEAD_SHA^{commit}" 2>/dev/null || ! git merge-base --is-ancestor "$CI_HEAD_SHA" "$head"; then
+                echo "ci      ignoring tests run $CI_RUN_ID of ${CI_HEAD_SHA:0:7}: not in the history of the branch head ${head:0:7}"
+                return 0
+            fi
+            for path in "${BOARD_ONLY_PATHS[@]}"; do
+                pathspec+=(":(top,exclude)$path")
+            done
+            if ! git diff --quiet "$CI_HEAD_SHA" "$head" -- "${pathspec[@]}"; then
+                echo "ci      ignoring tests run $CI_RUN_ID of ${CI_HEAD_SHA:0:7}: the branch head ${head:0:7} changed code since, its run decides"
+                return 0
+            fi
+            echo "ci      tests run $CI_RUN_ID of ${CI_HEAD_SHA:0:7} decides: only ${BOARD_ONLY_PATHS[*]} changed up to the branch head ${head:0:7}"
         fi
     fi
 
@@ -831,7 +902,7 @@ cmd_list() {
             state="${missing:+blocked by ${missing// /, }}"
             state="${state:-ready}"
         fi
-        printf '%-4s %-12s %-8s %-11s %s%s\n' "$id" "$status" "phase:${TASK_PHASE[$id]}" "${TASK_AREA[$id]:--}" \
+        printf '%-4s %-12s %-8s %-11s %s%s\n' "$id" "$status" "phase:${TASK_PHASE[$id]:--}" "${TASK_AREA[$id]:--}" \
             "${TASK_TITLE[$id]}" "${state:+ [$state]}"
     done
 }

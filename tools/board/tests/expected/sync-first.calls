@@ -1,4 +1,4 @@
-gh label list --repo m0nclous/board-fixture --limit 1000 --json name,color,description --jq '.[] | [.name, (.color | ascii_downcase), .description] | @tsv'
+gh label list --repo m0nclous/board-fixture --limit 1000 --json name,color,description --jq '.[] | [.name, (.color | ascii_downcase), (.description // "")] | map(gsub("[\n\u001f]"; " ")) | join("\u001f")'
 gh label create task --repo m0nclous/board-fixture --color 0e8a16 --description 'Mirrors a task of planning/TASKS.md' --force
 gh label create 'in progress' --repo m0nclous/board-fixture --color fbca04 --description 'Task status: in progress' --force
 gh label create testing --repo m0nclous/board-fixture --color 1d76db --description 'Task status: testing' --force
@@ -8,7 +8,7 @@ gh label create blocked --repo m0nclous/board-fixture --color e99695 --descripti
 gh label create 'phase: 0' --repo m0nclous/board-fixture --color c5def5 --description 'Phase 0 of planning/TASKS.md' --force
 gh label create 'phase: B' --repo m0nclous/board-fixture --color c5def5 --description 'Phase B of planning/TASKS.md' --force
 gh label create 'phase: C' --repo m0nclous/board-fixture --color c5def5 --description 'Phase C of planning/TASKS.md' --force
-gh issue list --repo m0nclous/board-fixture --state all --label task --limit 1000 --json number,state,url,title,labels --jq '.[] | [.number, .state, .url, .title, ([.labels[].name] | join("\u001f"))] | @tsv'
+gh issue list --repo m0nclous/board-fixture --state all --label task --limit 1000 --json number,state,url,title,labels --jq '.[] | [(.number | tostring), .state, .url, .title, ([.labels[].name] | join("\u001e"))] | map(gsub("[\n\u001f]"; " ")) | join("\u001f")'
 gh api user --jq .login
 gh project view 5 --owner @me --format json --jq .id
 gh project field-list 5 --owner @me --limit 100 --format json
@@ -76,4 +76,5 @@ gh issue comment 8 --repo m0nclous/board-fixture --body '**Blocked** by T02, T03
 gh project item-add 5 --owner @me --url https://github.com/m0nclous/board-fixture/issues/8 --format json --jq .id
 gh project item-edit --id PVTI_113 --project-id PVT_board5 --field-id PVTSSF_status --single-select-option-id st_todo
 gh project item-edit --id PVTI_113 --project-id PVT_board5 --field-id PVTSSF_101 --single-select-option-id opt101_3
+gh project item-edit --id PVTI_113 --project-id PVT_board5 --field-id PVTSSF_102 --single-select-option-id opt102_11
 gh project item-edit --id PVTI_113 --project-id PVT_board5 --field-id PVTF_103 --number 0
