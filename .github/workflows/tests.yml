@@ -128,9 +128,9 @@ jobs:
       - name: Start a one-node Redis Cluster on port 7000
         run: |
           docker run -d --name cluster -p 7000:7000 -p 17000:17000 redis:7.4-alpine redis-server --port 7000 --cluster-enabled yes --cluster-announce-ip 127.0.0.1 --save '' --appendonly no
-          for i in $(seq 1 30); do docker exec cluster redis-cli -p 7000 ping && break; sleep 1; done
+          for _ in $(seq 1 30); do docker exec cluster redis-cli -p 7000 ping && break; sleep 1; done
           docker exec cluster redis-cli -p 7000 CLUSTER ADDSLOTSRANGE 0 16383
-          for i in $(seq 1 30); do docker exec cluster redis-cli -p 7000 CLUSTER INFO | grep -q 'cluster_state:ok' && break; sleep 1; done
+          for _ in $(seq 1 30); do docker exec cluster redis-cli -p 7000 CLUSTER INFO | grep -q 'cluster_state:ok' && break; sleep 1; done
           docker exec cluster redis-cli -p 7000 CLUSTER INFO | grep cluster_state
       - name: Install (Laravel 13, stable)
         run: |
@@ -242,7 +242,7 @@ jobs:
       - name: Provisioning smoke test
         run: |
           docker compose up -d prometheus grafana
-          for i in $(seq 1 90); do curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 && break; sleep 2; done
+          for _ in $(seq 1 90); do curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 && break; sleep 2; done
           curl -fsS http://localhost:3000/api/health
           sleep 15
           G=http://admin:admin@localhost:3000
@@ -322,7 +322,7 @@ jobs:
           nohup php vendor/bin/testbench serve --host=0.0.0.0 --port=8001 > build/logs/serve-8001.log 2>&1 &
           nohup php vendor/bin/testbench horizon > build/logs/horizon.log 2>&1 &
           for port in 8000 8001; do
-            for i in $(seq 1 60); do curl -s -o /dev/null "http://127.0.0.1:$port/horizon" && break; sleep 1; done
+            for _ in $(seq 1 60); do curl -s -o /dev/null "http://127.0.0.1:$port/horizon" && break; sleep 1; done
           done
       # One Prometheus scrapes both replicas (one job), a second one scrapes a single replica: the dedupe gate.
       - name: Prometheus (replicas and single) and Grafana
@@ -331,7 +331,7 @@ jobs:
           docker run -d --name prometheus-single --add-host host.docker.internal:host-gateway -p 9092:9090 \
             -v "$PWD/docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
             -v "$PWD/docker/prometheus/token:/etc/prometheus/token:ro" "$PROMETHEUS_IMAGE"
-          for i in $(seq 1 90); do curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 && break; sleep 2; done
+          for _ in $(seq 1 90); do curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 && break; sleep 2; done
       - name: Load simulation (10 minutes)
         run: php vendor/bin/testbench workbench:simulate-load --continuous --duration=600 --seed=1
       - name: Targets
@@ -368,7 +368,7 @@ jobs:
           docker/perf/backfill.sh --profile=medium --hours=26 --schema="$PERF_SCHEMA"
           nohup php vendor/bin/testbench workbench:perf-exporter --profile=medium --schema="$PERF_SCHEMA" > build/logs/perf-exporter.log 2>&1 &
           PROMETHEUS_URL=http://perf-prometheus:9090 docker compose up -d grafana
-          for i in $(seq 1 90); do curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 && break; sleep 2; done
+          for _ in $(seq 1 90); do curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 && break; sleep 2; done
           sleep 60
           for range in 1h 6h; do
             node bin/perf.mjs capture --url "http://localhost:3000/d/$DASHBOARD_UID?orgId=1&from=now-$range&to=now&kiosk" --seconds 70 --out "build/perf/$range.json"
