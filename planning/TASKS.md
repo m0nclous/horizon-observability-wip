@@ -338,7 +338,7 @@ forwarded queue look empty to every reader (T05 review).
 
 ## Phase C: sequential tail
 
-### T13 WP8B + WP8C + WP8D Grafana parametrisation, performance, live rendering — `in progress` (depends on T03–T08, T10, T11, T12)
+### T13 WP8B + WP8C + WP8D Grafana parametrisation, performance, live rendering — `testing` (depends on T03–T08, T10, T11, T12)
 QA: 2026-10-17 16:22 UTC: round 1 rejected by both testers: only WP8B is delivered (WP8C performance and WP8D live panels not started; committed render must be --live=poll); no committed truth test evaluates rendered expressions (decision 13); collector health rule wrapped in the replica dedupe hides a failing replica; supervisor_title and #16 F fail with duplicate series when two apps share names; api_path/horizon_url/tts_url stay stale for 7 days after a change; --datasource-uid help text cut at the closing brace; relative path uses getcwd() not base_path(); failing tests in a9dec36. For T16/T17: Completed/Failed tiles drop a new counter series' first value; balance=false pooled queues get no rows in #5
 Arch Q5.2–5.7 + Add §R2–R4, §Q9′. One sequential task in this order: **WP8B, then WP8C, then WP8D** (one owner chain of
 `src/Grafana/**`). `Console/GrafanaCommand` (`--check`, `--live=off|poll|stream`, prefix/uid/thresholds),
