@@ -1,0 +1,167 @@
+# Development stack (Arch 8.3, ADDENDUM R2.2 and R4.9). Export-ignored; never part of the package.
+#
+# Daily loop, with PHP on the host:
+#   docker compose up -d          Redis, Prometheus (10 s scrape of host.docker.internal:8000), Grafana
+#   composer serve                the workbench on 0.0.0.0:8000
+#   composer horizon
+#   composer load                 workbench:simulate-load --continuous
+#   open http://localhost:3000/d/horizon-observability
+# Fully containerised:
+#   PROMETHEUS_CONFIG=prometheus.app.yml APP_URL_FROM_GRAFANA=http://app:8000 docker compose --profile app up -d
+# Grafana 12: GRAFANA_IMAGE=grafana/grafana:12.4.13 docker compose up -d (both 12.4.13 and 13.2.4 are supported).
+# Stream mode: docker/grafana/bootstrap-live.sh, then docker compose --profile app up -d stream.
+# Performance profile: docker/perf/README.md.
+#
+# Host ports are configurable (REDIS_PORT, PROMETHEUS_PORT, GRAFANA_PORT, APP_PORT, PERF_PROMETHEUS_PORT), so
+# several stacks can run side by side with COMPOSE_PROJECT_NAME. They listen on 127.0.0.1 only: Redis has no password,
+# Grafana is admin:admin with anonymous access and Prometheus accepts remote writes. BIND_ADDRESS=0.0.0.0 publishes them
+# on every interface (e.g. a dev VM opened from the host). testbench.yaml points the workbench at
+# 127.0.0.1:6379: a REDIS_PORT in the shell reaches artisan commands (Horizon, the load simulation), but `composer serve`
+# only sees it with PHP's variables_order=EGPCS (e.g. PHP_INI_SCAN_DIR with that one line), as in the app image.
+#
+# Until T13 renders resources/grafana, Grafana provisions the pilot's dashboard and alert rules
+# (tests/Fixtures/grafana/legacy) with placeholder provisioning from docker/grafana/provisioning. T13 switches the
+# three marked mounts to resources/grafana/**.
+
+name: horizon-observability
+
+x-app: &app
+  build:
+    context: docker/app
+    args:
+      PHP_VERSION: ${APP_PHP_VERSION:-8.4}
+  image: horizon-observability-app:${APP_PHP_VERSION:-8.4}
+  profiles: [app]
+  working_dir: /app
+  depends_on: [redis]
+  extra_hosts: ['host.docker.internal:host-gateway']
+  environment:
+    # Wins over the testbench.yaml env entry, for web requests too thanks to the image's variables_order=EGPCS.
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+  volumes:
+    - .:/app
+    - vendor:/app/vendor
+
+services:
+  redis:
+    image: ${REDIS_IMAGE:-redis:7.4-alpine}            # valkey/valkey:8-alpine via REDIS_IMAGE
+    command: [redis-server, --save, '', --appendonly, 'no']
+    ports: ['${BIND_ADDRESS:-127.0.0.1}:${REDIS_PORT:-6379}:6379']
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-quay.io/prometheus/prometheus:v3.15.0}
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-remote-write-receiver               # Grafana alert state history (the Alerts tile and sound)
+      - --storage.tsdb.retention.time=7d
+    extra_hosts: ['host.docker.internal:host-gateway']
+    volumes:
+      - ./docker/prometheus/${PROMETHEUS_CONFIG:-prometheus.yml}:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/token:/etc/prometheus/token:ro
+      - prometheus-data:/prometheus
+    ports: ['${BIND_ADDRESS:-127.0.0.1}:${PROMETHEUS_PORT:-9090}:9090']
+
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:13.2.4}      # grafana/grafana:12.4.13 via GRAFANA_IMAGE
+    depends_on: [prometheus]
+    extra_hosts: ['host.docker.internal:host-gateway']
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_PLUGINS_PREINSTALL_SYNC: yesoreyeram-infinity-datasource@4.1.1,marcusolsson-dynamictext-panel@6.3.0
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: 1s             # live poll faster than 5 s (ADDENDUM R2.5, R4.9)
+      GF_UNIFIED_ALERTING_STATE_HISTORY_ENABLED: 'true'
+      GF_UNIFIED_ALERTING_STATE_HISTORY_BACKEND: multiple
+      GF_UNIFIED_ALERTING_STATE_HISTORY_PRIMARY: annotations
+      GF_UNIFIED_ALERTING_STATE_HISTORY_SECONDARIES: prometheus
+      GF_UNIFIED_ALERTING_STATE_HISTORY_PROMETHEUS_TARGET_DATASOURCE_UID: prometheus
+      GF_RENDERING_SERVER_URL: ${GF_RENDERING_SERVER_URL:-}           # http://renderer:8081/render with --profile screenshots
+      GF_RENDERING_CALLBACK_URL: ${GF_RENDERING_CALLBACK_URL:-}       # http://grafana:3000/
+      HORIZON_OBSERVABILITY_PROMETHEUS_UID: prometheus
+      HORIZON_OBSERVABILITY_PROMETHEUS_URL: ${PROMETHEUS_URL:-http://prometheus:9090}   # perf: http://perf-prometheus:9090
+      HORIZON_OBSERVABILITY_SCRAPE_INTERVAL: ${SCRAPE_INTERVAL:-10s}                   # the datasource timeInterval
+      HORIZON_OBSERVABILITY_APP_URL: ${APP_URL_FROM_GRAFANA:-http://host.docker.internal:8000}
+      HORIZON_OBSERVABILITY_API_TOKEN: workbench-token-0123456789abcdef
+      HPG_PROMETHEUS_DATASOURCE_UID: prometheus          # the pilot's alert rules (placeholder until T13)
+    volumes:
+      - ./docker/grafana/provisioning/datasources/prometheus.yaml:/etc/grafana/provisioning/datasources/prometheus.yaml:ro
+      # T13: ./resources/grafana/provisioning/datasources/horizon-observability.yaml
+      - ./docker/grafana/provisioning/datasources/horizon-observability.yaml:/etc/grafana/provisioning/datasources/horizon-observability.yaml:ro
+      # T13: ./resources/grafana/provisioning/dashboards
+      - ./docker/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/grafana/provisioning/plugins:/etc/grafana/provisioning/plugins:ro          # .gitkeep: avoids a provisioning error
+      # T13: ./resources/grafana/alerting:/etc/grafana/provisioning/alerting:ro
+      - ./tests/Fixtures/grafana/legacy/horizon.yml:/etc/grafana/provisioning/alerting/horizon.yml:ro
+      # T13: ./resources/grafana/dashboards:/etc/grafana/dashboards/horizon-observability:ro
+      - ./tests/Fixtures/grafana/legacy/queues.json:/etc/grafana/dashboards/horizon-observability/queues.json:ro
+      - grafana-data:/var/lib/grafana
+    ports: ['${BIND_ADDRESS:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000']
+
+  app:
+    <<: *app
+    # Installs the dependencies into the vendor volume on the first start (PHP of the image, not of the host).
+    command: sh -c "composer install --no-interaction --no-progress && composer build && exec vendor/bin/testbench serve --host=0.0.0.0 --port=8000"
+    ports: ['${BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8000}:8000']
+    healthcheck:
+      test: [CMD, php, -r, "exit(@fsockopen('127.0.0.1', 8000) ? 0 : 1);"]
+      interval: 5s
+      timeout: 3s
+      retries: 120
+
+  horizon:
+    <<: *app
+    depends_on:
+      app: {condition: service_healthy}
+    command: vendor/bin/testbench horizon
+
+  simulate:
+    <<: *app
+    depends_on:
+      horizon: {condition: service_started}
+    command: vendor/bin/testbench workbench:simulate-load --continuous
+
+  stream:
+    <<: *app
+    depends_on:
+      app: {condition: service_healthy}
+    # The token comes from docker/grafana/bootstrap-live.sh (gitignored file).
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      HORIZON_OBSERVABILITY_LIVE_GRAFANA_URL: http://grafana:3000
+    command: sh -c 'HORIZON_OBSERVABILITY_LIVE_GRAFANA_TOKEN="$$(cat docker/grafana/live-token)" exec vendor/bin/testbench horizon-observability:stream'
+    restart: unless-stopped
+
+  renderer:
+    profiles: [screenshots]
+    image: grafana/grafana-image-renderer:v5.12.7
+
+  # Performance profile (ADDENDUM R2.2, docker/perf/README.md).
+  perf-prometheus:
+    profiles: [perf]
+    image: ${PROMETHEUS_IMAGE:-quay.io/prometheus/prometheus:v3.15.0}
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus                  # promtool writes the backfilled blocks here
+      - --storage.tsdb.retention.time=30d
+    extra_hosts: ['host.docker.internal:host-gateway']
+    volumes:
+      - ./docker/perf/${PERF_PROMETHEUS_CONFIG:-prometheus.yml}:/etc/prometheus/prometheus.yml:ro
+      - perf-prometheus:/prometheus
+    ports: ['${BIND_ADDRESS:-127.0.0.1}:${PERF_PROMETHEUS_PORT:-9091}:9090']
+
+  promtool:
+    profiles: [perf-tools]                               # run only: docker compose run --rm promtool ...
+    image: ${PROMETHEUS_IMAGE:-quay.io/prometheus/prometheus:v3.15.0}
+    entrypoint: [promtool]
+    volumes:
+      - ./build/perf:/perf:ro
+      - perf-prometheus:/prometheus
+
+volumes:
+  prometheus-data: {}
+  grafana-data: {}
+  perf-prometheus: {}
+  vendor: {}

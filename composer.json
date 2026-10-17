@@ -21,7 +21,7 @@
     },
     "require": {
         "php": "^8.2",
-        "laravel/framework": "^11.23|^12.0|^13.0",
+        "laravel/framework": "^11.23 || ^12.0 || ^13.0",
         "laravel/horizon": "^5.22"
     },
     "require-dev": {
@@ -29,13 +29,13 @@
         "ergebnis/composer-normalize": "^2.45",
         "larastan/larastan": "^3.1",
         "laravel/pint": "^1.18",
-        "orchestra/testbench": "^9.5|^10.0|^11.0",
-        "pestphp/pest": "^3.8|^4.1",
+        "orchestra/testbench": "^9.5 || ^10.0 || ^11.0",
+        "pestphp/pest": "^3.8 || ^4.1",
         "phpstan/extension-installer": "^1.4",
         "phpstan/phpstan-deprecation-rules": "^2.0",
-        "predis/predis": "^2.0|^3.0",
+        "predis/predis": "^2.0 || ^3.0",
         "rector/rector": "^2.0",
-        "symfony/yaml": "^7.0|^8.0"
+        "symfony/yaml": "^7.0 || ^8.0"
     },
     "suggest": {
         "ext-redis": "Recommended Redis client (phpredis).",

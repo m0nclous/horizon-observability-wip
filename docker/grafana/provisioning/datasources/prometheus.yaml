@@ -1,0 +1,19 @@
+# Dev Prometheus datasource (Arch 8.3, ADDENDUM R2.5). The URL and the interval come from docker-compose.yml, so the
+# perf profile can point the same Grafana at perf-prometheus.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: ${HORIZON_OBSERVABILITY_PROMETHEUS_URL}
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST                       # optimised panels still send 10-25 KB of PromQL
+      timeInterval: ${HORIZON_OBSERVABILITY_SCRAPE_INTERVAL}
+      prometheusType: Prometheus
+      prometheusVersion: 3.15.0
+      incrementalQuerying: true
+      incrementalQueryOverlapWindow: 10m

@@ -1,0 +1,343 @@
+# CI (Arch 8.5, ADDENDUM Q9' WP9). Jobs: tests (PHP x Laravel x lowest/stable x phpredis/predis x Redis/Valkey),
+# cluster, static, coverage, grafana (Grafana 12.4.13 and 13.2.4), dist, and the weekly e2e (screenshots, the replica
+# dedupe gate and the performance report on both Grafana versions; non-blocking until T15).
+name: tests
+
+on:
+  push:
+    branches: [master, 'claude/**']
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 5 * * 1'
+
+permissions:
+  contents: read
+
+# Per ref and event: a push cancels the previous push run of its branch, never the weekly or manual e2e run.
+concurrency:
+  group: tests-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  COMPOSER_NO_INTERACTION: '1'
+
+jobs:
+  tests:
+    name: PHP ${{ matrix.php }} / L${{ matrix.laravel }} / ${{ matrix.stability }} / ${{ matrix.client }} / ${{ matrix.redis }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4', '8.5']
+        laravel: ['11.*', '12.*', '13.*']
+        stability: [prefer-stable]
+        client: [phpredis]
+        redis: ['redis:7.4-alpine']
+        exclude:
+          - {php: '8.2', laravel: '13.*'}        # Laravel 13 needs PHP 8.3
+          - {php: '8.5', laravel: '11.*'}        # Laravel 11 is not targeted on 8.5
+        include:
+          - {laravel: '11.*', testbench: '^9.5'}
+          - {laravel: '12.*', testbench: '^10.0'}
+          - {laravel: '13.*', testbench: '^11.0'}
+          # The oldest supported point of every shim, the second client and the other servers.
+          - {php: '8.2', laravel: '^11.23', testbench: '^9.5', stability: prefer-lowest, client: predis, predis: '^2.0', redis: 'redis:6.2-alpine'}
+          - {php: '8.2', laravel: '^12.0', testbench: '^10.0', stability: prefer-lowest, client: phpredis, redis: 'redis:6.2-alpine'}
+          - {php: '8.3', laravel: '^13.0', testbench: '^11.0', stability: prefer-lowest, client: phpredis, redis: 'valkey/valkey:7.2-alpine'}
+          - {php: '8.4', laravel: '12.*', testbench: '^10.0', stability: prefer-stable, client: predis, predis: '^3.0', redis: 'redis:7.4-alpine'}
+          - {php: '8.5', laravel: '13.*', testbench: '^11.0', stability: prefer-stable, client: predis, predis: '^3.0', redis: 'valkey/valkey:8-alpine'}
+          - {php: '8.4', laravel: '13.*', testbench: '^11.0', stability: prefer-stable, client: phpredis, redis: 'redis:8-alpine'}
+    services:
+      redis:
+        image: ${{ matrix.redis }}
+        ports: ['6379:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      REDIS_CLIENT: ${{ matrix.client }}
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: redis, pcntl, posix, pdo_sqlite, mbstring
+          coverage: none
+      # The static tooling is dropped: it keeps the resolution fast and honest (Arch 8.5).
+      - name: Resolve the leg
+        run: |
+          composer remove --dev --no-update larastan/larastan rector/rector driftingly/rector-laravel laravel/pint ergebnis/composer-normalize phpstan/extension-installer phpstan/phpstan-deprecation-rules
+          composer require --no-update "laravel/framework:${{ matrix.laravel }}"
+          composer require --dev --no-update "orchestra/testbench:${{ matrix.testbench }}" ${{ matrix.predis && format('"predis/predis:{0}"', matrix.predis) || '' }}
+          composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
+      - run: composer show laravel/framework laravel/horizon orchestra/testbench pestphp/pest predis/predis
+      - run: vendor/bin/pest --ci --exclude-group=cluster,e2e
+
+  cluster:
+    name: Redis Cluster / phpredis and predis
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      REDIS_CLUSTER_HOST: 127.0.0.1
+      REDIS_CLUSTER_PORT: 7000
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports: ['6379:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: redis, pcntl, posix, pdo_sqlite, mbstring
+          coverage: none
+      # GitHub services cannot override the command, so the one-node cluster (all 16384 slots) runs from a step.
+      - name: Start a one-node Redis Cluster on port 7000
+        run: |
+          docker run -d --name cluster -p 7000:7000 -p 17000:17000 redis:7.4-alpine redis-server --port 7000 --cluster-enabled yes --cluster-announce-ip 127.0.0.1 --save '' --appendonly no
+          for i in $(seq 1 30); do docker exec cluster redis-cli -p 7000 ping && break; sleep 1; done
+          docker exec cluster redis-cli -p 7000 CLUSTER ADDSLOTSRANGE 0 16383
+          for i in $(seq 1 30); do docker exec cluster redis-cli -p 7000 CLUSTER INFO | grep -q 'cluster_state:ok' && break; sleep 1; done
+          docker exec cluster redis-cli -p 7000 CLUSTER INFO | grep cluster_state
+      - name: Install (Laravel 13, stable)
+        run: |
+          composer require --no-update "laravel/framework:^13.20"
+          composer update --prefer-stable --prefer-dist --no-interaction --no-progress
+      - name: Cluster tests
+        run: |
+          if ! grep -rqs "group('cluster')" tests; then
+            echo "::notice::No test is in the cluster group yet (T04 adds Integration/Attempts/ClusterStorageTest)."
+            exit 0
+          fi
+          REDIS_CLIENT=phpredis vendor/bin/pest --ci --group=cluster
+          REDIS_CLIENT=predis vendor/bin/pest --ci --group=cluster
+
+  static:
+    name: Static analysis and style
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: redis, pcntl, posix, pdo_sqlite, mbstring
+          coverage: none
+      - run: composer validate --strict
+      - run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress
+      - run: composer normalize --dry-run
+      - run: vendor/bin/pint --test
+      - run: vendor/bin/rector --dry-run
+      - run: vendor/bin/phpstan analyse --memory-limit=1G --error-format=github
+
+  coverage:
+    name: Coverage (pcov, minimum 85 %)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports: ['6379:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: redis, pcntl, posix, pdo_sqlite, mbstring
+          coverage: pcov
+      - run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress
+      - run: vendor/bin/pest --ci --coverage --min=85 --exclude-group=cluster,e2e
+
+  grafana:
+    name: Grafana assets and provisioning / ${{ matrix.grafana }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both supported majors; Infinity 4.1.1 needs Grafana >= 12.2.5, Business Text 6.3.0 needs >= 12.3.0.
+        grafana: ['grafana/grafana:12.4.13', 'grafana/grafana:13.2.4']
+    env:
+      GRAFANA_IMAGE: ${{ matrix.grafana }}
+      PROMETHEUS_IMAGE: quay.io/prometheus/prometheus:v3.15.0
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: redis, pcntl, posix, pdo_sqlite, mbstring
+          coverage: none
+      - run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress
+      # The renderer, its --check and the static performance gates arrive with T13 (Console/GrafanaCommand).
+      - name: Committed assets equal the render (composer test:grafana)
+        run: |
+          if [ ! -f src/Console/GrafanaCommand.php ]; then
+            echo "::notice::horizon-observability:grafana is not implemented yet (T13); the legacy goldens are checked by the Grafana test suite."
+            exit 0
+          fi
+          composer test:grafana
+      - name: Grafana contract tests
+        run: |
+          mkdir -p build
+          if grep -rqs "group('grafana')" tests; then vendor/bin/pest --ci --group=grafana; else vendor/bin/pest --ci tests/Grafana; fi
+      # The grafana group writes build/grafana-rules.yml (every expression, macros substituted) and build/scrape.txt
+      # (a seeded exposition) once T13 and T15 add those tests.
+      - name: promtool check rules and metrics
+        run: |
+          promtool() { docker run --rm -i -v "$PWD/build:/w" --entrypoint promtool "$PROMETHEUS_IMAGE" "$@"; }
+          if [ -f build/grafana-rules.yml ]; then promtool check rules /w/grafana-rules.yml; else echo "::notice::no build/grafana-rules.yml yet (T13)"; fi
+          if [ -f build/scrape.txt ]; then promtool check metrics < build/scrape.txt; else echo "::notice::no build/scrape.txt yet (T15)"; fi
+      - name: Provisioning smoke test
+        run: |
+          docker compose up -d prometheus grafana
+          for i in $(seq 1 90); do curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 && break; sleep 2; done
+          curl -fsS http://localhost:3000/api/health
+          sleep 15
+          G=http://admin:admin@localhost:3000
+          uid=$(docker compose exec -T grafana sh -c 'cat /etc/grafana/dashboards/horizon-observability/*.json' | jq -r '.uid' | head -n 1)
+          echo "dashboard uid: $uid"
+          curl -fsS "$G/api/dashboards/uid/$uid" | jq -e '.dashboard.panels | length > 0'
+          rules=$(curl -fsS "$G/api/v1/provisioning/alert-rules" | jq length)
+          echo "alert rules: $rules"
+          test "$rules" -eq 4
+          curl -fsS "$G/api/plugins?embedded=0" | jq -e '[.[] | select(.id == "yesoreyeram-infinity-datasource" or .id == "marcusolsson-dynamictext-panel")] | length == 2'
+          curl -fsS "$G/api/datasources/uid/prometheus/health" | jq -e '.status == "OK"'
+          if docker compose logs grafana 2>&1 | grep 'level=error' | grep -E 'logger=provisioning|provision'; then
+            echo "::error::Grafana logged provisioning errors"
+            exit 1
+          fi
+      - name: Grafana log
+        if: failure()
+        run: docker compose logs grafana | tail -200
+
+  dist:
+    name: Dist archive contents
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # git archive applies .gitattributes export-ignore: only the package may ship (C25: no workbench, no load
+      # generator, no dev stack).
+      - name: git archive HEAD equals the allowlist
+        run: |
+          git archive HEAD | tar -t | sort > archive.txt
+          cat archive.txt
+          allowed='^(src/|config/|routes/|resources/|composer\.json$|LICENSE$|README\.md$|CHANGELOG\.md$|UPGRADE\.md$)'
+          if grep -Ev "$allowed" archive.txt; then
+            echo "::error::git archive ships files outside the allowlist (above)"
+            exit 1
+          fi
+          for required in src/ config/ routes/ composer.json LICENSE README.md CHANGELOG.md; do
+            grep -qx "$required" archive.txt || { echo "::error::git archive misses $required"; exit 1; }
+          done
+
+  e2e:
+    name: End to end / ${{ matrix.grafana }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        grafana: ['grafana/grafana:12.4.13', 'grafana/grafana:13.2.4']
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports: ['6379:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      GRAFANA_IMAGE: ${{ matrix.grafana }}
+      PROMETHEUS_IMAGE: quay.io/prometheus/prometheus:v3.15.0
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: redis, pcntl, posix, pdo_sqlite, mbstring
+          coverage: none
+      - run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress
+      # The runner's Node (>= 18) runs Playwright.
+      - run: npm i --no-save --no-package-lock playwright@1.56.1 && npx playwright install --with-deps chromium
+      - name: Two application replicas and Horizon
+        run: |
+          composer build
+          mkdir -p build/logs
+          nohup php vendor/bin/testbench serve --host=0.0.0.0 --port=8000 > build/logs/serve-8000.log 2>&1 &
+          nohup php vendor/bin/testbench serve --host=0.0.0.0 --port=8001 > build/logs/serve-8001.log 2>&1 &
+          nohup php vendor/bin/testbench horizon > build/logs/horizon.log 2>&1 &
+          for port in 8000 8001; do
+            for i in $(seq 1 60); do curl -s -o /dev/null "http://127.0.0.1:$port/horizon" && break; sleep 1; done
+          done
+      # One Prometheus scrapes both replicas (one job), a second one scrapes a single replica: the dedupe gate.
+      - name: Prometheus (replicas and single) and Grafana
+        run: |
+          PROMETHEUS_CONFIG=prometheus.replicas.yml docker compose up -d prometheus grafana
+          docker run -d --name prometheus-single --add-host host.docker.internal:host-gateway -p 9092:9090 \
+            -v "$PWD/docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+            -v "$PWD/docker/prometheus/token:/etc/prometheus/token:ro" "$PROMETHEUS_IMAGE"
+          for i in $(seq 1 90); do curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 && break; sleep 2; done
+      - name: Load simulation (10 minutes)
+        run: php vendor/bin/testbench workbench:simulate-load --continuous --duration=600 --seed=1
+      - name: Targets
+        run: |
+          curl -fsS http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {scrapeUrl, health, lastError}'
+          curl -fsS http://localhost:9092/api/v1/targets | jq '.data.activeTargets[] | {scrapeUrl, health, lastError}'
+      # The perf data must use the metric names of the mounted dashboard: the pilot's office_* (legacy schema) until
+      # T13 mounts the package render (catalog schema, ho_*).
+      - name: Dashboard uid and perf schema
+        run: |
+          docker compose exec -T grafana sh -c 'cat /etc/grafana/dashboards/horizon-observability/*.json' > build/dashboard.json
+          echo "DASHBOARD_UID=$(jq -r .uid build/dashboard.json | head -n 1)" >> "$GITHUB_ENV"
+          if grep -q 'office_queue_jobs_total' build/dashboard.json; then schema=legacy; else schema=catalog; fi
+          echo "PERF_SCHEMA=$schema" >> "$GITHUB_ENV"
+      - name: Screenshots (look review against planning/baseline)
+        run: node bin/screenshot.mjs --uid "$DASHBOARD_UID" --from now-15m --name "dashboard-${GRAFANA_IMAGE##*:}"
+      - name: Replica dedupe gate (C7)
+        continue-on-error: true            # blocking from T15 on, after T13's dedupe step
+        run: |
+          node bin/perf.mjs capture --url "http://localhost:3000/d/$DASHBOARD_UID?orgId=1&from=now-15m&to=now&kiosk" --seconds 45 --out build/perf/dedupe.json
+          node bin/perf.mjs compare build/perf/dedupe.json --prometheus http://localhost:9090 --against http://localhost:9092
+      - name: End-to-end tests against the stack
+        env:
+          GRAFANA_URL: http://localhost:3000
+          PROMETHEUS_URL: http://localhost:9090
+          APP_URL: http://localhost:8000
+        run: |
+          if grep -rqs "group('e2e')" tests; then vendor/bin/pest --ci --group=e2e; else echo "::notice::no e2e test yet"; fi
+      # ADDENDUM R2.2 steps 1-5 on the medium profile; non-blocking until T15.
+      - name: Performance report (medium profile)
+        continue-on-error: true
+        run: |
+          docker compose stop grafana
+          docker/perf/backfill.sh --profile=medium --hours=26 --schema="$PERF_SCHEMA"
+          nohup php vendor/bin/testbench workbench:perf-exporter --profile=medium --schema="$PERF_SCHEMA" > build/logs/perf-exporter.log 2>&1 &
+          PROMETHEUS_URL=http://perf-prometheus:9090 docker compose up -d grafana
+          for i in $(seq 1 90); do curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 && break; sleep 2; done
+          sleep 60
+          for range in 1h 6h; do
+            node bin/perf.mjs capture --url "http://localhost:3000/d/$DASHBOARD_UID?orgId=1&from=now-$range&to=now&kiosk" --seconds 70 --out "build/perf/$range.json"
+            node bin/perf.mjs replay "build/perf/$range.json" --prometheus http://localhost:9091
+          done
+          node bin/perf.mjs report build/perf/1h.json build/perf/6h.json --budget docker/perf/budget.json --json build/perf/report.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: e2e-${{ strategy.job-index }}
+          path: |
+            build/screenshots
+            build/perf/*.json
+            build/logs
+          if-no-files-found: ignore

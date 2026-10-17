@@ -1,0 +1,43 @@
+# Release (Arch 8.7): on a tag vX.Y.Z, check that CHANGELOG.md has the version's section, that composer.json is valid
+# and that the committed Grafana assets equal their render, then create the GitHub release from that section.
+# Packagist updates through its GitHub webhook.
+name: release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: redis, pcntl, posix, pdo_sqlite, mbstring
+          coverage: none
+      - name: CHANGELOG section of the version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::CHANGELOG.md has no non-empty section ## [$version]"
+            exit 1
+          fi
+          cat release-notes.md
+      - run: composer validate --strict
+      - run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress
+      - run: composer test:grafana
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag
