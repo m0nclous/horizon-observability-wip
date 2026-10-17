@@ -107,8 +107,9 @@ final class BatchReader
             return $memo[$key][0];
         }
 
-        $exists = $this->cached($key) ?? $this->tableExists($connection, $table, $key);
-        $memo[$key] = [$exists, $now + self::DETECTION_TTL_SECONDS];
+        // The answer expires 10 minutes after the table was checked, also when another process checked it.
+        [$exists, $checkedAt] = $this->cached($key, $now) ?? [$this->tableExists($connection, $table, $key, $now), $now];
+        $memo[$key] = [$exists, $checkedAt + self::DETECTION_TTL_SECONDS];
         $this->detections()[$this->db] = $memo;
 
         return $exists;
@@ -261,7 +262,7 @@ final class BatchReader
         return $this->db->connection($this->connectionName())->table($this->table())->select(self::COLUMNS);
     }
 
-    private function tableExists(string $connection, string $table, string $key): bool
+    private function tableExists(string $connection, string $table, string $key, int $now): bool
     {
         try {
             $database = $this->db->connection($connection);
@@ -278,7 +279,7 @@ final class BatchReader
         }
 
         try {
-            $this->cache->store()->put(self::CACHE_KEY.$key, $exists ? 'yes' : 'no', self::DETECTION_TTL_SECONDS);
+            $this->cache->store()->put(self::CACHE_KEY.$key, ($exists ? 'yes' : 'no').':'.$now, self::DETECTION_TTL_SECONDS);
         } catch (Throwable) {
             // The memo still applies; a failing cache only costs a table check per process.
         }
@@ -286,7 +287,13 @@ final class BatchReader
         return $exists;
     }
 
-    private function cached(string $key): ?bool
+    /**
+     * The cached answer of another process and when it checked the table; null when there is none or it is older than
+     * {@see self::DETECTION_TTL_SECONDS} (a store that keeps entries longer than asked).
+     *
+     * @return array{0: bool, 1: int}|null
+     */
+    private function cached(string $key, int $now): ?array
     {
         try {
             $value = $this->cache->store()->get(self::CACHE_KEY.$key);
@@ -294,11 +301,14 @@ final class BatchReader
             return null;
         }
 
-        return match ($value) {
-            'yes' => true,
-            'no' => false,
-            default => null,
-        };
+        if (! is_string($value) || preg_match('/^(yes|no):(\d{1,19})$/', $value, $match) !== 1) {
+            return null;
+        }
+
+        // A check time ahead of this clock (skew between servers) counts as now.
+        $checkedAt = min((int) $match[2], $now);
+
+        return $checkedAt + self::DETECTION_TTL_SECONDS > $now ? [$match[1] === 'yes', $checkedAt] : null;
     }
 
     /**

@@ -162,6 +162,25 @@ describe('detection', function (): void {
         expect(app(BatchReader::class)->available())->toBeFalse();
     });
 
+    it('expires a cached answer 10 minutes after the check, not 10 minutes after it was read', function (): void {
+        config()->set('queue.batching.database', BatchTable::CONNECTION);
+
+        // Another process checks: no table yet; the answer is shared through the cache.
+        expect(app(BatchReader::class)->available())->toBeFalse();
+
+        // This process (a new database manager) reads the shared answer 9 minutes later, then the table is created.
+        $this->travel(BatchReader::DETECTION_TTL_SECONDS - 60)->seconds();
+        app()->forgetInstance('db');
+
+        expect(app(BatchReader::class)->available())->toBeFalse();
+
+        BatchTable::create();
+        $this->travel(61)->seconds();
+
+        // 10 minutes and 1 second after the check: noticed, although this process read the answer only 61 s ago.
+        expect(app(BatchReader::class)->available())->toBeTrue();
+    });
+
     it('keys the check by where the connection points', function (): void {
         BatchTable::create();
 
