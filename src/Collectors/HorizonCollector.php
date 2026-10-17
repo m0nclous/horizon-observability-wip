@@ -12,6 +12,7 @@ use DF\HorizonObservability\Horizon\Topology;
 use DF\HorizonObservability\Metrics\Metric;
 use DF\HorizonObservability\Metrics\MetricFamily;
 use DF\HorizonObservability\Metrics\ScrapeContext;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -22,7 +23,8 @@ use Throwable;
  *   connection; `WorkloadRepository` is not used and `horizon_current_processes` is gone), the topology from
  *   Horizon's config, and the links from the config. Each source is read in isolation: a failing one is reported
  *   with {@see ScrapeContext::reportFailure()} (`exporter_collector_success` 0) and the others are still exported,
- *   so a Redis outage leaves `horizon_info` and the wait thresholds (C5).
+ *   so a Redis outage leaves `horizon_info` and the wait thresholds (C5). When the status read used up the scrape
+ *   budget, the supervisors are not read (source `budget`).
  * - **Supervisors** are keyed by the name after the last `:` (the master prefix stripped). With several masters
  *   running the same supervisor (a deploy, several hosts) the processes are summed per queue, the minimum and maximum
  *   are the largest reported, and the settings come from the first master by name. The `queue` label is Horizon's
@@ -73,12 +75,17 @@ final readonly class HorizonCollector implements Collector
             $families[] = MetricFamily::of(Metric::HorizonStatus)->set([], $status);
         }
 
-        try {
-            /** @var list<SupervisorSnapshot> $supervisors */
-            $supervisors = $context->remember(self::SUPERVISORS, fn (): array => $this->supervisors->all());
-            array_push($families, ...$this->supervisorFamilies($supervisors));
-        } catch (Throwable $e) {
-            $context->reportFailure('supervisors', $e);
+        if ($context->deadlineExceeded()) {
+            // A slow status read (e.g. an unreachable Redis) has used the budget; the supervisors would wait as long.
+            $context->reportFailure('budget', new RuntimeException('the scrape budget ran out before the supervisors were read.'));
+        } else {
+            try {
+                /** @var list<SupervisorSnapshot> $supervisors */
+                $supervisors = $context->remember(self::SUPERVISORS, fn (): array => $this->supervisors->all());
+                array_push($families, ...$this->supervisorFamilies($supervisors));
+            } catch (Throwable $e) {
+                $context->reportFailure('supervisors', $e);
+            }
         }
 
         try {

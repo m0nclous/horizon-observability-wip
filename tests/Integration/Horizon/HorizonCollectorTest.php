@@ -171,6 +171,21 @@ test('redis down keeps the links and the thresholds and reports the failed sourc
         ->and($samples->series('horizon_wait_threshold_seconds'))->toHaveCount(5);
 });
 
+it('does not read the supervisors when the status read used up the scrape budget', function (): void {
+    horizonCollectorWorkbench();
+    // The clock reads 0 when the context starts (budget 1 s) and 2 at the check after the status read.
+    $ticks = 0;
+    $clock = static function () use (&$ticks): float {
+        return 2.0 * $ticks++;
+    };
+
+    $samples = CollectedSamples::collect(app(HorizonCollector::class), new ScrapeContext(CarbonImmutable::now(), 1.0, $clock));
+
+    expect($samples->failedSources())->toBe(['budget'])
+        ->and($samples->failures[0]['exception']->getMessage())->toBe('the scrape budget ran out before the supervisors were read.')
+        ->and($samples->families)->toBe(['horizon_status', 'horizon_wait_threshold_seconds', 'horizon_info']);
+});
+
 it('reports a broken Horizon config as a topology failure and keeps the rest (C5)', function (): void {
     horizonCollectorWorkbench();
     config()->set('horizon.environments.testing.supervisor-default.minProcesses', 0);
