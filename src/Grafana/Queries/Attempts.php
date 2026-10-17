@@ -92,6 +92,47 @@ final readonly class Attempts
     }
 
     /**
+     * Attempts per graph step summed over every selected series, aggregate first (ADDENDUM R2.4 O4): point t is the
+     * increase of the sum over (t, t + step], clipped to the period. The same values as the sum of {@see perStep()}
+     * on continuous data at a fraction of the cost (#8 A 775 -> 43 ms in the T01 probe), because the set operations
+     * act on one series instead of every (queue, class, status).
+     *
+     * A step edge takes the last value within the lookback, so a missed scrape does not zero a step. The first step
+     * starts at the value at the start of the period (a series born inside the period at its first value), the last
+     * one ends at the value at the end; only those two steps are clipped. A counter reset or a pruned class lowers
+     * the sum: that step is 0 and the steps around it count as before, where clipping every step would zero the whole
+     * period up to the reset. A class born inside the period counts the attempts it was born with.
+     */
+    public function perStepTotal(string $statuses): string
+    {
+        $status = [Promql::re('status', $statuses)];
+        $sum = static fn (string $expr): string => Promql::sum($expr);
+
+        $next = $sum($this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status, offset: '-'.Promql::INTERVAL));
+        $current = $sum($this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status));
+        $periodEnd = $sum($this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status, at: Promql::TO_SECONDS));
+        $periodStart = $sum(Promql::either(
+            $this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status, at: Promql::FROM_SECONDS),
+            $this->promql->over('min_over_time', Metric::JobsTotal, Promql::RANGE, $status, at: Promql::TO_SECONDS),
+        ));
+
+        // The clip of a boundary step, and no clip (an infinite bound) for the steps between
+        $only = static fn (string $bound, string $step, string $unbounded): string => Promql::call('scalar', Promql::either(
+            Promql::paren(Promql::andOn($bound, Promql::paren($step))),
+            'vector('.$unbounded.')',
+        ));
+        $lastStep = 'vector(time()) + '.Promql::INTERVAL_MS.' / 1000 > '.Promql::TO_SECONDS;
+        $firstStep = 'vector(time()) < '.Promql::FROM_SECONDS;
+
+        return Promql::call(
+            'clamp_min',
+            Promql::call('clamp_max', $next, $only($periodEnd, $lastStep, 'Inf'))
+                .' - '.Promql::call('clamp_min', $current, $only($periodStart, $firstStep, '-Inf')),
+            '0',
+        );
+    }
+
+    /**
      * `end - start`, or `end` alone where the counter was reset in between.
      */
     private function clampedDifference(string $end, string $start): string

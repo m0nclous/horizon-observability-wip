@@ -32,6 +32,8 @@ final readonly class Promql
 
     public const INTERVAL = '$__interval';
 
+    public const INTERVAL_MS = '$__interval_ms';
+
     public const FROM_SECONDS = '${__from:date:seconds}';
 
     public const TO_SECONDS = '${__to:date:seconds}';

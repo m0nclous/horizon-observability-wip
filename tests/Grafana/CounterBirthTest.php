@@ -15,7 +15,9 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
  * difference starts from the first exported value and shows 0.
  *
  * Grafana's range query (step = $__interval, reduced with sum) is emulated by a subquery at the same step.
- * Pre-existing in the pilot's queries; skipped until T16/T17 decide where the fix belongs (exporter or queries).
+ * Pre-existing in the pilot's queries. The tiles count them since WP8C O4 (the per-step attempts on the sum of the
+ * series, clipped only at the first and last step); the tables and captions (Attempts::delta()) still start a born
+ * series at its first value, which T16/T17 decide (exporter or queries).
  */
 
 pest()->group('grafana');
@@ -56,4 +58,4 @@ it('counts the attempts a counter series is born with', function (): void {
     ]]);
 
     expect($status)->toBe(0, $output);
-})->skip('Pre-existing (pilot queries): T13 QA round 1 finding for T16/T17; remove the skip with the fix.');
+});
