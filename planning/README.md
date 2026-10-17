@@ -10,7 +10,7 @@ that the next task points to. Everything here is export-ignored and will be dele
 |---|---|
 | `planning/TASKS.md` | Ordered task list with status, scope, inputs, owned files and acceptance criteria. **The source of truth for progress.** |
 | `planning/ARCHITECTURE.md` | Approved final architecture (Q1–Q9 + appendices A–H: config file, metric catalog, frozen interfaces, Lua contracts, Redis keys, compat matrix, office migration, bug→test map). |
-| `planning/ADDENDUM.md` | Approved additions R1–R4 (namespace `ho`, scrape interval, dashboard performance, Live Overview). **May be missing** if the cloud session ended before it was written: then task T01 recreates it from the R1–R4 spec in TASKS.md. Where it conflicts with ARCHITECTURE.md, the addendum wins. |
+| `planning/ADDENDUM.md` | Approved additions R1–R4 (namespace `ho`, scrape interval, dashboard performance, Live Overview), committed in T01. ARCHITECTURE.md is amended in place to match it; where they still differ, the addendum wins. |
 | `planning/audit/` | Audit of the legacy pilot: findings (`findings-*.md`: couplings F01–F29, design A01–A28, bugs C1–C26 with verdicts, dashboard, tooling), the dashboard contract (`dashboard-contract.md`), verified tool versions and dev recipes (`tooling-notes.md`). Paths like `/tmp/claude-0/...` in these files point to the cloud sandbox and no longer exist. |
 | `planning/baseline/` | Screenshots of the **current** dashboard (Grafana 13.2.4, workbench data). The rewrite must keep this look; compare final screenshots against them. |
 | `planning/reference/` | Helpers: `screenshot-playwright.mjs` (Playwright screenshot script), `probes/` (route-precedence and Horizon-middleware probes cited by Arch Q2.2), `addendum-probes/` (T01 performance harness: synthetic data, backfill, Playwright refresh timing, PromQL replay, dashboard variants v1–v4 and their results). `dev-stack-audit/` is an audit record only (host network, legacy `/metrics` paths), not runnable. |
@@ -49,6 +49,14 @@ that the next task points to. Everything here is export-ignored and will be dele
      not defaulted;
    - `stream` is the only sub-5 s mode (live panels update independently of the dashboard refresh); it runs as a
      long-lived process (supervisor/systemd) on any number of replicas, one leader via the Redis lock.
+
+   Look deviations of the live modes (ADDENDUM R4.1), **pending owner acceptance**; `--live=off` keeps today's look exactly:
+   - #3 Supervisor Processes loses its per-supervisor sparkline in poll and stream modes (the supervisor count is
+     dynamic, and no stock transformation can merge a live row into each Prometheus series);
+   - #2 Pending loses its sparkline in stream mode (Mixed cannot carry a stream, ADDENDUM R4.8);
+   - the #8 Completed caption "RPM: n" counts the last complete 60 s (ring buffer) instead of the 5-minute average;
+   - #9 Delayed in stream mode shows the last 15 minutes whatever the dashboard range (`timeFrom`);
+   - poll mode refreshes the whole dashboard every 5 s instead of every scrape interval.
 10. Execution mode: full plan with parallel agents and independent reviews per phase.
 11. Releases: `0.x` until office runs the package in production, then `1.0.0`.
 

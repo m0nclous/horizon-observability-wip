@@ -1,5 +1,7 @@
 # Horizon Observability: final architecture
 
+> **Amended by ADDENDUM.md R1–R4 (2026-10-17); where they differ the addendum wins.** The amended passages below cite the addendum section they come from (for example "Addendum R4.3" or "Addendum E′").
+
 - **Package:** `sushi-market/horizon-observability`
 - **Namespace:** `DF\HorizonObservability`
 - **License:** MIT
@@ -38,14 +40,14 @@ Words used with a fixed meaning:
 | Q | Decision |
 |---|---|
 | Q1 | Own Prometheus text-format 0.0.4 renderer; no promphp, no spatie. A `Metric` enum is the single catalog (name, type, HELP, labels, collector). Histograms are real histograms. Each collector runs in isolation: all of its families or none, except for explicitly reported partial failures. A scrape time budget comes from `X-Prometheus-Scrape-Timeout-Seconds`. Self-metrics report collector success and duration, plus `build_info`, config problems and dropped attempts. Replicas: **one logical scrape target per app** is the contract. Every rendered dashboard and alert query also dedupes with `max by (job, <family labels>)` as defence in depth. An opt-in "duplicate exporters" rule exists. There is no leader election. |
-| Q2 | Routes are `/{horizon.path}/observability/metrics` (name `horizon-observability.metrics`) and `/{horizon.path}/observability/jobs/{list}` (name `horizon-observability.jobs`, `list ∈ pending, completed, failed, delayed`). They are registered from an *application booting callback*, which beats Horizon's catch-all in either provider order, with and without `route:cache`. They are outside the `web` and `horizon` groups. Auth uses a bearer token list (comma-separated, for rotation), an optional separate API token for Grafana, and an optional IP allow-list (ANDed with the token), or a `HorizonObservability::auth()` callback. With nothing configured, the endpoints are open only in `local`. No default throttle. The endpoints stay reachable in maintenance mode (opt-out). |
+| Q2 | Routes are `/{horizon.path}/observability/metrics` (name `horizon-observability.metrics`) and `/{horizon.path}/observability/jobs/{list}` (name `horizon-observability.jobs`, `list ∈ pending, completed, failed, delayed`), plus `/{horizon.path}/observability/live` (name `horizon-observability.live`) when `live.enabled` (Addendum R4.3). They are registered from an *application booting callback*, which beats Horizon's catch-all in either provider order, with and without `route:cache`. They are outside the `web` and `horizon` groups. Auth uses a bearer token list (comma-separated, for rotation), an optional separate API token for Grafana, and an optional IP allow-list (ANDed with the token), or a `HorizonObservability::auth()` callback. With nothing configured, the endpoints are open only in `local`. No default throttle. The endpoints stay reachable in maintenance mode (opt-out). |
 | Q3 | Own config file with about 25 keys and env prefix `HORIZON_OBSERVABILITY_`. Dashboard and alert render parameters are command options, not config. Validation normalises and reports: an invalid non-security value falls back to its default and is reported through `check` (exit 1), `about`, a self-metric and one throttled log line. Security values fail closed. Nothing throws at boot or answers 5xx because of config. |
-| Q4 | Default namespace `laravel`, giving names like `laravel_queue_jobs_total`. Office sets `HORIZON_OBSERVABILITY_NAMESPACE=office` and keeps 25 of 29 family names and label sets byte-identical. Exactly four families change: `horizon_current_processes` is dropped; `horizon_info` gains `api_path`; `queue_oldest_pending_job_age` becomes `queue_oldest_pending_job_age_seconds` because its meaning changes; `queue_batch_progress` loses `size` and `created`. English sentinels: `(unscanned)`, `(unknown)`, `(other)`; `unnamed` stays. `job_class` is the normalised `displayName`, capped at 500 classes with automatic 30-day pruning. |
-| Q5 | Port the Python generator to PHP (`src/Grafana`, `@internal`) behind `php artisan horizon-observability:grafana [--check]`. The port must first reproduce today's `queues.json` and `horizon.yml` exactly (legacy golden profile). Intentional changes then land as reviewed steps. Install facts are baked in at render time: prefix, uid, title `Queues`, tags, rule uids and thresholds. Runtime facts are hidden variables: datasources, `prometheus_job` scope, `api_path`, `horizon_url`, `tts_url` and `busy_window`. Alert rules are rendered to a Grafana provisioning **JSON** file. `datasourceUid` uses Grafana's env interpolation (`${HORIZON_OBSERVABILITY_PROMETHEUS_UID}`), because the PromQL in `model` is never interpolated. |
+| Q4 | Default namespace `ho`, giving names like `ho_queue_jobs_total` (Addendum R1). Office sets `HORIZON_OBSERVABILITY_NAMESPACE=office` and keeps 25 of 29 family names and label sets byte-identical. Exactly four families change: `horizon_current_processes` is dropped; `horizon_info` gains `api_path`; `queue_oldest_pending_job_age` becomes `queue_oldest_pending_job_age_seconds` because its meaning changes; `queue_batch_progress` loses `size` and `created`. English sentinels: `(unscanned)`, `(unknown)`, `(other)`; `unnamed` stays. `job_class` is the normalised `displayName`, capped at 500 classes with automatic 30-day pruning. |
+| Q5 | Port the Python generator to PHP (`src/Grafana`, `@internal`) behind `php artisan horizon-observability:grafana [--check]`. The port must first reproduce today's `queues.json` and `horizon.yml` exactly (legacy golden profile). Intentional changes then land as reviewed steps. Install facts are baked in at render time: prefix, uid, title `Queues`, tags, rule uids and thresholds. Runtime facts are hidden variables: datasources, `prometheus_job` scope, `api_path`, `horizon_url`, `tts_url`, `busy_window` and `scrape_interval` (Addendum R3.3). Alert rules are rendered to a Grafana provisioning **JSON** file. `datasourceUid` uses Grafana's env interpolation (`${HORIZON_OBSERVABILITY_PROMETHEUS_UID}`), because the PromQL in `model` is never interpolated. |
 | Q6 | Every confirmed bug gets a mechanical fix (table in Q6). Worker path: no Redis call at `JobProcessing`; one `EVAL` per attempt on a private short-timeout client behind a per-process circuit breaker; a `WeakMap` state machine; only `RedisJob` attempts that passed `JobProcessing` are recorded. Event shims cover Laravel 11.23, 12 and 13. Storage keys are hash-tagged, with no pipelines and `INFO` read inside Lua. Redis Cluster is supported wherever Horizon supports it. Batch SQL is bounded. Job-class discovery is cached at deploy time. |
-| Q7 | Plain `ServiceProvider`. Everything is `final` and `@internal` except a small public surface: the config, metrics, HTTP, commands and dashboard contracts, plus two static hooks. There are no public interfaces in v0.x. The Horizon menu link is appended to `horizon.middleware` from the booting callback, which works on Horizon 5.22 through 5.50. The load generator lives in the workbench only. Six commands ship: `install`, `check`, `grafana`, `cache`, `clear`, `flush`. |
+| Q7 | Plain `ServiceProvider`. Everything is `final` and `@internal` except a small public surface: the config, metrics, HTTP, commands and dashboard contracts, plus two static hooks. There are no public interfaces in v0.x. The Horizon menu link is appended to `horizon.middleware` from the booting callback, which works on Horizon 5.22 through 5.50. The load generator lives in the workbench only. Seven commands ship: `install`, `check`, `grafana`, `cache`, `clear`, `flush`, `stream` (Addendum R4.6). |
 | Q8 | `php ^8.2`, `laravel/framework ^11.23\|^12.0\|^13.0`, `laravel/horizon ^5.22`, and nothing else at runtime. Testbench `^9.5\|^10.0\|^11.0` with workbench; Pest `^3.8\|^4.1`; Larastan level 9; Pint; Rector. The CI matrix covers PHP × Laravel, prefer-lowest at each floor, phpredis and predis, and Redis 6.2, 7.4, 8, Valkey and a single-node cluster leg. Static, grafana, dist and coverage run as separate jobs; e2e screenshots run weekly. A docker stack provides Redis, Prometheus, Grafana with plugins and provisioning, and an optional containerised app. |
-| Q9 | WP0 (foundation and frozen contracts; one agent who stays the integrator) lands first. WP8A (Grafana golden port) starts right after WP0a. WP1 to WP7 and WP9 then run in parallel with disjoint file ownership. WP8B and WP10 follow, and WP11 integrates, documents and tags `v0.1.0`. |
+| Q9 | WP0 (foundation and frozen contracts; one agent who stays the integrator) lands first. WP8A (Grafana golden port) starts right after WP0a. WP1 to WP7 and WP9 then run in parallel with disjoint file ownership. WP8B and WP10 follow, and WP11 integrates, documents and tags `v0.1.0`. The addendum adds WP-L1 and WP-L2 (Live) and WP8C and WP8D after WP8B (Addendum Q9′). |
 
 ### 0.3 How the three designs were merged
 
@@ -81,7 +83,7 @@ Words used with a fixed meaning:
 | `optimizes()` floor | "absent on L11" | 11.30 | 11.28 | **11.27.1**, guarded with `method_exists` | Verified upstream: absent in 11.27.0, present in 11.27.1. |
 | Larastan level | 8 | 9 | 9 | **9** | Forces narrowing of `mixed` Redis replies, which is where the predis/phpredis shape bugs lived. |
 | Public extension contracts | none | 4 + model | 4 + model | **None in v0.x (two hooks only)** | Small SemVer surface; contracts are additive later. |
-| Commands | grafana, cache, clear | + install, check, flush | + install, check, prune | **install, check, grafana, cache, clear, flush** | `check` gates deploys. Data deletion stays out of `optimize:clear`. |
+| Commands | grafana, cache, clear | + install, check, flush | + install, check, prune | **install, check, grafana, cache, clear, flush** (+ `stream`, Addendum R4.6) | `check` gates deploys. Data deletion stays out of `optimize:clear`. |
 | Releases | 0.x | 1.0.0-rc | 1.0.0-beta | **0.x, then 1.0.0 after office production** | Office installs need no stability flags. |
 
 ### 0.4 Facts this design relies on
@@ -123,7 +125,7 @@ Words used with a fixed meaning:
 | Infinity uses `jsonData.auth_method: bearerToken` and `secureJsonData.bearerToken`. `allowedHosts` is only required when no base URL is set; we set it anyway. | `pkg/models/settings.go:181-189` |
 | Prometheus reserves the `Host` header and sends `X-Prometheus-Scrape-Timeout-Seconds`. | `prometheus/common config/headers.go` |
 | promphp 2.15.1 writes HELP unescaped and formats floats with a `(string)` cast (`precision=14`). | `RenderTextFormat.php:27`; local probe |
-| The generator output with `python3 -I … --prefix office` is byte-identical to the committed `queues.json` on Python 3.12 and 3.13. Python 3.11 fails with a SyntaxError. The dashboard has 65 targets and about 100.8 KB of PromQL, and uses `le` only inside `by (le)`. | Audit `dashboard.notes.md` |
+| The generator output with `python3 -I … --prefix office` is byte-identical to the committed `queues.json` on Python 3.12 and 3.13. Python 3.11 fails with a SyntaxError. The dashboard has 65 targets and about 100.8 KB of PromQL, and uses `le` only inside `by (le)`. | Audit `planning/audit/dashboard-contract.md` |
 
 **Tooling**
 
@@ -211,15 +213,17 @@ foreach (self::ORDER as $id) {                       // horizon, queues, attempt
 
 #### 1.4 Self-metrics
 
-All self-metrics carry the namespace prefix.
+All self-metrics carry the namespace prefix and the family prefix `exporter_` (Addendum R1), so `{__name__=~"ho_exporter_.+"}` lists all package health series.
 
 | Family | Type | Labels | Meaning |
 |---|---|---|---|
-| `horizon_observability_collector_success` | gauge | `collector` | 1 or 0 for each enabled collector (`horizon`, `queues`, `attempts`, `job_classes`, `batches`) |
-| `horizon_observability_collector_duration_seconds` | gauge | `collector` | wall time of each collector |
-| `horizon_observability_build_info` | gauge (1) | `version`, `php`, `laravel`, `horizon`, `redis_client` | what is running |
-| `horizon_observability_config_problems` | gauge | – | number of normalised config problems (Q3) |
-| `horizon_observability_attempts_dropped_total` | counter | – | attempts not recorded because the worker-side breaker was open. Global, read from storage `meta`, owned by the `attempts` collector. |
+| `exporter_collector_success` | gauge | `collector` | 1 or 0 for each enabled collector (`horizon`, `queues`, `attempts`, `job_classes`, `batches`) |
+| `exporter_collector_duration_seconds` | gauge | `collector` | wall time of each collector |
+| `exporter_build_info` | gauge (1) | `version`, `php`, `laravel`, `horizon`, `redis_client` | what is running |
+| `exporter_config_problems` | gauge | – | number of normalised config problems (Q3) |
+| `exporter_attempts_dropped_total` | counter | – | attempts not recorded because the worker-side breaker was open. Global, read from storage `meta`, owned by the `attempts` collector. |
+| `exporter_live_push_timestamp_seconds` | gauge | – | Unix time of the last successful Grafana Live push by any stream leader; absent until the first push. Read from storage `meta`, owned by the `attempts` collector (Addendum R4.11). |
+| `exporter_live_push_failures_total` | counter | – | failed Grafana Live pushes. Read from storage `meta`, owned by the `attempts` collector (Addendum R4.11). |
 
 Total scrape time is Prometheus' own `scrape_duration_seconds`.
 
@@ -240,7 +244,7 @@ Every business series is global: it is read from shared Redis or the DB, so ever
 3. **The alert rules** use the same form, which also fixes the failure-ratio rule. Its `clamp_min(sum(total), 100)` floor is not invariant under N copies, contrary to operability's claim.
 4. **Opt-in health rules** (`--health-rules`, Q5):
    - `<uid>-duplicates`: `count by (job) (<ns>_horizon_status) > 1` for 10m, which detects per-pod scraping;
-   - `<uid>-collector`: `min by (job, collector) (<ns>_horizon_observability_collector_success) < 1` for 15m.
+   - `<uid>-collector`: `min by (job, collector) (<ns>_exporter_collector_success) < 1` for 15m.
 
    Auto-disabled collectors emit no success series, so they never false-fire.
 
@@ -282,6 +286,9 @@ Every business series is global: it is read from shared Redis or the DB, so ever
 |---|---|---|---|---|
 | GET, HEAD | `/horizon/observability/metrics` | `horizon-observability.metrics` | `Authorize:metrics`, then `...config('horizon-observability.middleware')` | text 0.0.4 |
 | GET, HEAD | `/horizon/observability/jobs/{list}`, with `whereIn('list', ['pending','completed','failed','delayed'])` | `horizon-observability.jobs` | `ForceJson`, `Authorize:api`, then `...middleware` | `{"data":[…]}` JSON (`JSON_UNESCAPED_SLASHES\|JSON_UNESCAPED_UNICODE`), `Cache-Control: no-store` |
+| GET, HEAD | `/horizon/observability/live`, registered only when `live.enabled` (Addendum R4.3) | `horizon-observability.live` | `ForceJson`, `Authorize:api`, then `...middleware` | live snapshot JSON, schema v1 (Addendum R4.4), `Cache-Control: no-store` |
+
+The live endpoint takes the same `var-*` filters as the job lists, parsed by the shared `JobListQuery::filtersFromRequest()` (Addendum R4.3, C′), and answers 200 with `errors[]` on partial failures.
 
 **Base path.** `Http\RoutePath::base()` resolves it:
 1. If `horizon-observability.path` is non-empty, use it, trimmed of `/`. Office may set `metrics/horizon`.
@@ -355,6 +362,12 @@ Route::get('jobs/{list}', JobListController::class)
     ->whereIn('list', JobList::values())
     ->middleware([ForceJson::class, Authorize::class.':api', ...$extra])
     ->name('horizon-observability.jobs');
+
+if (filter_var(config('horizon-observability.live.enabled', true), FILTER_VALIDATE_BOOL)) {   // Addendum R4.3
+    Route::get('live', LiveController::class)
+        ->middleware([ForceJson::class, Authorize::class.':api', ...$extra])
+        ->name('horizon-observability.live');
+}
 ```
 
 The configured middleware is attached **per route, after `Authorize`**, not as group middleware (group middleware would run before route middleware). This fixes the contradiction in horizon-native. Our two classes are not in the kernel's `$middlewarePriority` list, so `SortedMiddleware` never moves priority middleware such as `throttle` in front of them. A feature test asserts that an unauthenticated request causes no cache write.
@@ -367,13 +380,13 @@ The configured middleware is attached **per route, after `Authorize`**, not as g
    - `route:cache` boots a fresh application (booting callbacks included) and dumps `RouteCollection::compile()`, which keeps insertion order.
    - `CompiledUrlMatcherDumper::groupStaticRoutes()` demotes a static route only when a dynamic route declared **earlier** matches it. Ours are earlier, so `…/metrics` stays in the static table, which is consulted before any regex. The dynamic `jobs/{list}` route precedes the catch-all in the ordered regex list.
    - At runtime both Horizon and we skip registration (`routesAreCached()`), so the cache alone decides.
-4. **Probe evidence.** The horizon-native probe (`design/horizon-native/probe/route_order.php`; testbench 10, L12.70, Horizon 5.50.1, both provider orders, uncached and `compile()`d) gave:
+4. **Probe evidence.** The horizon-native probe (`planning/reference/probes/route_order.php`; testbench 10, L12.70, Horizon 5.50.1, both provider orders, uncached and `compile()`d) gave:
    - `/horizon/observability/metrics` → ours;
    - `/horizon/observability/jobs/failed` → ours;
    - `/horizon/observability/jobs/nope` → `horizon.index`;
    - `/horizon/metrics` and `/horizon/metrics/jobs` → `horizon.index`;
    - a route added in `boot()` or `booted()` while Horizon boots first → `horizon.index`, so it loses (negative control).
-5. **Enforced by tests and at runtime.** `tests/Feature/Provider/RoutePrecedenceTest` checks both provider orders, uncached, `defineCacheRoutes()` and a `CompiledRouteCollection` built with `compile()`, plus `horizon.path` variants and the negative control. `horizon-observability:check` runs the same match against the live router and fails on a shadowed route.
+5. **Enforced by tests and at runtime.** `tests/Feature/Provider/RoutePrecedenceTest` (which includes `/live`, Addendum Q9′) checks both provider orders, uncached, `defineCacheRoutes()` and a `CompiledRouteCollection` built with `compile()`, plus `horizon.path` variants and the negative control. `horizon-observability:check` runs the same match against the live router and fails on a shadowed route.
 6. **Edge cases.**
    - A provider registered after boot (`App::register()` at runtime) registers immediately, which is too late. It is detected and logged once.
    - App-level catch-alls (`/{any}`) load after us.
@@ -405,7 +418,7 @@ The configured middleware is attached **per route, after `Authorize`**, not as g
   - Authenticated work is bounded: `limit` ≤ 1000, internal scan caps, an empty resolved filter returns immediately (C13), and the scrape budget applies.
   - A default limit keyed by token or IP would be shared by every Grafana viewer, since Infinity queries come from the Grafana server, and would blank the tables during incidents.
   - Recipe: `'middleware' => ['throttle:600,1']`. It runs after `Authorize`.
-- **Maintenance mode.** When `available_during_maintenance` is true (the default), `boot()` calls `PreventRequestsDuringMaintenance::except(["$base/metrics", "$base/jobs/*"])`, so queue visibility survives `php artisan down`. `HorizonObservability::flushState()` resets it in tests.
+- **Maintenance mode.** When `available_during_maintenance` is true (the default), `boot()` calls `PreventRequestsDuringMaintenance::except(["$base/metrics", "$base/jobs/*", "$base/live"])` (`$base/live` from Addendum R4.3), so queue visibility survives `php artisan down`. `HorizonObservability::flushState()` resets it in tests.
 
 #### 2.5 What clients send
 
@@ -414,8 +427,8 @@ The configured middleware is attached **per route, after `Authorize`**, not as g
 ```yaml
 - job_name: myapp-horizon                 # becomes the dashboard's prometheus_job scope
   metrics_path: /horizon/observability/metrics
-  scrape_interval: 15s
-  scrape_timeout: 10s                     # exporter budget = min(8 s, 10 - 0.5)
+  scrape_interval: 10s                    # recommended; supported 5s-60s (Addendum R3.2)
+  scrape_timeout: 8s                      # <= interval; exporter budget = min(8 s, timeout - 0.5 s)
   authorization: { type: Bearer, credentials_file: /etc/prometheus/secrets/horizon-observability-token }
   static_configs: [{ targets: ['myapp.internal:8080'] }]   # ONE logical target (Service / LB / host)
 ```
@@ -485,6 +498,7 @@ The panels request `${api_path}/jobs/<list>?limit=500&from=${__from}&to=${__to}&
   - `collectors.{horizon,queues,attempts,job_classes,batches}`
   - `buckets`, `queue_scan_limit`, `max_job_classes`, `job_class_paths`
   - `horizon_url`, `grafana.url`, `grafana.tts_url`
+  - `live.enabled`, `live.cache_ttl`, `live.stream.{grafana_url,token,id,interval}` (Addendum Appendix A′)
   - `log_channel`
 - **Derived defaults, resolved at runtime and never written into the file,** so `config:cache` does not freeze build-stage paths. The file keeps `null` for these:
   - `path` null → `{horizon.path}/observability`;
@@ -500,7 +514,7 @@ The panels request `${api_path}/jobs/<list>?limit=500&from=${__from}&to=${__to}&
 | Env var | Key | Default |
 |---|---|---|
 | `HORIZON_OBSERVABILITY_ENABLED` | `enabled` | `true` |
-| `HORIZON_OBSERVABILITY_NAMESPACE` | `namespace` | `laravel` |
+| `HORIZON_OBSERVABILITY_NAMESPACE` | `namespace` | `ho` |
 | `HORIZON_OBSERVABILITY_PATH` | `path` | null (derived) |
 | `HORIZON_OBSERVABILITY_DOMAIN` | `domain` | null (any host) |
 | `HORIZON_OBSERVABILITY_TOKEN` | `token` | null |
@@ -513,6 +527,12 @@ The panels request `${api_path}/jobs/<list>?limit=500&from=${__from}&to=${__to}&
 | `HORIZON_OBSERVABILITY_GRAFANA_URL` | `grafana.url` | null (no menu link) |
 | `HORIZON_OBSERVABILITY_TTS_URL` | `grafana.tts_url` | null (tone only) |
 | `HORIZON_OBSERVABILITY_LOG_CHANNEL` | `log_channel` | null (default channel) |
+| `HORIZON_OBSERVABILITY_LIVE_ENABLED` | `live.enabled` | `true` |
+| `HORIZON_OBSERVABILITY_LIVE_CACHE_TTL` | `live.cache_ttl` | `1.0` |
+| `HORIZON_OBSERVABILITY_LIVE_GRAFANA_URL` | `live.stream.grafana_url` | null (stream command refuses to start) |
+| `HORIZON_OBSERVABILITY_LIVE_GRAFANA_TOKEN` | `live.stream.token` | null (stream command refuses to start) |
+| `HORIZON_OBSERVABILITY_LIVE_STREAM_ID` | `live.stream.id` | `horizon_observability` |
+| `HORIZON_OBSERVABILITY_LIVE_STREAM_INTERVAL` | `live.stream.interval` | `1.0` |
 
 These are used only in Grafana provisioning, never by PHP: `HORIZON_OBSERVABILITY_PROMETHEUS_UID`, `HORIZON_OBSERVABILITY_APP_URL`, `HORIZON_OBSERVABILITY_API_TOKEN`.
 
@@ -521,19 +541,20 @@ These are used only in Grafana provisioning, never by PHP: `HORIZON_OBSERVABILIT
 | Area | Constants |
 |---|---|
 | Scrape | budget 8 s |
-| Attempts | extremes window 60 s with key TTL 180 s; job-class idle prune 30 days |
+| Attempts | extremes in 15 s buckets, 10 buckets merged on read (150 s), key TTL 300 s (Addendum R3.4); job-class idle prune 30 days |
 | Queue scan | per-queue class top-N 100; reserved scan limit 1000; queue scan byte cap 16 MB |
 | Batches | running window 7 days; closed window 1 h; 200 per kind; 100 kinds and 2000 batches per scrape; SQL `LIMIT` 5000; batch-link TTL 7 days with per-process hourly dedupe (memo of 1000) |
 | Job lists | scan 10 000 entries in chunks of 500; detail calls of 100 keys; exception text cap 1000 bytes |
 | Breaker and logs | breaker cooldown 30 s; log throttle 300 s |
 | Discovery and labels | runtime discovery cache 1 h; label value cap 200 bytes |
+| Live (Addendum A′) | ring buckets 5 s, TTL 180 s, window 60 s; snapshot head scan 20 items and 1 MB per queue, stale copy `max(2 s, 10 × cache_ttl)`, build lock 2 s, follower wait 500 ms; stream leader TTL 5 s, push timeout 2 s (connect 1 s), backoff 1, 2, 4, 8, 15 s (60 s for 401/403) |
 
 **Validation: normalise and report, never throw.**
 - `Config\Config::fromRepository(Repository $config): Config` builds one immutable typed snapshot, lazily on first use, as a container singleton. It collects `ConfigProblem(path, message)` entries:
 
   | Key | Rule; on violation |
   |---|---|
-  | `namespace` | must match `^[A-Za-z_][A-Za-z0-9_]*$` or be empty; a trailing `_` is stripped; invalid → `laravel` + problem |
+  | `namespace` | must match `^[A-Za-z_][A-Za-z0-9_]*$` or be empty; a trailing `_` is stripped; invalid → `ho` + problem |
   | `path` | must not contain `{`, `..` or whitespace; invalid → derived default + problem |
   | `token`, `api_token` | split on commas and trimmed; entries under 16 characters dropped + problem (fail closed) |
   | `allowed_ips` | each entry must parse as an IP or CIDR; invalid entries dropped + problem (fail closed: the list stays non-empty when at least one was given) |
@@ -548,12 +569,18 @@ These are used only in Grafana provisioning, never by PHP: `HORIZON_OBSERVABILIT
   | `job_class_paths` | existing directories; missing ones dropped + problem |
   | `horizon_url`, `grafana.url` | http(s) URL or null |
   | `grafana.tts_url` | null, `browser` or an http(s) URL |
+  | `live.enabled` | boolean (Addendum A′) |
+  | `live.cache_ttl` | in [0, 10]; otherwise 1.0 + problem |
+  | `live.stream.grafana_url` | comma-separated http(s) URLs; invalid entries dropped + problem |
+  | `live.stream.token` | non-empty string or null; never printed by `about` or `check` (only "set" or "missing") |
+  | `live.stream.id` | `^[A-Za-z0-9_-]{1,64}$`; otherwise the default + problem (Grafana does not validate it) |
+  | `live.stream.interval` | in [0.5, 10]; otherwise 1.0 + problem |
 - **Problems surface** through:
   - `php artisan horizon-observability:check`, which exits 1 and is meant for deploy pipelines;
   - the `about` section;
-  - the `horizon_observability_config_problems` self-metric;
+  - the `exporter_config_problems` self-metric;
   - one throttled log line.
-- **`boot()` and the booting callback** read only `enabled`, `collectors.*`, `grafana.url`, `path`, `domain`, `middleware` and `available_during_maintenance`, with safe casts and no validation, so a monitoring typo can never break the host app.
+- **`boot()` and the booting callback** read only `enabled`, `collectors.*`, `grafana.url`, `path`, `domain`, `middleware`, `available_during_maintenance` and `live.enabled` (route registration and the maintenance exception, Addendum A′), with safe casts and no validation, so a monitoring typo can never break the host app.
 - **Only `Config\Config`, the provider, `Http\RoutePath` and `Horizon\*`** (which reads Horizon's own keys) call `config()`. An architecture test enforces this.
 
 **Evaluation of the owner's idea (`config/horizon.php` → `'observability' => [...]`):**
@@ -596,8 +623,8 @@ These are used only in Grafana provisioning, never by PHP: `HORIZON_OBSERVABILIT
 ### Decision
 
 **Namespace.**
-- `namespace` (env `HORIZON_OBSERVABILITY_NAMESPACE`) defaults to **`laravel`**. The final name is `<namespace>_<family>`, or the bare family when the namespace is empty.
-- `laravel` reads naturally (`laravel_horizon_status`, `laravel_queue_jobs_total`), avoids spatie's default `app_` (same family names, different semantics) and avoids generic bare `queue_*` names in a shared Prometheus.
+- `namespace` (env `HORIZON_OBSERVABILITY_NAMESPACE`) defaults to **`ho`** (Addendum R1). The final name is `<namespace>_<family>`, or the bare family when the namespace is empty.
+- `ho` is short and reads naturally (`ho_horizon_status`, `ho_queue_jobs_total`), avoids spatie's default `app_` (same family names, different semantics) and avoids generic bare `queue_*` names in a shared Prometheus.
 
 **Office continuity (chosen).**
 - Clean public names and office continuity do not conflict once the prefix is configurable and the family names stay stable. Office sets `HORIZON_OBSERVABILITY_NAMESPACE=office`.
@@ -637,7 +664,7 @@ These are used only in Grafana provisioning, never by PHP: `HORIZON_OBSERVABILIT
 | `queue_batch_job_classes` | same | gauge (1) | `batch`, `queue`, `job_class` | – |
 | `queue_batch_info` | same | gauge (1) | `batch`, `queue`, `connection` | – (`connection` stays comma-joined) |
 | `queue_batch_progress{batch,name,status,size,created,id}` | `queue_batch_progress` | gauge (percent) | `batch`, `name`, `status`, `id` | **`size` and `created` dropped.** They were never read, they churn, and `created` depended on the timezone. |
-| – | `horizon_observability_*` (5 families, Q1.4) | – | – | new self-metrics |
+| – | `exporter_*` (7 families, Q1.4; Addendum R1) | – | – | new self-metrics |
 
 The HELP texts for every family are in Appendix B. They are English, ASCII-only and contain no namespace.
 
@@ -702,7 +729,7 @@ No label value is empty, because Prometheus treats an empty value as an absent l
 
 ### Rejected alternatives
 
-- **Namespace `''`:** generic names. **`app`:** collides with spatie semantics. **`horizon`:** gives `horizon_horizon_status`, or a restructuring that breaks continuity. **`horizon_observability_` as the business prefix:** long names, and continuity becomes impossible.
+- **Namespace `''`:** generic names. **`app`:** collides with spatie semantics. **`horizon`:** gives `horizon_horizon_status`, or a restructuring that breaks continuity. **`horizon_observability_` as the business prefix:** long names, and continuity becomes impossible. **`laravel`** (the earlier default): overruled by the owner (Addendum R1).
 - **Keeping `queue_oldest_pending_job_age` with the new meaning:** a silent redefinition of history.
 - **`queue_oldest_pending_job_wait_seconds`:** awkward, and `_age_seconds` is the conventional fix.
 - **Moving `tts_url` out of `horizon_info`:** it would turn a runtime setting into a render-time one, so a TTS change would need re-provisioning.
@@ -738,13 +765,18 @@ No label value is empty, because Prometheus treats an empty value as an absent l
       {--job=}                      default selection of the hidden prometheus_job variable and the alert scope; empty = all jobs (.+)
       {--datasource-uid=}           literal Prometheus uid for alert rules; default: ${HORIZON_OBSERVABILITY_PROMETHEUS_UID}
       {--folder=Horizon}
-      {--scrape-interval=15s}       sets busy_window (= interval) and refresh (= max(15s, interval))
+      {--scrape-interval=10s}       S: default of the scrape_interval variable; busy_window = max(15s, 2×S), LOOKBACK = max(10m, 10×S),
+                                    refresh = S in off and stream modes (Addendum R3.3)
+      {--live=poll}                 Live Overview: off | poll | stream (Addendum R4.1)
+      {--live-poll-interval=5s}     poll: dashboard refresh (>= Grafana min_refresh_interval)
+      {--live-stream-id=}           stream: Grafana Live stream id; default config('horizon-observability.live.stream.id')
       {--prometheus-datasource=}    optional name regex for the hidden datasource variable
       {--infinity-datasource=}      optional name regex for the hidden app_api variable
       {--health-rules}              add the two opt-in health rules (Q1.5)
+      {--recording-rules}           opt-in recording rules (Addendum R2.4 O9); the default render never depends on them
   ```
-- It writes `{path}/dashboards/horizon-observability.json` and `{path}/alerting/horizon-observability.json`. `path` is relative to `base_path()`. The prefix comes from `config('horizon-observability.namespace')` and is unaffected by `--defaults`.
-- **Committed assets.** `resources/grafana/dashboards/horizon-observability.json` and `resources/grafana/alerting/horizon-observability.json` are the `--defaults` render: prefix `laravel_`, uid `horizon-observability`, job `.+`, datasource placeholder. CI runs `testbench horizon-observability:grafana resources/grafana --defaults --check`.
+- It writes `{path}/dashboards/horizon-observability.json` and `{path}/alerting/horizon-observability.json` (plus `{path}/prometheus/horizon-observability.rules.yml` with `--recording-rules`). `path` is relative to `base_path()`. The prefix comes from `config('horizon-observability.namespace')` and is unaffected by `--defaults`.
+- **Committed assets.** `resources/grafana/dashboards/horizon-observability.json` and `resources/grafana/alerting/horizon-observability.json` are the `--defaults` render: prefix `ho_`, uid `horizon-observability`, job `.+`, live mode `poll` (Addendum R4.1), datasource placeholder. CI runs `testbench horizon-observability:grafana resources/grafana --defaults --check`.
 - **JSON printer.** `Grafana\Json` prints 2-space indentation, `JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRESERVE_ZERO_FRACTION` and a trailing newline. Objects and lists stay distinct (an empty object is `{}`). This matches Python's `json.dump(indent=2, ensure_ascii=False)`, so byte equality with the legacy file is a target, not just decoded equality.
 
 #### 5.2 Runtime variables versus baked values
@@ -753,19 +785,22 @@ The look is unchanged: same panels, layout, colours, thresholds and mappings, an
 
 | Concern | Mechanism | Default |
 |---|---|---|
-| Metric prefix | **Baked** into the PromQL (`laravel_queue_…`) | `laravel_` |
+| Metric prefix | **Baked** into the PromQL (`ho_queue_…`) | `ho_` |
 | Dashboard identity | Baked: uid, title, tags | `horizon-observability`, **`Queues`**, `[horizon, queue]` (the `office` tag is gone) |
 | Prometheus datasource | Hidden `datasource` variable of type prometheus (as today), with an optional rendered regex | Grafana default |
 | Infinity datasource | Hidden `app_api` variable of type Infinity (as today), with an optional regex | first Infinity datasource |
 | **Scope** | New hidden query variable `prometheus_job` = `label_values(<ns>_horizon_status, job)`, `includeAll`, `allValue: .+`, URL-overridable (`?var-prometheus_job=`). Every package selector, including the `supervisor`, `queue`, `job_class`, `batch_kind`, `*_title`, `horizon_url`, `tts_url` and `api_path` variable queries, gets `job=~"$prometheus_job"`. | `--job` or All |
 | **API base path** | New hidden variable `api_path` = `query_result(group by (api_path) (last_over_time(<ns>_horizon_info{job=~"$prometheus_job"}[7d])))` with a capture regex, `skipUrlSync`. Infinity URLs become `${api_path}/jobs/<list>`. | – |
 | Horizon URL, TTS URL | Existing hidden variables from `horizon_info{url}` and `horizon_info{tts_url}`, now scoped by job | – |
-| **Busy window** | New hidden textbox `busy_window` replaces the literal `BUSY_WINDOW` | `--scrape-interval` (15s) |
-| Refresh | Baked | `max(15s, scrape interval)` |
+| **Scrape interval** | New hidden textbox `scrape_interval` (URL-overridable as `?var-scrape_interval=30s`); every Prometheus panel gets `"interval": "$scrape_interval"` (Addendum R3.3) | `--scrape-interval` (10s) |
+| **Busy window** | New hidden textbox `busy_window` replaces the literal `BUSY_WINDOW` | `max(15s, 2 × --scrape-interval)` (20s at 10s; Addendum R3.3) |
+| Refresh | Baked | `--scrape-interval` (10s) in off and stream modes; `--live-poll-interval` (5s) in poll mode (Addendum R2.5) |
 | Thresholds shared with the alerts | Renderer constants: wait factor 2, failure ratio 0.05, minimum 100 attempts, window 15m, `for: 5m`. All other tile thresholds are unchanged constants. | as today |
 | Replica dedupe | Builder, always on after the gate in 5.6 | on |
-| Alerts tile and sound selector | Baked exact list: `GRAFANA_ALERTS{grafana_rule_uid=~"<uid>-(no-metrics\|down\|long-wait\|failures)"}` replaces `horizon-.*`. Health rules are never in it. | – |
+| Alerts tile and sound selector | Baked exact list: `GRAFANA_ALERTS{grafana_rule_uid=~"<uid>-(no-metrics\|down\|long-wait\|failures)"}` replaces `horizon-.*`. With `--live=stream` the list also contains `live` (Addendum R4.11). Health rules are never in it. | – |
 | `__requires` | Grafana ≥ 12.3.0, `prometheus`, `yesoreyeram-infinity-datasource` ≥ 4.1.1, `marcusolsson-dynamictext-panel` ≥ 6.3.0, stat, table, timeseries | – |
+
+Addendum R2.4 also changes the variable refresh policy (O3: only `batch_kind` and `batch_title` refresh on time-range change) and adds the hidden shared queue source panel #24 (O5, with an explicit `maxDataPoints`).
 
 **The `horizon_current_processes` replacement (owner-dx flaw):**
 - Target D: `sum by (queue) (horizon_current_processes)` → `sum by (queue) (horizon_supervisor_processes)`.
@@ -797,7 +832,8 @@ The rules are emitted by `AlertRulesBuilder` from the same constants and panel r
 | `<uid>-down` | Horizon is down | `min by (job) (max by (job) (<ns>_horizon_status{job=~"J"}))` | `< 1` | OK | 5m |
 | `<uid>-long-wait` | Queue wait over 2x limit | `max by (job, queue) (<ns>_queue_oldest_pending_job_age_seconds{job=~"J"}) / on (job, queue) max by (job, queue) (<ns>_horizon_wait_threshold_seconds{job=~"J"})` | `> 2` | OK | 5m |
 | `<uid>-failures` | High failure rate | `sum by (job, queue) (max by (job, connection, queue, job_class, status) (increase(<ns>_queue_jobs_total{job=~"J", status=~"failed\|timed_out"}[15m]))) / clamp_min(sum by (job, queue) (max by (job, connection, queue, job_class, status) (increase(<ns>_queue_jobs_total{job=~"J", status=~"completed\|failed\|timed_out"}[15m]))), 100)` | `>= 0.05` | OK | 5m |
-| `<uid>-collector` *(opt-in)* | Metrics collector failing | `min by (job, collector) (<ns>_horizon_observability_collector_success{job=~"J"})` | `< 1` | OK | 15m |
+| `<uid>-live` *(`--live=stream` only, Addendum R4.11)* | Live overview stalled | `max by (job) (timestamp(<ns>_exporter_live_push_timestamp_seconds{job=~"J"}) - <ns>_exporter_live_push_timestamp_seconds{job=~"J"})` | `> 30` | OK | 1m |
+| `<uid>-collector` *(opt-in)* | Metrics collector failing | `min by (job, collector) (<ns>_exporter_collector_success{job=~"J"})` | `< 1` | OK | 15m |
 | `<uid>-duplicates` *(opt-in)* | Duplicate metrics exporters | `count by (job) (<ns>_horizon_status{job=~"J"})` | `> 1` | OK | 10m |
 
 - The summaries keep today's English templates and add `{{ $labels.job }}`, e.g. `Oldest pending job in {{ $labels.queue }} ({{ $labels.job }}) waits {{ printf "%.1f" $values.A.Value }}x the queue wait limit`.
@@ -834,10 +870,10 @@ The behaviour is kept: an IEC 60601-1-8-style tone, then the firing rule titles 
 | **M1** | Port faithfully. Python helpers become PHP static methods (`Promql::filtered()`, `attempts_delta`/`attempts_per_step`, `filter_is_all`, `by_job_selection`, panels, variables). `LegacyProfile` sets prefix `office_`, uid `horizon`, title `Queues`, tags `[horizon, queue, office]`, Infinity paths `/metrics/horizon/{list}-jobs`, the `horizon-.*` alert selector, a literal `15s` busy window, no job scope and no dedupe, and reads the JS from the fixture. | `GoldenPortTest`: `Json::encode(render(LegacyProfile))` is **byte-identical** to the legacy file (minimum gate: `json_decode(…, false)` equality with key order preserved). |
 | **M2** | Port the alert YAML into `AlertRulesBuilder` with the same profile. | `LegacyAlertsTest`: the parsed legacy `horizon.yml` (dev `symfony/yaml`) equals the builder output. |
 
-**Steps 1 to 11 (WP8B):** each step is a separate reviewed commit. After each one, the default golden `tests/Fixtures/grafana/default/*` is updated, the contract tests and `promtool check rules` run, and a Playwright screenshot diff is attached to the PR. The layout-projection test must stay green throughout: panel id, type, title, gridPos, repeat, collapsed, options without the JS, fieldConfig and transformations must equal the legacy projection.
+**Steps 1 to 12 (WP8B):** each step is a separate reviewed commit. After each one, the default golden `tests/Fixtures/grafana/default/*` is updated, the contract tests and `promtool check rules` run, and a Playwright screenshot diff is attached to the PR. The layout-projection test must stay green throughout: panel id, type, title, gridPos, repeat, collapsed, options without the JS, fieldConfig and transformations must equal the legacy projection.
 
 1. Extract the English JS file with `tts_url=browser` support. Only panel #23 `afterRender` changes.
-2. Introduce the prefix token with default `laravel_`, the identity uid `horizon-observability`, title `Queues`, tags `[horizon, queue]`.
+2. Introduce the prefix token with default `ho_`, the identity uid `horizon-observability`, title `Queues`, tags `[horizon, queue]`.
 3. Metric changes: `_age_seconds`, and the `horizon_current_processes` replacement (5.2).
 4. The `prometheus_job` variable and the job matcher in `filtered()`, applied to every package selector and variable query.
 5. The `api_path` variable; Infinity URLs become `${api_path}/jobs/<list>`.
@@ -847,18 +883,19 @@ The behaviour is kept: an IEC 60601-1-8-style tone, then the firing rule titles 
 9. Delete the dead code (`STATUS_EXPR`, `batches_table`). Output unchanged.
 10. **Dedupe.** Replace inline selector strings with builder calls `Promql::sel(Metric $m, array $matchers)` and `Promql::range(string $fn, Metric $m, string $window, array $matchers)`. Both emit `max by (job, <Metric::labels()> [, le]) (…)`. A test tokenises every expression and asserts that every `<ns>_<family>` occurrence sits inside such a wrapper with the catalog's label list. The step is gated by the 2-replica e2e test: panel results with two scraped replicas equal a single-target run.
 11. The opt-in health rules.
+12. **R3 windows** (Addendum R3.3, Q9′ WP8B): the `scrape_interval` variable, per-panel `"interval": "$scrape_interval"`, the `busy_window` formula `max(15s, 2×S)`, `LOOKBACK = max(10m, 10×S)`, the `--scrape-interval` default `10s` and the refresh derivation.
 
-Then: commit the default render to `resources/grafana/`, delete `LegacyProfile` and the legacy goldens, and enable the arch test "no `office` in `src/` or `resources/`".
+Then: commit the default render to `resources/grafana/`, delete `LegacyProfile` and the legacy goldens, and enable the arch test "no `office` in `src/` or `resources/`". WP8C (dashboard performance, Addendum R2.4) and WP8D (live panels, Addendum R4.8) follow WP8B, in that order (Addendum Q9′).
 
 #### 5.7 Grafana contract tests (`tests/Grafana`)
 
 1. The committed assets equal the `--defaults` render (`--check` semantics), and `--check` is idempotent.
-2. **Metric contract:** every `<ns>_<name>` in the dashboard and the rules maps to a `Metric` case, after stripping `_bucket`, `_sum` and `_count`. Every label used in matchers, `by (…)`, `on (…)` and `label_values()` is in `Metric::labels() ∪ {job, le}`.
-3. **Infinity contract:** every Infinity URL is `${api_path}/jobs/(pending|completed|failed|delayed)` and resolves to the `horizon-observability.jobs` route. Its query parameters equal `JobListQuery::VARIABLES`, and the columns it reads are a subset of the `JobRows` fields for that list.
-4. **Alert contract:** 4 rules by default (6 with `--health-rules`); uids ≤ 40 characters and prefixed with the dashboard uid; `__panelId__` panels exist; the selector lists exactly the 4 core uids; no `$` in titles, uids or labels.
+2. **Metric contract:** every `<ns>_<name>` in the dashboard and the rules maps to a `Metric` case, after stripping `_bucket`, `_sum` and `_count`. Every label used in matchers, `by (…)`, `on (…)` and `label_values()` is in `Metric::labels() ∪ {job, le}`, plus the sentinel label `__batch_scope__` (Addendum R2.4 O2). `timestamp(sel) - sel` inside `max by (job)` is accepted (rule `<uid>-live`).
+3. **Infinity contract:** every Infinity URL is `${api_path}/jobs/(pending|completed|failed|delayed)` and resolves to the `horizon-observability.jobs` route, or `${api_path}/live` with `LiveSnapshot` fields as columns (Addendum R4.8). Its query parameters equal `JobListQuery::VARIABLES`, and the columns it reads are a subset of the `JobRows` fields for that list.
+4. **Alert contract:** 4 rules by default, 5 with `--live=stream` (plus 2 with `--health-rules`); uids ≤ 40 characters and prefixed with the dashboard uid; `__panelId__` panels exist; the selector lists exactly the core uids (4, or 5 with `--live=stream`); no `$` in titles, uids or labels.
 5. **Syntax:** every expression of both assets, with the macros substituted (`$__range` → `1h`, `$__interval` → `1m`, `${__from:date:seconds}` → `0`, variables → `.*`), is written to a rules file and checked with `promtool check rules` (CI `grafana` job).
 6. **Live scrape:** a seeded full workbench scrape (WP11) has samples for every referenced family and label.
-7. **ASCII:** the output is ASCII except the existing panel-title glyphs (✓ ⚠ ◷ ⧖). In `src/` those glyphs are written as `\u{…}` escapes.
+7. **ASCII:** the output is ASCII except the existing glyphs (· U+00B7, — U+2014, ✓, ⚠ U+26A0 + U+FE0E, ◷, ⧖). In `src/` those glyphs are written as `\u{…}` escapes.
 
 ### Rationale
 
@@ -876,7 +913,7 @@ Then: commit the default render to `resources/grafana/`, delete `LegacyProfile` 
 - **A YAML emitter or `symfony/yaml` at runtime:** JSON is accepted on the same code path.
 - **A visible job picker or datasource picker:** it changes the toolbar look. Users can unhide them or use `--job` or `?var-prometheus_job=`.
 - **Title "Horizon Queues":** changes the look.
-- **Recording rules for `attempts_delta`:** a good later optimisation, but they would make the dashboard depend on extra Prometheus config.
+- **Recording rules for `attempts_delta` as a dependency of the default render:** they would make the dashboard depend on extra Prometheus config. Addendum R2.4 O9 overrides this in part: recording rules are opt-in (`--recording-rules`), and the default render never depends on them.
 
 ### Risks
 
@@ -1107,14 +1144,15 @@ There is no toggle: a reset to 0 is always handled correctly by `rate()` and `in
 | Path | Worst-case work |
 |---|---|
 | Job start | 0 Redis calls |
-| Job end | 1 `EVAL` (about 10–14 commands inside), O(1) |
+| Job end | 1 `EVAL` (about 10–14 commands inside, plus 2 for the live ring buffer when `live.enabled`, Addendum R4.5), O(1) |
 | Dispatch | Modern stack: at most 1 `ZADD` per (kind, connection, queue, class) per hour per process, for batched jobs only. Legacy stack: +1 `SET` per delayed dispatch. Both through the breaker. |
 | Scrape `horizon` | the Horizon master and supervisor repository reads |
 | Scrape `queues` | 1 `EVAL` per queue: `LLEN`, `LRANGE` ≤ `queue_scan_limit` (and ≤ 16 MB), `ZRANGE` reserved ≤ 1000 (`ZCARD` beyond), `ZCARD`/`ZCOUNT` delayed, `ZRANGEBYSCORE … LIMIT 0 1` |
-| Scrape `attempts` | 1 guard `EVAL` + 7 `HGETALL` + at most 1000 `HDEL`, bounded by `max_job_classes` × queues |
+| Scrape `attempts` | 1 guard `EVAL` + 5 `HGETALL` (counters, histograms) + 1 `extremes_read` `EVAL` (20 `HGETALL` inside, Addendum R3.4) + at most 1000 `HDEL`, bounded by `max_job_classes` × queues |
 | Scrape `job_classes` | a cache file read |
 | Scrape `batches` | 2 SQL queries with `LIMIT` and 1 `ZRANGE` |
 | Job-list request | ≤ 20 chunked `ZRANGE` calls (10 000 / 500), light `HMGET`s, ≤ 10 detail `EVAL`s |
+| Live snapshot (Addendum R4.2) | cache hit: 1 `MGET`; build: Q + 5 round trips (Q = queues in scope), at most 1 build per `cache_ttl` per scope across all replicas |
 
 ### Rationale
 
@@ -1180,7 +1218,8 @@ src/
     Collector.php                         interface name(): string; collect(ScrapeContext): iterable<MetricFamily>
     HorizonCollector.php                  horizon_status, horizon_supervisor_*, horizon_wait_threshold_seconds, horizon_info
     QueueCollector.php                    queue_pending/delayed/delayed_due/oldest_age_seconds, queue_jobs_pending/reserved
-    AttemptsCollector.php                 queue_jobs_total, duration/wait histograms, min/max, attempts_dropped_total
+    AttemptsCollector.php                 queue_jobs_total, duration/wait histograms, min/max, exporter_attempts_dropped_total,
+                                          exporter_live_push_* (Addendum B′)
     JobClassesCollector.php               queue_job_classes
     BatchesCollector.php                  queue_batch*
   Horizon/
@@ -1225,13 +1264,27 @@ src/
     MetricsController.php                 GET {base}/metrics
     JobListController.php                 GET {base}/jobs/{list}
     JobList.php                           enum pending|completed|failed|delayed; values(); horizonPath()
-    JobListQuery.php                      readonly parsed filters; fromRequest(); VARIABLES; 422 on invalid
+    JobListQuery.php                      readonly parsed filters; fromRequest(); filtersFromRequest() (shared with /live); VARIABLES; 422 on invalid
     JobListService.php                    supervisor/batch-kind -> queue/class sets; empty -> short-circuit
     JobRows.php                           row formatting per list (ms, runtime rounding, horizon_path)
     ExceptionSummary.php                  "ShortClass: message" first line by ExceptionMode, <= 1000 bytes, mb_scrub
     Middleware/Authorize.php              AccessPolicy -> 401/403 (text or JSON)
     Middleware/ForceJson.php              Accept: application/json
     Middleware/InjectGrafanaLink.php      sidebar link in horizon.index HTML responses
+    LiveController.php                    GET {base}/live (Addendum R4.3)
+  Live/                                   (Addendum R4, Q7′)
+    LiveScope.php                         scope from the shared var-* filters / full(); cacheKey()
+    LiveSnapshot.php                      typed schema v1; toArray(); tiles()
+    Captions.php                          caption/level/colour rules shared with src/Grafana
+    LiveSnapshotBuilder.php               Horizon + queue_state live mode + ring -> snapshot
+    LiveSnapshotCache.php                 stale-while-revalidate cache; freshness by Redis key expiry; Redis lock
+    AttemptRing.php                       ring key/ttl for the writer; 60 s window reader
+    Stream/
+      LiveStreamer.php                    leader, build, encode, push, backoff, meta updates
+      LeaderLock.php                      SET NX PX + lock.lua
+      LineProtocol.php                    tiles + delayed measurements; escaping; unavailable frame
+      GrafanaLivePusher.php               Http client POST /api/live/push/{id}
+      PushResult.php
   Grafana/                                (@internal; ported generator)
     DashboardOptions.php                  uid, title, job, scrape interval, regexes, prefix, api defaults
     DashboardBuilder.php                  panels, variables, layout, links
@@ -1241,6 +1294,8 @@ src/
     Panels/{Tiles,Queues,Jobs,JobLists,Batches,AlertSound,Common}.php
     Json.php                              deterministic 2-space printer
     LegacyProfile.php                     TEMPORARY (WP8A), deleted at the end of WP8B
+    Live/{LiveMode,LivePanels}.php        (WP8D, Addendum R4.8) live panel rendering
+    Perf/StaticBudget.php                 (WP8C, Addendum R2.2) request count / interpolated size / [1d] checks
   Console/
     InstallCommand.php                    PUBLIC horizon-observability:install
     CheckCommand.php                      PUBLIC horizon-observability:check
@@ -1248,13 +1303,14 @@ src/
     CacheCommand.php                      PUBLIC horizon-observability:cache
     ClearCommand.php                      PUBLIC horizon-observability:clear
     FlushCommand.php                      PUBLIC horizon-observability:flush
+    StreamCommand.php                     PUBLIC horizon-observability:stream (Addendum R4.6)
   Support/
     FailureReporter.php                   throttled logging (in-process + Cache::add), channel-aware, exception object
     Versions.php                          Laravel/Horizon/package versions; payloadCarriesDelay(); supportsOptimize()
     Diagnostics.php                       data for about and check
 config/horizon-observability.php
 routes/horizon-observability.php
-resources/lua/{record_attempt,reset_guard,queue_state,job_details,delayed_jobs}.lua
+resources/lua/{record_attempt,reset_guard,queue_state,job_details,delayed_jobs,extremes_read,ring_read,lock}.lua
 resources/views/menu-link.blade.php
 resources/grafana/dashboards/horizon-observability.json
 resources/grafana/alerting/horizon-observability.json
@@ -1266,11 +1322,12 @@ resources/grafana/provisioning/{datasources/horizon-observability.yaml,dashboard
 - config keys and env vars (Q3);
 - the metric contract (Q4);
 - the HTTP paths, route names, query parameters and JSON fields (Q2);
-- the six command names and their options;
+- the seven command names and their options (including `horizon-observability:stream`, Addendum R4.6);
 - `HorizonObservability::auth()` and `::resolveBatchKindUsing()`;
 - the `AttemptStatus`, `BatchStatus` and `ExceptionMode` values;
-- the dashboard default uid, its variable names (`prometheus_job`, `api_path`, `busy_window`, `datasource`, `app_api`, `supervisor`, `batch_kind`, `queue`, `job_class`) and the alert uid suffixes;
-- the view name `horizon-observability::menu-link`.
+- the dashboard default uid, its variable names (`prometheus_job`, `api_path`, `busy_window`, `scrape_interval`, `datasource`, `app_api`, `supervisor`, `batch_kind`, `queue`, `job_class`) and the alert uid suffixes (including `-live`);
+- the view name `horizon-observability::menu-link`;
+- from the addendum (Q7′): the route `horizon-observability.live` and its query parameters, the live snapshot JSON schema v1 (R4.4), the line-protocol measurements and fields (R4.7), the `live.*` config keys and env vars, the render options `--live`, `--live-poll-interval` and `--live-stream-id`, and the Grafana Live channel names `stream/<id>/tiles` and `stream/<id>/delayed`.
 
 There are **no public interfaces in v0.x**: custom collectors, discoverers and stores are out of scope, and each can be added later without a break.
 
@@ -1285,7 +1342,7 @@ There are **no public interfaces in v0.x**: custom collectors, discoverers and s
 1. `loadViewsFrom(__DIR__.'/../resources/views', 'horizon-observability')`.
 2. Console only:
    - `publishes()` for `config/horizon-observability.php` (tag `horizon-observability-config`) and `resources/grafana/**` (tag `horizon-observability-grafana`);
-   - `commands([...6])`;
+   - `commands([...7])`;
    - `if (method_exists($this, 'optimizes')) $this->optimizes(optimize: 'horizon-observability:cache', clear: 'horizon-observability:clear', key: 'horizon-observability');`
 3. `AboutCommand::add('Horizon Observability', fn () => $this->app->make(Diagnostics::class)->about())`. It shows:
    - endpoint URLs and access mode;
@@ -1341,11 +1398,12 @@ They read their queues from the workbench Horizon config, use `Random\Randomizer
 
 | Command | Purpose |
 |---|---|
-| `horizon-observability:install {--token=} {--no-env} {--force}` | Publishes the config (asks, or `--force`). Generates a 40-character token and appends `HORIZON_OBSERVABILITY_TOKEN=` to `.env`, plus a placeholder to `.env.example`, unless present or `--no-env`. Prints the effective endpoint URLs, the Prometheus scrape snippet (one target, bearer), the Infinity datasource snippet and the `grafana` render command. Then runs `check`. Idempotent; supports `--no-interaction`. |
-| `horizon-observability:check {--json} {--strict}` | Reports:<ul><li>config problems;</li><li>route precedence (live router match of both routes);</li><li>access mode (locked outside local is an error);</li><li>storage and reader connections (ping, latency, client, timeouts, persistent flag, cluster, braces in the prefix);</li><li>the `horizon` connection `read_timeout`;</li><li>Horizon version and the `horizon` group;</li><li>capabilities (payload delay, `JobTimedOut::$timeout`, `optimizes`);</li><li>batching driver and table;</li><li>job-class cache age and cap usage;</li><li>a scrape dry run per collector (success, duration).</li></ul>Exits 1 on errors, and on warnings with `--strict`. |
+| `horizon-observability:install {--token=} {--no-env} {--force}` | Publishes the config (asks, or `--force`). Generates a 40-character token and appends `HORIZON_OBSERVABILITY_TOKEN=` to `.env`, plus a placeholder to `.env.example`, unless present or `--no-env`. Prints the effective endpoint URLs, the Prometheus scrape snippet (one target, bearer, 10 s), the Infinity datasource snippet, the Grafana service-account commands for stream mode (role Editor) and the `grafana` render command for each live mode (Addendum Q9′ WP10). Then runs `check`. Idempotent; supports `--no-interaction`. |
+| `horizon-observability:check {--json} {--strict} {--live-push-test}` | Reports:<ul><li>config problems;</li><li>the live block (enabled; stream URL, token set or missing, stream id; `--live-push-test` pushes one `tiles` frame to stream id `<id>_check` and reports the HTTP status with the Addendum R4.10 hints for 401 and 403);</li><li>route precedence (live router match of both routes);</li><li>access mode (locked outside local is an error);</li><li>storage and reader connections (ping, latency, client, timeouts, persistent flag, cluster, braces in the prefix);</li><li>the `horizon` connection `read_timeout`;</li><li>Horizon version and the `horizon` group;</li><li>capabilities (payload delay, `JobTimedOut::$timeout`, `optimizes`);</li><li>batching driver and table;</li><li>job-class cache age and cap usage;</li><li>a scrape dry run per collector (success, duration).</li></ul>Exits 1 on errors, and on warnings with `--strict`. |
 | `horizon-observability:grafana` | Renders the dashboard and the alerts (Q5). |
 | `horizon-observability:cache` / `:clear` | The job-class discovery cache, hooked into `optimize` and `optimize:clear`. |
-| `horizon-observability:flush {--force}` | Deletes every package storage key (counters, histograms, extremes, `job_classes`, `batch_links`, `meta`, `ready_at:*` via `SCAN` with the prefix). Asks for confirmation; in production it needs `--force`. Never hooked into `optimize:clear`. |
+| `horizon-observability:flush {--force}` | Deletes every package storage key (counters, histograms, extremes, `job_classes`, `batch_links`, `meta`, `ready_at:*` and `live:*` via `SCAN` with the prefix). Asks for confirmation; in production it needs `--force`. Never hooked into `optimize:clear`. |
+| `horizon-observability:stream {--once} {--max-time=3600} {--memory=128}` | Pushes the live snapshot to Grafana Live (`/api/live/push/<id>`) every `live.stream.interval` under a Redis leader lock; runs as a long-lived process (supervisord, systemd or a Deployment) on any number of replicas (Addendum R4.6). |
 
 ### Rationale
 
@@ -1526,7 +1584,7 @@ services:
       - prometheus-data:/prometheus
     ports: ['9090:9090']
   grafana:
-    image: grafana/grafana:13.2.4
+    image: ${GRAFANA_IMAGE:-grafana/grafana:13.2.4}   # grafana/grafana:12.4.13 via GRAFANA_IMAGE
     depends_on: [prometheus]
     extra_hosts: ['host.docker.internal:host-gateway']
     environment:
@@ -1567,8 +1625,9 @@ volumes: { prometheus-data: {}, grafana-data: {}, vendor: {} }
   | `prometheus.app.yml` | `app:8000` | `PROMETHEUS_CONFIG=prometheus.app.yml APP_URL_FROM_GRAFANA=http://app:8000` |
   | `prometheus.replicas.yml` | `:8000` and `:8001` | dedupe e2e |
 
-  All use `scrape_interval: 15s`, `scrape_timeout: 10s`, `metrics_path: /horizon/observability/metrics` and `authorization: {type: Bearer, credentials_file: /etc/prometheus/token}`. The token file holds the dev token only.
-- **`docker/grafana/provisioning/datasources/prometheus.yaml`:** uid `prometheus`, `url: http://prometheus:9090`, `isDefault: true`, `jsonData.timeInterval: 15s`.
+  All use `scrape_interval: 10s`, `scrape_timeout: 8s` (Addendum R3.2), `metrics_path: /horizon/observability/metrics` and `authorization: {type: Bearer, credentials_file: /etc/prometheus/token}`. The token file holds the dev token only.
+- **`docker/grafana/provisioning/datasources/prometheus.yaml`:** uid `prometheus`, `url: http://prometheus:9090`, `isDefault: true`, `jsonData.timeInterval: 10s` (plus the Addendum R2.5 settings: `httpMethod: POST`, `prometheusType`, `prometheusVersion`, `incrementalQuerying`).
+- **Addendum additions** (R2.2, R4.9, Q9′ WP9): `GF_DASHBOARDS_MIN_REFRESH_INTERVAL=1s` on the dev Grafana; `docker/grafana/bootstrap-live.sh` creates the Editor service account and token and writes it to `docker/grafana/live-token` (gitignored); a `stream` service (profile `app`) runs `testbench horizon-observability:stream` with that token; a `perf` profile (synthetic backfill with `promtool`, continuation exporter, `bin/perf.mjs`, `docker/perf/{budget.json,prometheus.yml}`).
 - **Daily loop:**
   1. `docker compose up -d`
   2. `composer build && composer serve` (binds 0.0.0.0)
@@ -1652,7 +1711,7 @@ The groups are `redis` (real Redis, both clients), `cluster`, `grafana` and `e2e
 
 #### 8.5 CI (`.github/workflows/tests.yml`)
 
-The workflow runs on push to `main`, pull requests, `workflow_dispatch` and `schedule: '23 5 * * 1'`. It sets `permissions: contents: read` and cancels concurrent runs per ref.
+The workflow runs on push to `master` and `claude/**`, pull requests, `workflow_dispatch` and `schedule: '23 5 * * 1'`. It sets `permissions: contents: read` and cancels concurrent runs per ref.
 
 ```yaml
 tests:
@@ -1698,7 +1757,7 @@ The matrix gives 10 base legs plus 6 targeted legs. The prefer-lowest legs resol
 
 Removing the static tooling is an optimisation: Composer would otherwise pick old versions anyway. It keeps resolution fast and honest.
 
-**Other jobs:**
+**Other jobs.** The `grafana` and `e2e` jobs run with `strategy.matrix.grafana: [grafana/grafana:12.4.13, grafana/grafana:13.2.4]`, passed to compose as `GRAFANA_IMAGE` (Infinity 4.1.1 needs ≥ 12.2.5, Business Text 6.3.0 needs ≥ 12.3.0).
 
 | Job | What it does |
 |---|---|
@@ -1707,7 +1766,7 @@ Removing the static tooling is an optimisation: Composer would otherwise pick ol
 | `coverage` | PHP 8.4, Laravel 13, pcov: `pest --coverage --min=85 --exclude-group=cluster,e2e`. |
 | `grafana` | `composer test:grafana`. `pest --group=grafana` writes `build/grafana-rules.yml` (all expressions, macros substituted) and `build/scrape.txt` (seeded exposition). `docker run --rm --entrypoint promtool -v $PWD/build:/w quay.io/prometheus/prometheus:v3.15.0 check rules /w/grafana-rules.yml` and `… check metrics < build/scrape.txt`. Provisioning smoke: `docker compose up -d prometheus grafana`, poll `/api/health`, `GET /api/dashboards/uid/horizon-observability`, assert that `/api/v1/provisioning/alert-rules` has 4 rules, and fail on any provisioning `level=error` log line. |
 | `dist` | `git archive HEAD \| tar -t \| sort` must equal the allowlist: `src/`, `config/`, `routes/`, `resources/`, `composer.json`, `LICENSE`, `README.md`, `CHANGELOG.md`, `UPGRADE.md`. |
-| `e2e` | Schedule and dispatch only. Redis service; `composer build`; two `testbench serve` processes (`:8000`, `:8001`) and Horizon in the background; `docker compose up -d prometheus grafana` with `prometheus.replicas.yml`; then with `prometheus.yml`. `workbench:simulate-load` for about 10 minutes. It compares panel query results between the two topologies (the dedupe gate), runs `node bin/screenshot.mjs` and uploads the PNGs (visual regression of the look). |
+| `e2e` | Schedule and dispatch only. Redis service; `composer build`; two `testbench serve` processes (`:8000`, `:8001`) and Horizon in the background; `docker compose up -d prometheus grafana` with `prometheus.replicas.yml`; then with `prometheus.yml`. `workbench:simulate-load` for about 10 minutes. It compares panel query results between the two topologies (the dedupe gate), runs `node bin/screenshot.mjs` and uploads the PNGs (visual regression of the look). Addendum: also the `docker/grafana/live-probe.json` checks (WP-L2), the `bin/perf.mjs` report on the medium profile (R2.2; non-blocking until WP11) and screenshots for `--live=poll` and `--live=stream` (Q9′ WP11). |
 
 The weekly cron runs the matrix at prefer-stable, which picks up new Laravel, Horizon and Grafana releases: sidebar markup, SPA routes, `ProvisioningPlan`, Horizon Redis structures and route precedence.
 
@@ -1724,7 +1783,7 @@ The weekly cron runs the matrix at prefer-stable, which picks up new Laravel, Ho
 
 #### 8.7 Release process
 
-- **Versions.** SemVer tags `vX.Y.Z` on `main`, no `version` field, Packagist through the GitHub webhook.
+- **Versions.** SemVer tags `vX.Y.Z` on `master`, no `version` field, Packagist through the GitHub webhook.
 - **0.x while office pilots.** `v0.1.0` comes after WP11. `v1.0.0` freezes the public contract (Q7) after office has run it in production for two weeks.
 - **What counts as breaking:** renaming or removing a config key, env var, metric, label or label value; changing a path default or a JSON field; renaming a dashboard variable or uid; renaming a command or option. In 0.x a break is a minor bump with an UPGRADE entry; from 1.0 it is a major bump.
 - **Deprecation policy:** deprecate in a minor, remove in the next major.
@@ -1784,6 +1843,8 @@ The weekly cron runs the matrix at prefer-stable, which picks up new Laravel, Ho
 
 ## Q9. Implementation plan
 
+**Addendum Q9′** adds WP-L1 (live snapshot and endpoint), WP-L2 (stream command), WP8C (dashboard performance) and WP8D (live panels), changes WP0b, WP1, WP2, WP3, WP8B, WP9, WP10 and WP11, and maps all packages to the task ids of `planning/TASKS.md` (T12 = WP-L1 + WP-L2; T13 = WP8B + WP8C + WP8D). Its critical path is WP0a → WP8A → WP8B → WP8C → WP8D → WP11.
+
 ### Rules for all work packages
 
 1. **Exclusive ownership.** Every file has exactly one owning WP. Stubs created by WP0 become the property of the WP that implements them.
@@ -1834,7 +1895,7 @@ The weekly cron runs the matrix at prefer-stable, which picks up new Laravel, Ho
 - **Acceptance:**
   - `composer validate --strict`;
   - the app boots on the three prefer-lowest legs and on stable, in both provider orders;
-  - `route:list` shows both named routes; the precedence and C16 tests are green;
+  - `route:list` shows the three named routes (`live` only when `live.enabled`); the precedence and C16 tests are green;
   - `enabled=false` is inert;
   - the `Config` unit tests are green; the `Metric` catalog test equals the Q4 and Appendix B tables;
   - the architecture tests are green; phpstan level 9 is clean on WP0 files.
@@ -1851,15 +1912,15 @@ The weekly cron runs the matrix at prefer-stable, which picks up new Laravel, Ho
 | **WP6 Discovery** | `Discovery/*`, `Collectors/JobClassesCollector`, `Console/{CacheCommand,ClearCommand}`, `workbench/app/Discovery/**`, `tests/Integration/Discovery/*`, `tests/Feature/Console/CacheCommandTest` | `Config`, `Versions` | Fixture matrix; the functions file is never included; inherited `ShouldQueue`; cache file, runtime cache; the `optimize` hook iff Laravel ≥ 11.27.1 (C22). |
 | **WP7 Horizon menu link** | `Http/Middleware/InjectGrafanaLink`, `resources/views/menu-link.blade.php`, `tests/Feature/HorizonMenuLinkTest` | provider wiring (WP0) | Link right after "Dashboard" in the real `GET /horizon` on every matrix leg (Horizon 5.22 through latest); absent without a URL; JSON untouched; missing markers → untouched (C16 rendering side). |
 | **WP8A Grafana golden port** (starts after WP0a) | `src/Grafana/**` incl. `LegacyProfile`, `tests/Grafana/{GoldenPortTest,LegacyAlertsTest,LayoutProjectionTest}` | nothing at runtime (`Metric` is used only from WP8B on) | M1: byte-identical (minimum: decoded-equal) legacy dashboard; M2: alert rules equal the parsed legacy YAML. |
-| **WP9 Dev stack, CI, simulation** | `docker-compose.yml`, `docker/**`, `.github/**`, `bin/screenshot.mjs`, `workbench/app/Simulation/**`, `workbench/app/Console/Commands/SimulateLoadCommand.php`, `workbench/routes/web.php` | WP0 (testbench.yaml); `legacy/src/Console/QueueLoadTestCommand.php` as reference | All workflows run; red is allowed until phase B lands. `docker compose up` provisions Grafana without errors; the Prometheus target is up with bearer auth; `composer serve` + `horizon` + `load` produce a scrape Prometheus accepts; the screenshot script runs (C25). |
+| **WP9 Dev stack, CI, simulation** | `docker-compose.yml`, `docker/**`, `.github/**`, `bin/screenshot.mjs`, `workbench/app/Simulation/**`, `workbench/app/Console/Commands/SimulateLoadCommand.php`, `workbench/routes/web.php` | WP0 (testbench.yaml); `legacy/src/Console/QueueLoadTestCommand.php` as reference | All workflows run; red is allowed until phase B lands. `docker compose up` provisions Grafana 12.4.13 and 13.2.4 without errors; the Prometheus target is up with bearer auth; `composer serve` + `horizon` + `load` produce a scrape Prometheus accepts; the screenshot script runs (C25). |
 
 ### Phase C (sequential tail)
 
 | WP | Owns | Depends on | Acceptance |
 |---|---|---|---|
-| **WP8B Grafana parametrisation** | `src/Grafana/**` (continues WP8A; sequential, so no overlap), `Console/GrafanaCommand`, `resources/grafana/**`, `tests/Grafana/*` (contract tests), `tests/Fixtures/grafana/default/*` | WP8A, `Metric`, `RoutePath`, `JobListQuery::VARIABLES`, `JobRows` field lists (WP4) | The Q5.6 steps 1–11, each its own commit with a screenshot; `--check` green; the Q5.7 contract tests green; `promtool check rules` clean; `LegacyProfile` and the legacy goldens deleted at the end. |
+| **WP8B Grafana parametrisation** | `src/Grafana/**` (continues WP8A; sequential, so no overlap), `Console/GrafanaCommand`, `resources/grafana/**`, `tests/Grafana/*` (contract tests), `tests/Fixtures/grafana/default/*` | WP8A, `Metric`, `RoutePath`, `JobListQuery::VARIABLES`, `JobRows` field lists (WP4) | The Q5.6 steps 1–12, each its own commit with a screenshot; `--check` green; the Q5.7 contract tests green; `promtool check rules` clean; `LegacyProfile` and the legacy goldens deleted at the end. |
 | **WP10 Operations commands** | `Console/{InstallCommand,CheckCommand,FlushCommand}`, `Support/Diagnostics`, `tests/Feature/Console/*` (except WP6's), `tests/Feature/AboutTest` | WP1–WP7 (develops against the stubs from day 1) | `install --no-interaction` in the workbench produces a working token, the snippets and a passing `check`. `check` catches each seeded problem (locked auth, shadowed route, missing table, no timeout, persistent client, config problem, cluster topology) with the right exit codes and `--json`. `flush` deletes exactly the package keys. |
-| **WP11 Integration, docs, release** | `README.md`, `UPGRADE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `art/`, `tests/Contract/{LiveScrapeContractTest,ConfigDocsTest,MetricDocsTest}`, deletion of `legacy/` and `docs/` | everything | Full matrix green incl. cluster, grafana and dist. The weekly e2e is green, including the 2-replica dedupe equality. Screenshots are compared side by side with the audit's `dashboard.png`, with no look change. Every bug id in Appendix H maps to a passing named test. Office dry run: namespace `office`, `--uid=horizon`, with data. Tag `v0.1.0`. |
+| **WP11 Integration, docs, release** | `README.md`, `UPGRADE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `art/`, `tests/Contract/{LiveScrapeContractTest,ConfigDocsTest,MetricDocsTest}`, deletion of `legacy/` and `planning/` | everything | Full matrix green incl. cluster, grafana and dist. The weekly e2e is green, including the 2-replica dedupe equality. Screenshots are compared side by side with `planning/baseline/dashboard-*.png`, with no look change. Every bug id in Appendix H maps to a passing named test. Office dry run: namespace `office`, `--uid=horizon`, with data. Tag `v0.1.0`. |
 
 ### Critical path and schedule
 
@@ -1901,14 +1962,15 @@ return [
     'enabled' => env('HORIZON_OBSERVABILITY_ENABLED', true),
 
     /*
-    | Metric name prefix: "<namespace>_<family>", e.g. laravel_queue_jobs_total. '' = no prefix.
+    | Metric name prefix: "<namespace>_<family>", e.g. ho_queue_jobs_total; self-metrics ho_exporter_*. '' = no prefix.
     */
-    'namespace' => env('HORIZON_OBSERVABILITY_NAMESPACE', 'laravel'),
+    'namespace' => env('HORIZON_OBSERVABILITY_NAMESPACE', 'ho'),
 
     /*
     | Base path of the endpoints. null = "<horizon.path>/observability" (default "/horizon/observability"):
     |   GET {path}/metrics       Prometheus text exposition
     |   GET {path}/jobs/{list}   JSON job lists for Grafana: pending, completed, failed, delayed
+    |   GET {path}/live          live snapshot JSON for Grafana (when live.enabled)
     */
     'path' => env('HORIZON_OBSERVABILITY_PATH'),
 
@@ -2002,6 +2064,26 @@ return [
     ],
 
     /*
+    | Live Overview. enabled: GET {path}/live (live snapshot JSON for Grafana) and the recent-attempts ring buffer
+    | written by workers. cache_ttl: seconds a snapshot is shared by all viewers and replicas (0 = no cache).
+    | stream: settings of "php artisan horizon-observability:stream", which pushes the snapshot to Grafana Live.
+    */
+    'live' => [
+        'enabled' => env('HORIZON_OBSERVABILITY_LIVE_ENABLED', true),
+        'cache_ttl' => (float) env('HORIZON_OBSERVABILITY_LIVE_CACHE_TTL', 1.0),
+        'stream' => [
+            // Grafana base URL reachable from the app; comma-separated for several Grafana instances without Live HA.
+            'grafana_url' => env('HORIZON_OBSERVABILITY_LIVE_GRAFANA_URL'),
+            // Grafana service account token; role Editor (live:push) on Grafana 13, any role on 12. Never logged.
+            'token' => env('HORIZON_OBSERVABILITY_LIVE_GRAFANA_TOKEN'),
+            // Grafana Live stream id: channels stream/<id>/tiles and stream/<id>/delayed. Must match the dashboard render.
+            'id' => env('HORIZON_OBSERVABILITY_LIVE_STREAM_ID', 'horizon_observability'),
+            // Seconds between pushes.
+            'interval' => (float) env('HORIZON_OBSERVABILITY_LIVE_STREAM_INTERVAL', 1.0),
+        ],
+    ],
+
+    /*
     | Log channel for the package's (throttled) warnings. null = default channel.
     */
     'log_channel' => env('HORIZON_OBSERVABILITY_LOG_CHANNEL'),
@@ -2029,9 +2111,11 @@ return [
 | JobsTotal | `queue_jobs_total` | counter | connection, queue, job_class, status | attempts | Finished job attempts by outcome: completed, released, retried, failed, timed_out. |
 | JobDuration | `queue_job_duration_seconds` | histogram | connection, queue, job_class | attempts | Duration of job attempts, seconds. |
 | JobWait | `queue_job_wait_seconds` | histogram | connection, queue | attempts | Seconds a job waited in the queue before its first attempt started. |
-| JobDurationMin | `queue_job_duration_min_seconds` | gauge | connection, queue, job_class | attempts | Shortest job attempt during the last minute, seconds. |
-| JobDurationMax | `queue_job_duration_max_seconds` | gauge | connection, queue, job_class | attempts | Longest job attempt during the last minute, seconds. |
-| AttemptsDropped | `horizon_observability_attempts_dropped_total` | counter | – | attempts | Job attempts not recorded because the metrics Redis was unavailable. |
+| JobDurationMin | `queue_job_duration_min_seconds` | gauge | connection, queue, job_class | attempts | Shortest job attempt during the last 150 seconds, seconds. |
+| JobDurationMax | `queue_job_duration_max_seconds` | gauge | connection, queue, job_class | attempts | Longest job attempt during the last 150 seconds, seconds. |
+| AttemptsDropped | `exporter_attempts_dropped_total` | counter | – | attempts | Job attempts not recorded because the metrics Redis was unavailable. |
+| LivePushTimestamp | `exporter_live_push_timestamp_seconds` | gauge | – | attempts | Time of the last successful Grafana Live push of the live overview, Unix seconds. |
+| LivePushFailures | `exporter_live_push_failures_total` | counter | – | attempts | Failed Grafana Live pushes of the live overview. |
 | JobClasses | `queue_job_classes` | gauge | job_class | job_classes | Queueable job classes found in the application code; always 1. |
 | BatchesRunning | `queue_batches_running` | gauge | batch | batches | Running job batches per batch kind. |
 | BatchJobs | `queue_batch_jobs` | gauge | batch, state | batches | Jobs of running batches per batch kind and state: total, pending, failed. |
@@ -2042,12 +2126,12 @@ return [
 | BatchJobClasses | `queue_batch_job_classes` | gauge | batch, queue, job_class | batches | Queues and job classes seen in batches of a kind during the last 7 days; always 1. |
 | BatchInfo | `queue_batch_info` | gauge | batch, queue, connection | batches | Queues and connections of a batch kind; always 1. |
 | BatchProgress | `queue_batch_progress` | gauge | batch, name, status, id | batches | Progress of a recent batch, percent of processed jobs. |
-| CollectorSuccess | `horizon_observability_collector_success` | gauge | collector | self | Whether the last run of a metrics collector succeeded: 1 or 0. |
-| CollectorDuration | `horizon_observability_collector_duration_seconds` | gauge | collector | self | Duration of the last run of a metrics collector, seconds. |
-| BuildInfo | `horizon_observability_build_info` | gauge | version, php, laravel, horizon, redis_client | self | Versions of the package, PHP, Laravel, Horizon and the Redis client; always 1. |
-| ConfigProblems | `horizon_observability_config_problems` | gauge | – | self | Number of invalid configuration values replaced by defaults; see php artisan horizon-observability:check. |
+| CollectorSuccess | `exporter_collector_success` | gauge | collector | self | Whether the last run of a metrics collector succeeded: 1 or 0. |
+| CollectorDuration | `exporter_collector_duration_seconds` | gauge | collector | self | Duration of the last run of a metrics collector, seconds. |
+| BuildInfo | `exporter_build_info` | gauge | version, php, laravel, horizon, redis_client | self | Versions of the package, PHP, Laravel, Horizon and the Redis client; always 1. |
+| ConfigProblems | `exporter_config_problems` | gauge | – | self | Number of invalid configuration values replaced by defaults; see php artisan horizon-observability:check. |
 
-`since()` is `0.1.0` for every case.
+`since()` is `0.1.0` for every case. The self-metric names, the two live cases and the min/max HELP texts come from Addendum R1, R3.4 and Appendix B′. Example names with the default namespace: `ho_queue_jobs_total`, `ho_exporter_collector_success`.
 
 ## Appendix C. Frozen interfaces (land in WP0b)
 
@@ -2075,6 +2159,7 @@ final readonly class Config
      * @param list<string> $tokens  @param list<string> $apiTokens  @param list<string> $allowedIps  @param list<string> $middleware
      * @param array{horizon: bool, queues: bool, attempts: bool, job_classes: bool, batches: bool|null} $collectors
      * @param list<float> $buckets  @param list<string> $jobClassPaths  @param list<ConfigProblem> $problems
+     * @param list<string> $liveGrafanaUrls   (the six live properties: Addendum A′, C′)
      */
     public function __construct(
         public bool $enabled, public string $namespace, public ?string $path, public ?string $domain,
@@ -2083,6 +2168,8 @@ final readonly class Config
         public string $redisConnection, public float $workerTimeout, public float $scrapeTimeout,
         public array $collectors, public array $buckets, public int $queueScanLimit, public int $maxJobClasses,
         public array $jobClassPaths, public ?string $horizonUrl, public ?string $grafanaUrl, public ?string $ttsUrl,
+        public bool $liveEnabled, public float $liveCacheTtl, public array $liveGrafanaUrls, public ?string $liveToken,
+        public string $liveStreamId, public float $liveStreamInterval,
         public ?string $logChannel, public array $problems,
     ) {}
     public static function fromRepository(\Illuminate\Contracts\Config\Repository $config): self;
@@ -2153,9 +2240,14 @@ final class Keys
     public function __construct(string $root = '{horizon-observability}:v1:');
     public function attempts(): string; public function durationBuckets(): string; public function durationSum(): string;
     public function waitBuckets(): string; public function waitSum(): string;
-    /** @param 'min'|'max' $kind */ public function extremes(int $window, string $kind): string;
+    /** @param int $bucket unix div 15 (Addendum R3.4) @param 'min'|'max' $kind */ public function extremes(int $bucket, string $kind): string;
     public function jobClasses(): string; public function meta(): string; public function batchLinks(): string;
     public function readyAt(string $uuid): string; public function readyAtPattern(): string;
+    // Addendum C′:
+    public function ring(int $bucket): string;                                         // live:ring:<unix div 5>
+    public function liveSnapshot(string $hash): string; public function liveSnapshotStale(string $hash): string;
+    public function liveSnapshotLock(string $hash): string; public function liveLeader(): string;
+    public function liveDelayedWindow(): string; public function livePattern(): string; // live:* for flush
     /** @return list<string> */ public function counterKeys(): array;   // keys deleted by the reset guard
     /** @return list<string> */ public function all(): array;           // fixed keys for flush (ready_at via pattern)
 }
@@ -2260,7 +2352,74 @@ final readonly class JobListQuery
     public function __construct(public JobList $list, public int $limit, public ?int $fromMs, public ?int $toMs,
                                 public ?array $supervisors, public ?array $batchKinds, public ?array $queues, public ?array $jobClasses) {}
     public static function fromRequest(\Illuminate\Http\Request $request, JobList $list): self;   // ValidationException -> 422
+    /** Shared with /live and called by fromRequest(), so both endpoints parse var-* identically (Addendum C′). 422 on invalid.
+     * @return array{supervisors: list<string>|null, batchKinds: list<string>|null, queues: list<string>|null, jobClasses: list<string>|null} */
+    public static function filtersFromRequest(\Illuminate\Http\Request $request): array;
 }
+
+// Live classes (Addendum C′; LiveScope, LiveSnapshot and Captions are implemented in WP0b, the rest are stubs there)
+namespace DF\HorizonObservability\Live;
+
+/** Resolved scope of a snapshot. Frozen in WP0b. */
+final readonly class LiveScope
+{
+    /** @param list<string>|null $supervisors null = all  @param list<array{connection: string, queue: string}> $queues */
+    public function __construct(public ?array $supervisors, public array $queues, public bool $jobFilter, public ?array $jobClasses) {}
+    public static function full(\DF\HorizonObservability\Horizon\Topology $topology): self;
+    /** @param array{supervisors: list<string>|null, batchKinds: list<string>|null, queues: list<string>|null, jobClasses: list<string>|null} $filters */
+    public static function fromFilters(array $filters, \DF\HorizonObservability\Horizon\Topology $topology,
+                                       \DF\HorizonObservability\Horizon\Supervisors $supervisors, \DF\HorizonObservability\Batches\BatchLinks $links): self;
+    public function cacheKey(): string;                                   // sha1 of the normalised scope
+}
+
+/** Typed snapshot, schema v1 (Addendum R4.4). Frozen in WP0b; toArray() is the public JSON. */
+final readonly class LiveSnapshot
+{
+    public const SCHEMA_VERSION = 1;
+    /** @return array<string, mixed> */ public function toArray(): array;
+    /** @return list<array{tile: string, key: string, caption: string, value: float|null, color: string, level: int}> */
+    public function tiles(): array;
+    public function generatedAtMs(): int;
+}
+
+/** Caption, level and colour rules shared with src/Grafana (one source of truth). Implemented in WP0b. */
+final class Captions
+{
+    public const WAIT_WARN = 1.0; public const WAIT_CRIT = 2.0; public const UTIL_WARN = 70; public const UTIL_CRIT = 90;
+    public static function oldest(?int $ageSeconds, ?string $queue): string;     // "Oldest: 17 s · default" | "Oldest: 3 min · slow" | "Oldest: —"
+    public static function supervisor(string $name, int $maxProcesses): string;  // "default · max 3"
+    public static function rpm(?int $perMinute): string;                         // "RPM: 42" | "RPM: —"
+    public static function waitLevel(?float $ratio): int;                        // 0|1|2
+    public static function utilizationLevel(float $utilization, bool $horizonRunning): int;
+    public static function color(int $level): string;                            // green|yellow|red
+}
+
+final class LiveSnapshotBuilder { public function build(LiveScope $scope, \Carbon\CarbonImmutable $now): LiveSnapshot; }
+final class LiveSnapshotCache   { public function get(LiveScope $scope): LiveSnapshot; }      // Addendum R4.2 algorithm
+final class AttemptRing
+{
+    public function key(int $unixSeconds): string;                       // live:ring:<unix div 5>, via Keys
+    public function ttl(): int;                                          // 180, or 0 when live is disabled
+    /** @return array<string, array<string, int>> "connection\x1fqueue" => status => count over the 60 s window */
+    public function window(\Carbon\CarbonImmutable $now): array;
+}
+
+namespace DF\HorizonObservability\Live\Stream;
+
+final class LineProtocol
+{
+    /**
+     * tiles rows stamped $timeNs + k ms in Addendum R4.7 order; null values encoded as -1.0.
+     * @param list<array{0: int, 1: float}> $delayedWindow [unix_ms, value], ascending
+     */
+    public static function encode(\DF\HorizonObservability\Live\LiveSnapshot $snapshot, int $timeNs, array $delayedWindow): string;
+    /** @param list<array{tile: string, key: string}> $rows the rows of the last successful push, or [] for pending only */
+    public static function unavailable(int $timeNs, array $rows): string;
+}
+final readonly class PushResult { public function __construct(public bool $ok, public ?int $status, public ?string $error, public float $seconds) {} }
+final class GrafanaLivePusher { public function push(string $baseUrl, string $streamId, #[\SensitiveParameter] string $token, string $body): PushResult; }
+final class LeaderLock { public function acquire(): bool; /** false = lease lost: stop pushing */ public function renew(): bool; public function release(): void; public function token(): string; }
+final class LiveStreamer { /** @param \Closure(): bool $shouldStop */ public function run(\Closure $shouldStop, int $maxSeconds, int $memoryMb, bool $once): int; }
 ```
 
 Each Lua file starts with a header documenting its `KEYS` and `ARGV` (Appendix D), and that header is frozen with the file's first commit.
@@ -2270,15 +2429,20 @@ Each Lua file starts with a header documenting its `KEYS` and `ARGV` (Appendix D
 All keys are passed in `KEYS[]`; scripts never build key names. Time is passed in `ARGV` as Unix seconds (float).
 
 **`record_attempt.lua`** (WP2)
-- **KEYS:** `attempts`, `duration:buckets`, `duration:sum`, `wait:buckets`, `wait:sum`, `extremes:<w>:min`, `extremes:<w>:max`, `job_classes`, `meta`, optional `ready_at:<uuid>`.
-- **ARGV:** connection, queue, job_class, status, duration or `''`, duration bucket `le` or `''`, startedAt or `''`, readyAt or `''`, wait bounds (comma-separated, formatted by PHP), extremes TTL (180), max_job_classes, class idle TTL (2592000), now, dropped count, `(other)`.
+- **KEYS:** `attempts`, `duration:buckets`, `duration:sum`, `wait:buckets`, `wait:sum`, `extremes:<unix div 15>:min`, `extremes:<unix div 15>:max`, `job_classes`, `meta`, `live:ring:<unix div 5>` (always passed; Addendum D′), optional `ready_at:<uuid>`. PHP derives both bucket keys from the same `now` it passes in `ARGV`.
+- **ARGV:** connection, queue, job_class, status, duration or `''`, duration bucket `le` or `''`, startedAt or `''`, readyAt or `''`, wait bounds (comma-separated, formatted by PHP), extremes TTL (300), max_job_classes, class idle TTL (2592000), ring_ttl (180, or 0 = disabled; Addendum D′), now, dropped count, `(other)`.
 - **Steps:**
   1. Class admission: refresh `ZSCORE`; otherwise `ZCARD` < max → `ZADD`; otherwise prune `ZREMRANGEBYSCORE -inf (now-ttl` and retry; otherwise use the overflow label.
   2. `HINCRBY attempts <c␟q␟j␟status> 1`.
   3. If there is a duration: `HINCRBY` its bucket, `HINCRBYFLOAT` the sum, compare-and-set min/max, `EXPIRE` both extremes keys.
   4. If `startedAt` is present: `ready = max(readyAt, GET ready_at)` then `DEL ready_at`; `wait = max(0, startedAt - ready)`; bucket via the bounds; `HINCRBY`/`HINCRBYFLOAT`.
   5. If dropped > 0: `HINCRBY meta dropped N`.
+  6. If `ring_ttl > 0` (Addendum R4.5): `HINCRBY ring <c␟q␟status> 1` and `EXPIRE ring ring_ttl`.
 - **Returns:** the effective job_class.
+
+**`extremes_read.lua`** (WP2, Addendum D′)
+- **KEYS:** the 10 min keys (current 15-second bucket and the 9 previous ones), then the 10 max keys.
+- **Returns:** `{min_pairs…, '\x1e', max_pairs…}` with `field, value` pairs merged by `min` and `max`. Missing keys are skipped.
 
 **`reset_guard.lua`** (WP2)
 - **KEYS:** `meta`, then the counter keys (`attempts`, the duration and wait hashes).
@@ -2290,8 +2454,9 @@ All keys are passed in `KEYS[]`; scripts never build key names. Time is passed i
 
 **`queue_state.lua`** (WP3)
 - **KEYS:** `queues:<q>`, `queues:<q>:reserved`, `queues:<q>:delayed`.
-- **ARGV:** now, scan_limit, reserved_scan_limit (1000), max_bytes (16777216).
+- **ARGV:** now, scan_limit, reserved_scan_limit (1000), max_bytes (16777216), mode (`full`, or `live` for the live snapshot; Addendum D′).
 - **Returns:** `{ pending_len, reserved_total, delayed_total, delayed_due, earliest_due_score|false, first_fresh_ready_at|false, scanned, pending_pairs{name,count…}, reserved_pairs{name,count…} }`.
+- **`live` mode:** the readiness scan stops at `min(scan_limit, 20)` items and at `max_bytes` (1 MB from the builder); `pending_pairs` is empty; `reserved_pairs` only when `reserved_scan_limit > 0` (a Job or Batch filter is active).
 - **Field extraction:** plain `string.find` (no patterns, because cjson reorders keys after a retry) of the top-level `"displayName":"`, `"attempts":`, `"pushedAt":` (string or number), `"createdAt":` and `"delay":`. `delay:null` means no delay.
 
 **`job_details.lua`** (WP4)
@@ -2304,6 +2469,16 @@ All keys are passed in `KEYS[]`; scripts never build key names. Time is passed i
 - **ARGV:** now, offset, count.
 - **Returns:** light rows `{uuid, displayName, attempts, pushedAt|false, score}` for not-yet-due entries, ascending by score.
 
+**`ring_read.lua`** (WP-L1, Addendum D′)
+- **KEYS:** the 12 complete 5-second bucket keys before the current one.
+- **Returns:** a flat list of `field, sum`.
+
+**`lock.lua`** (WP-L1, Addendum D′; WP-L2's `LeaderLock` reuses it)
+- **KEYS:** the lock key.
+- **ARGV:** op (`renew` or `release`), token, ttl_ms.
+- **Behaviour:** `renew` runs `PEXPIRE` only if the value equals token; `release` runs `DEL` only if the value equals token.
+- **Returns:** 1 or 0.
+
 ## Appendix E. Redis key schema
 
 All keys sit under `{horizon-observability}:v1:` on the storage connection, which adds its own connection prefix (e.g. `laravel_horizon:`).
@@ -2315,13 +2490,19 @@ All keys sit under `{horizon-observability}:v1:` on the storage connection, whic
 | `duration:sum` | hash | `conn␟queue␟class` → float | – |
 | `wait:buckets` | hash | `conn␟queue␟le` → count | – |
 | `wait:sum` | hash | `conn␟queue` → float | – |
-| `extremes:<unix div 60>:min`, `…:max` | hash | `conn␟queue␟class` → seconds | 180 s |
+| `extremes:<unix div 15>:min`, `…:max` | hash | `conn␟queue␟class` → seconds (15-second buckets, Addendum R3.4) | 300 s |
 | `job_classes` | zset | class → last seen | idle members pruned after 30 d |
-| `meta` | hash | `run_id`, `reset_at`, `dropped` | – |
+| `meta` | hash | `run_id`, `reset_at`, `dropped`, `live_push_at` (Unix float), `live_push_failures` | – |
 | `batch_links` | zset | `kind␟conn␟queue␟class` → last seen | members pruned after 7 d |
 | `ready_at:<uuid>` | string | readiness, Unix seconds | delay + 86400 s (legacy stacks only) |
+| `live:ring:<unix div 5>` | hash | `conn␟queue␟status` → count (attempt ring buffer, Addendum R4.5) | 180 s |
+| `live:snapshot:<sha1(scope)>` | string | fresh snapshot JSON (schema v1); presence means fresh | `cache_ttl` (1 s) |
+| `live:snapshot-stale:<sha1(scope)>` | string | the same JSON, served while another request rebuilds | `max(2 s, 10 × cache_ttl)` |
+| `live:snapshot-lock:<sha1(scope)>` | string | lock token | 2 s |
+| `live:leader` | string | `host:pid:rand` of the stream leader (leader lock) | 5 s, renewed every tick and before every push |
+| `live:window:delayed` | list | `"<unix_ms>:<value>"`, newest first, trimmed to 179 | 1 h |
 
-`␟` is `\x1f`. Old pilot keys (`prometheus:queue:*`) are never read.
+`␟` is `\x1f`. Old pilot keys (`prometheus:queue:*`) are never read. The `live:*` keys come from Addendum E′; `horizon-observability:flush` deletes them with `SCAN` on the prefix.
 
 ## Appendix F. Compatibility behaviour matrix
 
@@ -2366,7 +2547,8 @@ All keys sit under `{horizon-observability}:v1:` on the storage connection, whic
      - `office_horizon_info` gains `api_path`;
      - `office_queue_batch_progress` loses `size` and `created`;
      - the sentinel `job_class` values are now `(unscanned)` and `(unknown)`;
-     - histogram `TYPE` metadata is corrected (series unchanged).
+     - histogram `TYPE` metadata is corrected (series unchanged);
+     - self-metrics are `office_exporter_*` (Addendum R1).
 7. **Cleanup.** After a day, delete the old keys: `redis-cli --scan --pattern '*prometheus:queue:*' | xargs -r redis-cli del` (run on the old `HPG_REDIS_CONNECTION` database).
 
 ## Appendix H. Bug → fix → test map (WP11 exit gate)

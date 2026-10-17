@@ -16,7 +16,7 @@ Audit (`planning/audit/`), final architecture (`ARCHITECTURE.md`), WP0a bootstra
 goldens frozen in `tests/Fixtures/grafana/legacy/`, new `composer.json`, LICENSE, hygiene files, Pest/PHPStan/Pint/Rector
 configs. Commits up to `38d6a79`.
 
-### T01 Architecture addendum R1–R4 — `in progress`
+### T01 Architecture addendum R1–R4 — `done`
 Output: `planning/ADDENDUM.md`, same style as the architecture (Decision / Rationale / Rejected / Risks), implementation-ready.
 If the file is missing or incomplete, (re)write it from this spec, verifying facts with probes on Grafana 12.4.13 and 13.2.4:
 - **R1 namespace.** Default `ho`; update Arch Appendix A (`'namespace' => env('HORIZON_OBSERVABILITY_NAMESPACE', 'ho')`)
@@ -70,6 +70,7 @@ and a `[12.4.13, 13.2.4]` matrix for the grafana/e2e jobs in 8.3/8.5; CI branche
 `main` in 8.5/8.7; Q5.7 item 7 glyphs `(· U+00B7, — U+2014, ✓, ⚠ U+26A0 + U+FE0E, ◷, ⧖)`; 0.4 cite
 `planning/audit/dashboard-contract.md`; WP11 "deletion of legacy/ and planning/" and compare with `planning/baseline/dashboard-*.png`;
 Q2.2 item 4 probes are in `planning/reference/probes/`.
+Done (2026-10-17): ADDENDUM.md committed in 2f3fc37 (probes: Add Appendix P on 13.2.4, review Appendix P′ on 12.4.13 and 13.2.4); ARCHITECTURE.md amended in place and the Q9′ delta folded into T02–T15 below in the commit that marks T01 done.
 
 ### T02 WP0b: shared contracts and wiring — `todo` (depends on T01)
 Arch Q9 WP0b + addendum changes. Implement in full: `config/horizon-observability.php` (Arch Appendix A + addendum keys),
@@ -89,29 +90,51 @@ Integrator duties: align tool configs with Arch 8.6/8.8 or record the deviation 
 `workbench/config/*`, `workbench/app/Providers/WorkbenchServiceProvider.php`. Tests: `tests/Support/*`,
 `tests/Fixtures/payloads.php`, unit tests for everything implemented, `tests/Feature/Provider/{RoutePrecedenceTest,
 HorizonMiddlewareTest,InertTest}`.
+Addendum (Add §Q9′ WP0b): the Add §A′ `live.*` keys and validation (`Config` gains the six live properties, Arch
+Appendix C), the `Metric` renames to `exporter_*` and the two live cases after `AttemptsDropped` (Add §B′), the `Keys`
+additions (Add §C′), `JobListQuery::filtersFromRequest()`, the `live` route (guarded by `live.enabled`) plus the
+maintenance exception `$base/live` plus the boot-time key `live.enabled`, and `Live/{LiveScope,LiveSnapshot,Captions}`
+implemented in full. Stubs for every other Add §C′ class: `LiveSnapshotBuilder` returns an empty snapshot,
+`StreamCommand` exits 1.
 Acceptance: Arch Q9 WP0b list (boots in both provider orders, route precedence over Horizon's catch-all with and without
-route cache, C16 test, metric catalog test equals Appendix B, arch tests, PHPStan 9 on WP0 files).
+route cache, C16 test, metric catalog test equals Appendix B, arch tests, PHPStan 9 on WP0 files). Addendum: the catalog
+test equals Add §B′ (`ho_exporter_*` with the default namespace); `Captions` unit tests cover every caption and level rule
+of Add §R4.4 (fixtures shared with the Grafana renderer); the route-precedence test includes `/live`; `live.enabled=false`
+leaves no `live` route.
 
 ## Phase B: parallel work packages (all depend on T02; T10 only on T00)
 
 ### T03 WP1 Exposition and access — `todo`
 Arch Q1, Q2.3–2.5, Q9 table. Own text renderer (format 0.0.4, real histograms), exporter with per-collector isolation and
 scrape-timeout budget, self-metrics, `MetricsController`, `AccessPolicy`, `Authorize`/`ForceJson` middleware.
+Addendum (Add §Q9′ WP1): self-metric names `<ns>_exporter_*`; the live self-metrics are read from `meta` (Add §R4.11;
+their `Metric` cases belong to collector `attempts` per Add §B′, so coordinate the exposition with T04).
 Acceptance: Arch Q9 WP1 row (golden exposition, promtool-clean, isolation/partial failure/budget, auth matrix incl.
-rotation, api_token, IPs, callback, maintenance exception; C3, C4, C5-endpoint). promtool check:
+rotation, api_token, IPs, callback, maintenance exception; C3, C4, C5-endpoint). Addendum: golden exposition with
+`ho_exporter_*`; the live series are absent until `meta.live_push_at` exists. promtool check:
 `docker run --rm -i --entrypoint promtool quay.io/prometheus/prometheus:v3.15.0 check metrics < tests/Fixtures/exposition/<file>.txt`.
 
 ### T04 WP2 Attempts — `todo`
 Arch Q6.2–6.6, 6.8, 6.10, Q9 table. `AttemptTracker` (WeakMap, RedisJob after JobProcessing only, Laravel 11.23/12/13
 shims), `AttemptStore` (one EVAL per attempt, private short-timeout client, circuit breaker), `CounterResetGuard`,
 `LegacyReadyAt` folded into the EVAL, `HistogramSnapshot`, `AttemptsCollector`, Lua `record_attempt`/`reset_guard`.
-**Addendum:** write the live throughput ring buffer in the same EVAL; min/max windows tolerant of 60 s scrapes.
-Acceptance: Arch Q9 WP2 row (C2, C6, C11, C18, C19, C20, A01, A05) + ring buffer and 60 s window tests.
+**Addendum (Add §Q9′ WP2, §R3.4, §R4.5, §D′):** `record_attempt.lua` writes the live ring buffer
+(`live:ring:<unix div 5>`, always in `KEYS`; `ring_ttl` 180, or 0 when live is disabled) and 15-second extremes (TTL
+300 s); new `resources/lua/extremes_read.lua`; `AttemptStore` reads merge 10 buckets; `AttemptsCollector` also exports
+`exporter_live_push_timestamp_seconds` and `exporter_live_push_failures_total` from `meta` (Add §B′). Coordinate the
+ring contract with T12.
+Acceptance: Arch Q9 WP2 row (C2, C6, C11, C18, C19, C20, A01, A05). Addendum: extremes visibility test (an attempt
+recorded at `t` is exported by simulated scrapes at `t + 0…135 s` and not after `15(b+10)`); a table test over
+S ∈ {5, 10, 15, 30, 45, 60} s and deviations up to ±7.5 s asserts at least two exporting scrapes (Add §R3.4); ring test
+(N attempts in known buckets give the exact window counts); a disabled live mode writes no ring key.
 
 ### T05 WP3 Horizon and queue state — `todo`
 Arch Q6.3, Q9 table. `HorizonCollector`, `QueueCollector`, `HorizonUrl`, `QueueInspector`/`QueueSnapshot`,
 Lua `queue_state`, readiness parity with `PayloadClock`.
-Acceptance: Arch Q9 WP3 row (C5, C8, C14-metrics, C17) incl. `horizon_info{url,api_path,tts_url}`.
+Addendum (Add §Q9′ WP3, §D′): `queue_state.lua` live mode (ARGV `mode` = `full` or `live`) and `QueueInspector::live()`;
+T12 needs it.
+Acceptance: Arch Q9 WP3 row (C5, C8, C14-metrics, C17) incl. `horizon_info{url,api_path,tts_url}`. Addendum: parity
+test unchanged; live mode scans at most 20 items and 1 MB per queue; reserved pairs only on request.
 
 ### T06 WP4 Job lists — `todo`
 Arch Q2, Q9 table. `JobListController`, `JobListService`, `JobRows`, `ExceptionSummary`, `Horizon/JobStore`,
@@ -157,23 +180,70 @@ needs >= 12.2.5, Business Text 6.3.0 needs >= 12.3.0). CI triggers: push to `mas
 `pull_request` (the owner must enable Actions on the wip repo). `docker/grafana/bootstrap-live.sh` creates a service
 account and token via `POST /api/serviceaccounts` and `/api/serviceaccounts/<id>/tokens` (admin:admin) and writes it to
 `docker/grafana/live-token` (gitignored), for stream mode.
-Acceptance: Arch Q9 WP9 row; `docker compose up` provisions Grafana 12 and 13 without errors.
+Addendum (Add §Q9′ WP9, §R2.2, §Q7′): the perf profile and tools: `workbench/app/Console/Commands/{PerfDataCommand,
+PerfExporterCommand}.php` (`workbench:perf-data`, `workbench:perf-exporter`; no `job`/`instance` labels),
+`workbench/app/Perf/SyntheticModel.php` (port of `planning/reference/addendum-probes/probe/synth.py`), `bin/perf.mjs`
+(`capture`, `replay`, `report`; the replay must not floor the step at 15 s), `docker/perf/{budget.json,prometheus.yml}`
+and a compose `perf` profile; the dev Grafana gets `GF_DASHBOARDS_MIN_REFRESH_INTERVAL=1s` and a service account with
+role Editor (`bootstrap-live.sh`); a compose service `stream` (profile `app`) runs `testbench horizon-observability:stream`
+with the token read from `docker/grafana/live-token` (usable once T12 lands); the weekly `e2e` job runs Add §R2.2 steps
+1–5 on the medium profile and uploads the report (non-blocking until T15).
+Acceptance: Arch Q9 WP9 row; `docker compose up` provisions Grafana 12 and 13 without errors. Addendum:
+`bin/perf.mjs capture/replay/report` reproduces the Add §R2.1 legacy row within ±25 % on the reference profile;
+`bootstrap-live.sh` is idempotent.
 
-### T12 Live backend (new WP from the addendum) — `todo` (depends on T02, T03, T04, T11)
-Add §R4. Live snapshot service, `GET {base}/live` controller with ~1 s stampede-safe cache, `horizon-observability:stream`
-command (Grafana Live push, leader lock, backoff), config keys. Coordinate the ring buffer contract with T04.
-Owns the files listed in the addendum (e.g. `src/Live/**`, `Http/LiveController.php`, `Console/StreamCommand.php`,
-`tests/{Unit,Integration,Feature}/Live/*`, `docker/grafana/live-probe.json`).
-Acceptance: per addendum; snapshot for 20 queues computed within the budget; poll and stream verified on Grafana 12 and
-13 with `docker/grafana/live-probe.json` built from the addendum panel JSON (not with T13 output).
+### T12 WP-L1 + WP-L2 Live backend — `todo` (depends on T02, T03, T04, T05, T11)
+Add §R4, §Q9′. One task: WP-L1, then WP-L2. Live snapshot service, `GET {base}/live` controller with ~1 s stampede-safe
+cache, `horizon-observability:stream` command (Grafana Live push, leader lock, backoff). The config keys, the route and
+`Live/{LiveScope,LiveSnapshot,Captions}` come from T02. Coordinate the ring buffer contract with T04; the snapshot needs
+the T05 `queue_state.lua` live mode (develop against stubs and seeded keys until T04 and T05 land).
+- **WP-L1 Live snapshot and endpoint** owns `Live/{LiveSnapshotBuilder,LiveSnapshotCache,AttemptRing}`,
+  `Http/LiveController`, `resources/lua/{ring_read,lock}.lua`, `tests/{Unit,Integration,Feature}/Live/*` (except `Stream/`).
+- **WP-L2 Stream command** owns `Live/Stream/*`, `Console/StreamCommand`, `docker/grafana/live-probe.json`,
+  `tests/{Unit,Integration}/Live/Stream/*`, `tests/Feature/Console/StreamCommandTest`; it reuses `LiveSnapshotCache` and
+  `lock.lua`.
+
+Acceptance WP-L1: JSON golden for a seeded state, every Add §R4.4 field and unit. Filters: supervisor and queue scope; a
+job filter gives `null` values; an empty scope makes 0 queue calls. Cache: 50 concurrent requests make **1** build per TTL
+(build counter) across 2 simulated replicas whose clocks differ by 5 s; the stale copy serves at most 10 s old data. A
+Redis failure gives 200 with `errors[]` and caption `Live unavailable`. Auth matrix as the job lists. Cost: ≤ Q + 5 round
+trips per build and 1 `MGET` per cache hit (command counter); snapshot build ≤ 50 ms p95 for 20 queues in the dev stack.
+Acceptance WP-L2: line-protocol golden (escaping, floats, rows 1 ms apart, `-1` for `null`, unavailable frame). A fake
+Grafana HTTP server (testbench route or `Http::fake`) answering 200, 401, 403, 500 and timeout drives the backoff, the
+release after 5 failed ticks and the `meta` counters. Two `LiveStreamer` instances on one Redis produce exactly one
+pusher; a leader whose lease was taken over pushes nothing after its next renew; killing the leader means the follower
+pushes within 7 s. SIGTERM releases the lock. `--once` and `--max-time` work. e2e in the dev stack on Grafana 12.4.13 and
+13.2.4 with `docker/grafana/live-probe.json` built from the Add §R4.8 panel JSON (not with T13 output): poll and stream
+tiles show live values, stream tiles update at least every 2 s, and no duplicate fields appear across 3 dashboard
+refreshes.
 
 ## Phase C: sequential tail
 
-### T13 WP8B Grafana parametrisation, performance, live rendering — `todo` (depends on T03–T08, T10, T11, T12)
-Arch Q5.2–5.7 + Add §R2–R4. `Console/GrafanaCommand` (`--check`, `--live=off|poll|stream`, prefix/uid/thresholds),
+### T13 WP8B + WP8C + WP8D Grafana parametrisation, performance, live rendering — `todo` (depends on T03–T08, T10, T11, T12)
+Arch Q5.2–5.7 + Add §R2–R4, §Q9′. One sequential task in this order: **WP8B, then WP8C, then WP8D** (one owner chain of
+`src/Grafana/**`). `Console/GrafanaCommand` (`--check`, `--live=off|poll|stream`, prefix/uid/thresholds),
 `resources/grafana/**` (default dashboard + alert rules JSON + provisioning examples + optional recording rules),
 scrape-interval-agnostic windows, query optimisations with measured before/after timings, contract tests
 (`tests/Grafana/*`). Each optimisation step is its own commit with a screenshot on Grafana 12 and 13.
+- **WP8B** (Arch Q5.6 steps 1–12): step 2 renders the prefix `ho_`; new step 12 applies the Add §R3.3 windows (the
+  `scrape_interval` variable, per-panel `interval`, `busy_window = max(15s, 2×S)`, `LOOKBACK = max(10m, 10×S)`,
+  `--scrape-interval` default `10s`, the refresh derivation). Acceptance: Arch Q9 WP8B row; contract test: no literal
+  `[15s]` and no `[1d]` on counter selectors in the committed render; every Prometheus panel has
+  `interval: "$scrape_interval"`.
+- **WP8C dashboard performance** (Add §R2.4) also owns `Grafana/Perf/StaticBudget`, `tests/Grafana/PerfBudgetTest` and the
+  `resources/grafana/js/alert-sound.js` hide list. O1–O8, then O9 last and opt-in (`--recording-rules`), each its own
+  commit with a screenshot diff (layout projection green) and a `bin/perf.mjs` report, on Grafana 12.4.13 and 13.2.4.
+  Acceptance: the Add §R2.3 budget is met on the reference profile, including the O2 batch scope. Static gates in CI:
+  ≤ 12 requests per refresh, ≤ 100 KB interpolated PromQL with All, the O3 variable policy, no `[1d]` on counters, #24 has
+  `maxDataPoints`, no `batch_filtered()`-style duplicate branch. Batch=All and Batch=kind equality tests for O2. e2e:
+  every #5 repeat is non-empty with #23's script active.
+- **WP8D live panels** (Add §R4.8) owns `src/Grafana/Live/**`, `tests/Grafana/Live*Test` and the renders
+  `tests/Fixtures/grafana/{off,stream}/*` (the default render is poll). Acceptance: the three renders (off, poll, stream)
+  pass the Arch Q5.7 contract tests; the panel JSON equals Add §R4.8 (`TILE_ROWS`, `buffer: 500`, `SENTINEL`, `key`
+  column); every Infinity column selector and every line-protocol field used by panels exists in `LiveSnapshot` and
+  `LineProtocol` (contract test); row title, `__requires`, the `<uid>-live` rule (`timestamp()` form) and the selector;
+  e2e on 12.4.13 and 13.2.4: poll tiles show the live value within one refresh, stream tiles within 2 s; screenshots
+  attached.
 Screenshots per step: run `node bin/screenshot.mjs` (1920x3600, `from=now-1h`, after >= 15 min of `composer load`) with
 `GRAFANA_IMAGE` = 12.4.13 and 13.2.4 and commit `planning/screenshots/T13-step<N>-g{12,13}-{overview,details}.png`.
 Look check = side-by-side review of panel set and order, titles, gridPos, colours and threshold colours, units, legends
@@ -181,17 +251,28 @@ and row titles (except "Live Overview"); compare g12 vs g13 of the same step and
 `planning/baseline/dashboard-{overview,details,full}.png`; write the verdict in the step commit message.
 Before deleting `tests/Fixtures/grafana/legacy/*`, freeze the legacy layout projection to
 `tests/Fixtures/grafana/default/layout-projection.json` and point `LayoutProjectionTest` at it.
-Acceptance: Arch Q9 WP8B row; performance budget met; look unchanged vs `planning/baseline/`.
+Acceptance: Arch Q9 WP8B row and the Add §Q9′ WP8B, WP8C and WP8D rows; performance budget met; look unchanged vs
+`planning/baseline/` with `--live=off`; the poll and stream renders deviate only as listed in Add §R4.1 (pending owner
+acceptance, README decision 9).
 
 ### T14 WP10 Operations commands — `todo` (depends on T03–T09, T12)
 Arch Q7, Q9 table. `install`, `check`, `flush` commands, `Support/Diagnostics`, `about` integration.
-Acceptance: Arch Q9 WP10 row.
+Addendum (Add §Q9′ WP10): `check` gains the live block (enabled; stream URL, token set or missing, stream id; optional
+`--live-push-test`, which pushes one `tiles` frame to stream id `<id>_check` and reports the HTTP status with the Add
+§R4.10 hints for 401 and 403); `install` prints the Prometheus job at 10 s, the Grafana service-account commands (role
+Editor) and the render commands for each live mode; `flush` also deletes `live:*`. `tests/Feature/Console/StreamCommandTest`
+belongs to T12.
+Acceptance: Arch Q9 WP10 row. Addendum: seeded live cases (missing token, 401 token, 403 token, invalid stream id).
 
 ### T15 WP11 Integration, docs, release — `todo` (depends on everything)
 README (English: install, config, Prometheus scrape job at 10 s, Grafana 12/13 setup, live modes, security), UPGRADE.md
 (office migration, Arch Appendix G, namespace `office`), CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, `art/` screenshots,
 `tests/Contract/*`, delete `legacy/` and `planning/`, full matrix green, side-by-side screenshots vs baseline on both
 Grafana versions, every Appendix H bug mapped to a passing test, office dry run, tag `v0.1.0`.
+Addendum (Add §Q9′ WP11): README sections Live Overview (modes, requirements, failure modes), Performance (budget,
+settings) and Scrape interval; the weekly e2e adds the perf report and screenshots for `--live=poll` and `--live=stream`,
+and becomes blocking. Acceptance additions: the budget report is green on the weekly run; live screenshots show live
+values that change between two captures 2 s apart (stream).
 Stop and ask the owner before the office dry run, pushing any tag, Packagist registration and the repository transfer.
 When deleting `legacy/` and `planning/`, rewrite CLAUDE.md to contributor conventions only (no planning references) and
 remove `/legacy` and `/planning` from `.gitattributes`.
