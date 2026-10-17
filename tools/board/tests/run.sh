@@ -684,6 +684,119 @@ planning/screenshots/T03/20261012-1100-shot.png" "$(git -C "$REPO" show --format
         "$(grep -A1 '^### T05 ' "$REPO/planning/TASKS.md" | tail -n 1)"
 }
 
+# --- Adversarial QA, round 1: probes kept as regression tests --------------------------------------------------------
+
+# A sleep that returns at once, for set-status's wait on a merge or rebase (60 x 5 s).
+mkdir -p "$WORK/fastbin"
+printf '#!/bin/sh\nexit 0\n' >"$WORK/fastbin/sleep"
+chmod +x "$WORK/fastbin/sleep"
+
+# edit_heading <sed expression> <commit subject>: edits the world's TASKS.md, commits and pushes it.
+edit_heading() {
+    sed -i "$1" "$REPO/planning/TASKS.md"
+    git -C "$REPO" commit -q -am "$2"
+    git -C "$REPO" push -q origin HEAD
+}
+
+# conflicting_side: a branch "side" from before the history whose T04 heading conflicts with it.
+# shellcheck disable=SC2016 # literal backticks and dollars in the test data
+conflicting_side() {
+    git -C "$REPO" checkout -q -b side HEAD~4
+    sed -i 's/^### T04 Queue state — `todo`/### T04 Queue state renamed — `todo`/' "$REPO/planning/TASKS.md"
+    git -C "$REPO" commit -q -am "side edit of T04"
+}
+
+CASES+=("qa1 two set-status calls at once")
+# shellcheck disable=SC2016 # literal backticks and dollars in the test data
+case_22() {
+    new_world
+    commits="$(git -C "$REPO" rev-list --count HEAD)"
+    status "2026-10-12 09:00" T05 "in progress" >"$WORK/world/a.out" 2>&1 &
+    first=$!
+    status "2026-10-12 09:00" T04 "in progress" --answer "Yes" >"$WORK/world/b.out" 2>&1 &
+    second=$!
+    rc_a=0
+    wait "$first" || rc_a=$?
+    rc_b=0
+    wait "$second" || rc_b=$?
+    check "one wins the last In Progress slot, the other is refused" "0 1" "$(printf '%s\n' "$rc_a" "$rc_b" | sort | tr '\n' ' ' | sed 's/ $//')"
+    check_contains "the refusal names the full column" "the WIP limit of in progress is 2" "$(cat "$WORK/world/a.out" "$WORK/world/b.out")"
+    check "exactly one new commit" "$((commits + 1))" "$(git -C "$REPO" rev-list --count HEAD)"
+    check "In Progress holds 2" "2" "$(grep -c '^### T.* — `in progress`' "$REPO/planning/TASKS.md")"
+    check "pushed" "$(git -C "$REPO" rev-parse HEAD)" "$(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
+    check "working tree clean" "" "$(git -C "$REPO" status --porcelain)"
+}
+
+CASES+=("qa1 sync recovers from a gh failure mid-run")
+case_23() {
+    new_world
+    board sync >/dev/null 2>&1
+    clean="$(summary)"
+    new_world
+    rc=0
+    (cd "$REPO" && GH_STUB_FAIL="issue comment" "$BOARD/board.sh" sync) >"$OUT" 2>"$ERR" || rc=$?
+    check_status "the failing run aborts" 1 "$rc"
+    board sync >"$OUT" 2>"$ERR"
+    check "the next run converges to a clean run's state" "$clean" "$(summary)"
+    reset_log
+    board sync >/dev/null 2>&1
+    check "and then writes nothing" "" "$(writes)"
+}
+
+CASES+=("qa1 merge in progress")
+case_24() {
+    new_world
+    conflicting_side
+    git -C "$REPO" checkout -q "$BRANCH"
+    git -C "$REPO" merge -q side >/dev/null 2>&1 || true
+    before="$(tasks_sum)"
+    rc=0
+    PATH="$WORK/fastbin:$PATH" status "2026-10-12 09:00" T05 "in progress" >"$OUT" 2>"$ERR" || rc=$?
+    check "refused" "1 set-status: a merge is in progress in $REPO; try again later" "$rc $(cat "$ERR")"
+    check "nothing changed" "$before" "$(tasks_sum)"
+}
+
+CASES+=("qa1 titles with special characters")
+# shellcheck disable=SC2016 # literal backticks and dollars in the test data
+case_25() {
+    new_world
+    edit_heading 's/^### T05 Grafana port — /### T05 Grafana "port" '"'"'x'"'"' `tick` $(id) ${HOME} %s | * [ab] ?x ✓ — /' "Special title"
+    board sync >/dev/null 2>"$ERR"
+    check "issue title" "[T05] Grafana \"port\" 'x' \`tick\` \$(id) \${HOME} %s | * [ab] ?x ✓" "$(jq -r '.issues[] | select(.number == 6) | .title' "$GH_STUB_STATE")"
+    reset_log
+    board sync >/dev/null 2>&1
+    check "the second sync writes nothing" "" "$(writes)"
+    board report >/dev/null 2>&1
+    check_contains "the report row escapes the pipe" "| #6 T05 Grafana \"port\" 'x' \`tick\` \$(id) \${HOME} %s \\| * [ab] ?x ✓ | todo, ready |" \
+        "$(jq -r '.issues[] | select(.title == "[Board] Flow report") | .body' "$GH_STUB_STATE")"
+    status "2026-10-12 09:00" T05 "in progress" --qa 'round 1 rejected by x: `a` $(id) "q" '"'"'s'"'"' \n | %s' >/dev/null
+    check "a QA text with special characters" 'QA: 2026-10-12 09:00 UTC: round 1 rejected by x: `a` $(id) "q" '"'"'s'"'"' \n | %s' \
+        "$(grep -A1 '^### T05 ' "$REPO/planning/TASKS.md" | tail -n 1)"
+    board sync >/dev/null 2>&1
+    check_contains "its comment" '**QA:** 2026-10-12 09:00 UTC: round 1 rejected by x: `a` $(id) "q" '"'"'s'"'"' \n | %s' "$(comments_of_issue 6)"
+    reset_log
+    board sync >/dev/null 2>&1
+    check "posted once" "" "$(writes)"
+}
+
+CASES+=("qa1 dependency ranges")
+case_26() {
+    new_world
+    edit_heading 's/(depends on T02–T04, T05)/(depends on T02-T04)/' "Hyphen range"
+    check "a hyphen range" "T06  todo         phase:C  live        Live backend [blocked by T02, T03, T04]" "$(board list | grep '^T06 ')"
+    edit_heading 's/(depends on T02-T04)/(depends only on T02–T03; T05 later)/' "Only, en dash, semicolon"
+    check "depends only on, an en dash range, the clause ends at ;" "T06  todo         phase:C  live        Live backend [blocked by T02, T03]" "$(board list | grep '^T06 ')"
+}
+
+CASES+=("qa1 dates are UTC")
+case_27() {
+    new_world
+    (cd "$REPO" && BOARD_MAIN="$REPO" BOARD_NOW="2026-10-13 04:30" GIT_AUTHOR_DATE="2026-10-12T23:30:00-05:00" \
+        GIT_COMMITTER_DATE="2026-10-12T23:30:00-05:00" "$BOARD/set-status.sh" T05 "in progress") >/dev/null 2>&1
+    (cd "$REPO" && TZ=America/Los_Angeles "$BOARD/board.sh" sync) >/dev/null 2>&1
+    check "Started is the UTC day of the commit" "card #6 Status=In Progress; Phase=B; Area=grafana; QA rounds=0; Started=2026-10-13" "$(summary | grep '^card #6 ')"
+}
+
 run_cases
 
 PASSED="$(grep -c '^ok$' "$RESULTS" || true)"
