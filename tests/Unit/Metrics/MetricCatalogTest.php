@@ -16,6 +16,7 @@ const APPENDIX_B = [
     ['SupervisorMinProcesses', 'horizon_supervisor_min_processes', 'gauge', ['supervisor'], 'horizon', 'Configured minimum worker processes of a Horizon supervisor.'],
     ['SupervisorMaxProcesses', 'horizon_supervisor_max_processes', 'gauge', ['supervisor'], 'horizon', 'Configured maximum worker processes of a Horizon supervisor.'],
     ['SupervisorInfo', 'horizon_supervisor_info', 'gauge', ['supervisor', 'balance', 'connection'], 'horizon', 'Horizon supervisor settings; always 1.'],
+    ['SupervisorQueues', 'horizon_supervisor_queues', 'gauge', ['supervisor', 'queue', 'pool'], 'horizon', 'Queues of a Horizon supervisor, one series per queue; pool is the queue label of its process pool in horizon_supervisor_processes (a balance=false pool joins its queues with commas); always 1.'],
     ['WaitThreshold', 'horizon_wait_threshold_seconds', 'gauge', ['connection', 'queue'], 'horizon', 'Long-wait threshold of a queue from horizon.waits, seconds.'],
     ['HorizonInfo', 'horizon_info', 'gauge', ['url', 'api_path', 'tts_url'], 'horizon', 'Links for the Grafana dashboard: Horizon URL, job-list API path and text-to-speech URL; always 1.'],
     ['QueuePendingJobs', 'queue_pending_jobs', 'gauge', ['connection', 'queue'], 'queues', 'Jobs ready to run and waiting for a worker, including delayed jobs that are already due.'],

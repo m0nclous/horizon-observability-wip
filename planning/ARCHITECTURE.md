@@ -2113,6 +2113,7 @@ return [
 | SupervisorMinProcesses | `horizon_supervisor_min_processes` | gauge | supervisor | horizon | Configured minimum worker processes of a Horizon supervisor. |
 | SupervisorMaxProcesses | `horizon_supervisor_max_processes` | gauge | supervisor | horizon | Configured maximum worker processes of a Horizon supervisor. |
 | SupervisorInfo | `horizon_supervisor_info` | gauge | supervisor, balance, connection | horizon | Horizon supervisor settings; always 1. |
+| SupervisorQueues | `horizon_supervisor_queues` | gauge | supervisor, queue, pool | horizon | Queues of a Horizon supervisor, one series per queue; pool is the queue label of its process pool in horizon_supervisor_processes (a balance=false pool joins its queues with commas); always 1. |
 | WaitThreshold | `horizon_wait_threshold_seconds` | gauge | connection, queue | horizon | Long-wait threshold of a queue from horizon.waits, seconds. |
 | HorizonInfo | `horizon_info` | gauge | url, api_path, tts_url | horizon | Links for the Grafana dashboard: Horizon URL, job-list API path and text-to-speech URL; always 1. |
 | QueuePendingJobs | `queue_pending_jobs` | gauge | connection, queue | queues | Jobs ready to run and waiting for a worker, including delayed jobs that are already due. |
@@ -2144,7 +2145,7 @@ return [
 | BuildInfo | `exporter_build_info` | gauge | version, php, laravel, horizon, redis_client | self | Versions of the package, PHP, Laravel, Horizon and the Redis client; always 1. |
 | ConfigProblems | `exporter_config_problems` | gauge | – | self | Number of invalid configuration values replaced by defaults; see php artisan horizon-observability:check. |
 
-`since()` is `0.1.0` for every case. The self-metric names, the two live cases and the min/max HELP texts come from Addendum R1, R3.4 and Appendix B′. Example names with the default namespace: `ho_queue_jobs_total`, `ho_exporter_collector_success`.
+`since()` is `0.1.0` for every case. The self-metric names, the two live cases and the min/max HELP texts come from Addendum R1, R3.4 and Appendix B′. `SupervisorQueues` was added in T16 (2026-10-17): PromQL cannot split the pooled `queue` label of a balance=false supervisor, so the dashboard had no supervisor, processes or table row for its queues. Example names with the default namespace: `ho_queue_jobs_total`, `ho_exporter_collector_success`.
 
 ## Appendix C. Frozen interfaces (land in WP0b)
 
@@ -2443,13 +2444,13 @@ Each Lua file starts with a header documenting its `KEYS` and `ARGV` (Appendix D
 All keys are passed in `KEYS[]`; scripts never build key names. Time is passed in `ARGV` as Unix seconds (float).
 
 **`record_attempt.lua`** (WP2)
-- **KEYS:** `attempts`, `duration:buckets`, `duration:sum`, `wait:buckets`, `wait:sum`, `extremes:<unix div 15>:min`, `extremes:<unix div 15>:max`, `job_classes`, `meta`, `live:ring:<unix div 5>` (always passed; Addendum D′), optional `ready_at:<uuid>`. PHP derives both bucket keys from the same `now` it passes in `ARGV`.
-- **ARGV:** connection, queue, job_class, status, duration or `''`, duration bucket `le` or `''`, startedAt or `''`, readyAt or `''`, wait bounds (comma-separated, formatted by PHP), extremes TTL (300), max_job_classes, class idle TTL (2592000), ring_ttl (180, or 0 = disabled; Addendum D′), now, dropped count, `(other)`.
+- **KEYS:** `attempts`, `duration:buckets`, `duration:sum`, `wait:buckets`, `wait:sum`, `extremes:<unix div 15>:min`, `extremes:<unix div 15>:max`, `job_classes`, `meta`, `live:ring:<unix div 5>` (always passed; Addendum D′), `created` (T16), optional `ready_at:<uuid>`. PHP derives both bucket keys from the same `now` it passes in `ARGV`.
+- **ARGV:** connection, queue, job_class, status, duration or `''`, duration bucket `le` or `''`, startedAt or `''`, readyAt or `''`, wait bounds (comma-separated, formatted by PHP), extremes TTL (300), max_job_classes, class idle TTL (2592000), ring_ttl (180, or 0 = disabled; Addendum D′), now, dropped count, `(other)`, the attempt statuses (comma-separated; T16).
 - **Steps:**
   1. Class admission: refresh `ZSCORE`; otherwise `ZCARD` < max → `ZADD`; otherwise prune `ZREMRANGEBYSCORE -inf (now-ttl` and retry; otherwise use the overflow label.
-  2. `HINCRBY attempts <c␟q␟j␟status> 1`.
+  2. `HINCRBY attempts <c␟q␟j␟status> 1`; when that created the field and no other status of `c␟q␟j` exists, `HSET created <c␟q␟j> now` (T16).
   3. If there is a duration: `HINCRBY` its bucket, `HINCRBYFLOAT` the sum, compare-and-set min/max, `EXPIRE` both extremes keys.
-  4. If `startedAt` is present: `ready = max(readyAt, GET ready_at)` then `DEL ready_at`; `wait = max(0, startedAt - ready)`; bucket via the bounds; `HINCRBY`/`HINCRBYFLOAT`. A passed `ready_at` key is deleted even without `startedAt` (phase B).
+  4. If `startedAt` is present: `ready = max(readyAt, GET ready_at)` then `DEL ready_at`; `wait = max(0, startedAt - ready)`; bucket via the bounds; `HINCRBY`/`HINCRBYFLOAT`; when `wait:sum` has no `c␟q` field yet, `HSET created <c␟q> now` first (T16). A passed `ready_at` key is deleted even without `startedAt` (phase B).
   5. If dropped > 0: `HINCRBY meta dropped N`.
   6. If `ring_ttl > 0` (Addendum R4.5): `HINCRBY ring <c␟q␟status> 1` and `EXPIRE ring ring_ttl`.
 - **Returns:** the effective job_class.
@@ -2459,7 +2460,7 @@ All keys are passed in `KEYS[]`; scripts never build key names. Time is passed i
 - **Returns:** `{min_pairs…, '\x1e', max_pairs…}` with `field, value` pairs merged by `min` and `max`, the values as stored (no float formatting). Missing keys are skipped.
 
 **`reset_guard.lua`** (WP2)
-- **KEYS:** `meta`, then the counter keys (`attempts`, the duration and wait hashes).
+- **KEYS:** `meta`, then the counter keys (`attempts`, the duration and wait hashes, `created`).
 - **ARGV:** now.
 - **Behaviour:** reads `run_id` from `redis.call('INFO','server')`.
   - missing meta → `HSET meta run_id`, return 0;
@@ -2508,6 +2509,7 @@ All keys sit under `{horizon-observability}:v1:` on the storage connection, whic
 | `duration:sum` | hash | `conn␟queue␟class` → float | – |
 | `wait:buckets` | hash | `conn␟queue␟le` → count | – |
 | `wait:sum` | hash | `conn␟queue` → float | – |
+| `created` | hash | `conn␟queue␟class` (attempt series) and `conn␟queue` (wait histogram) → creation time, Unix seconds (T16: a series created less than 75 s ago is exported as 0, so Prometheus sees it start at 0) | – (deleted with the counters; class fields pruned with their class) |
 | `extremes:<unix div 15>:min`, `…:max` | hash | `conn␟queue␟class` → seconds (15-second buckets, Addendum R3.4) | 300 s |
 | `job_classes` | zset | class → last seen | idle members pruned after 30 d |
 | `meta` | hash | `run_id`, `reset_at`, `dropped`, `live_push_at` (Unix float), `live_push_failures` | – |

@@ -84,6 +84,17 @@ final readonly class Keys
     }
 
     /**
+     * Hash of the creation times of the counter series (unix seconds): `conn\x1fqueue\x1fclass` for the attempt
+     * series of a (connection, queue, job class), `conn\x1fqueue` for the wait histogram of a queue. Written by
+     * `record_attempt.lua` with the first count of a series; the attempts collector exports a series as 0 for its
+     * first seconds, so Prometheus sees it start at 0 and `increase()` counts its first attempts (T16).
+     */
+    public function created(): string
+    {
+        return $this->root.'created';
+    }
+
+    /**
      * Hash `conn\x1fqueue\x1fclass` => seconds, TTL 300 s.
      *
      * @param  int  $bucket  unix seconds div {@see self::EXTREMES_BUCKET_SECONDS}
@@ -211,7 +222,7 @@ final readonly class Keys
      */
     public function counterKeys(): array
     {
-        return [$this->attempts(), $this->durationBuckets(), $this->durationSum(), $this->waitBuckets(), $this->waitSum()];
+        return [$this->attempts(), $this->durationBuckets(), $this->durationSum(), $this->waitBuckets(), $this->waitSum(), $this->created()];
     }
 
     /**
