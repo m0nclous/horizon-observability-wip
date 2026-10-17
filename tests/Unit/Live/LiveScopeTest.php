@@ -67,13 +67,14 @@ it('marks a job filter', function (): void {
         ->and($scope->queueNames())->toBe(['default', 'slow', 'reports', 'mail', 'sms']);
 });
 
+// BatchLinks (T07) reads the links from the package storage, so this case needs Redis.
 it('narrows to the batch links with a batch filter', function (): void {
     $scope = liveScope(['batchKinds' => ['import'], 'jobClasses' => ['App\\Jobs\\SendInvoice']]);
 
     expect($scope->jobFilter)->toBeTrue()
         ->and($scope->queues)->toBe([])
         ->and($scope->jobClasses)->toBe([]);
-});
+})->group('redis');
 
 it('has a cache key of the normalised scope', function (): void {
     $a = new LiveScope(['b', 'a'], [['connection' => 'redis', 'queue' => 'slow'], ['connection' => 'redis', 'queue' => 'default']], true, ['Y', 'X']);

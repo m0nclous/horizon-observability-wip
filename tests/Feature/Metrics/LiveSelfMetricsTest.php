@@ -2,10 +2,9 @@
 
 declare(strict_types=1);
 
+use DF\HorizonObservability\Collectors\AttemptsCollector;
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Metrics\Exporter;
-use DF\HorizonObservability\Metrics\Metric;
-use DF\HorizonObservability\Metrics\MetricFamily;
 use DF\HorizonObservability\Redis\Keys;
 use DF\HorizonObservability\Redis\RedisClients;
 use DF\HorizonObservability\Tests\Support\Exposition;
@@ -19,30 +18,15 @@ pest()->group('redis');
 | ho_exporter_live_push_timestamp_seconds is its value, ho_exporter_live_push_failures_total the failures counted so
 | far (0 when none). Failures before the first push are kept in meta and show up with it.
 |
-| AttemptsCollector is T04's; until it lands, a reference reader with exactly that rule stands in for it, so the
-| exposition contract (names, absence, float precision) is pinned here.
+| The series come from the real AttemptsCollector (T04), the one implementation of this rule; the other collectors
+| are quiet fakes.
 */
 
 const LIVE_SELF_METRICS_TEST_TOKEN = 'live-self-metrics-token-0123456789';
 
-function liveSelfMetricsTestReader(): FakeCollector
-{
-    return new FakeCollector('attempts', static function (): array {
-        [$pushedAt, $failures] = app(RedisClients::class)->storage()->hmget(app(Keys::class)->meta(), ['live_push_at', 'live_push_failures']);
-        $families = [];
-
-        if (is_numeric($pushedAt)) {
-            $families[] = MetricFamily::of(Metric::LivePushTimestamp)->set([], (float) $pushedAt);
-            $families[] = MetricFamily::of(Metric::LivePushFailures)->set([], is_numeric($failures) ? (int) $failures : 0);
-        }
-
-        return $families;
-    });
-}
-
 function liveSelfMetricsTestScrape(): string
 {
-    app()->instance(Exporter::class, new Exporter(app(), null, [...FakeCollector::quiet(), 'attempts' => liveSelfMetricsTestReader()]));
+    app()->instance(Exporter::class, new Exporter(app(), null, [...FakeCollector::quiet(), 'attempts' => app(AttemptsCollector::class)]));
 
     return (string) test()->get('/horizon/observability/metrics', ['Authorization' => 'Bearer '.LIVE_SELF_METRICS_TEST_TOKEN])->assertOk()->getContent();
 }

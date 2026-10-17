@@ -7,6 +7,8 @@ use DF\HorizonObservability\HorizonObservabilityServiceProvider;
 use DF\HorizonObservability\Http\RoutePath;
 use Illuminate\Support\Facades\Redis;
 use Symfony\Component\Finder\Finder;
+use Workbench\App\Discovery\Jobs\NamedJob;
+use Workbench\App\Discovery\Jobs\QueuedJob;
 
 /*
 | Architecture rules (Arch 8.4). After WP8B (T13) a rule "no office in src/ or resources/" joins them.
@@ -63,13 +65,13 @@ arch('all package classes are final')
     ->toBeFinal()
     ->ignoring('DF\HorizonObservability\Tests');
 
-// The discovery fixtures model application code, which includes abstract base jobs (T08, Arch 8.2); Pint's
-// final_class still makes every concrete one final.
+// The discovery fixtures model application code, which includes abstract base jobs (T08, Arch 8.2): only those two
+// are exempt; Pint's final_class keeps every concrete fixture final.
 arch('all workbench classes are final')
     ->expect('Workbench\App')
     ->classes()
     ->toBeFinal()
-    ->ignoring('Workbench\App\Discovery');
+    ->ignoring([NamedJob::class, QueuedJob::class]);
 
 arch('config() only in Config, the provider, RoutePath and Horizon')
     ->expect(['config', Illuminate\Support\Facades\Config::class])

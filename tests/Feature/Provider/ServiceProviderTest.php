@@ -169,7 +169,7 @@ it('wires up once and quietly in both provider orders (the late fallback stays i
     'package first' => [[HorizonObservabilityServiceProvider::class, HorizonServiceProvider::class]],
 ]);
 
-it('answers 403 from the authorize stub before anything else', function (): void {
+it('answers 403 while locked, before anything else', function (): void {
     $this->get('/horizon/observability/metrics')->assertForbidden()->assertSeeText('Forbidden.');
     $this->get('/horizon/observability/jobs/pending')->assertForbidden()->assertExactJson(['message' => 'Forbidden.']);
     $this->get('/horizon/observability/live?var-queue=default')->assertForbidden()->assertExactJson(['message' => 'Forbidden.']);
