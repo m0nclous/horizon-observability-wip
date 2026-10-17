@@ -79,6 +79,56 @@ function liveStreamer(): LiveStreamer
 }
 
 /**
+ * A streamer whose sleep also ages the leader lease by the slept time: the fake clock does not move Redis' clock, so
+ * without this the lease would never expire. With it, the lease expires 5 s of fake time after its last acquire or
+ * renew, as in production.
+ */
+function liveAgingStreamer(): LiveStreamer
+{
+    $time = test()->time;
+
+    return app()->make(LiveStreamer::class, ['clock' => $time->clock(), 'sleep' => liveStreamAgingSleep()]);
+}
+
+/**
+ * @return Closure(float): void
+ */
+function liveStreamAgingSleep(): Closure
+{
+    $time = test()->time;
+    $key = TestCase::redisPrefix().'horizon:'.(new Keys)->liveLeader();
+
+    return static function (float $seconds) use ($time, $key): void {
+        $time->advance($seconds);
+        $client = RedisKeys::client();
+        $left = (int) $client->pttl($key) - (int) round($seconds * 1000);
+
+        if ($left > 0) {
+            $client->pexpire($key, $left);
+        } else {
+            $client->del($key);
+        }
+    };
+}
+
+/**
+ * The events of a streamer, each with the fake time it was emitted at.
+ *
+ * @return ArrayObject<int, array{0: string, 1: float}>
+ */
+function liveStreamEvents(LiveStreamer $streamer): ArrayObject
+{
+    $time = test()->time;
+    /** @var ArrayObject<int, array{0: string, 1: float}> $events */
+    $events = new ArrayObject;
+    $streamer->listen(static function (string $event) use ($events, $time): void {
+        $events[] = [$event, $time->seconds()];
+    });
+
+    return $events;
+}
+
+/**
  * @return array<string, string>
  */
 function liveStreamMeta(): array
@@ -255,6 +305,81 @@ it('renews before every push and stops when the lease is gone', function (): voi
 
     expect($streamer->tick())->toBe(LiveStreamer::LOST)
         ->and(array_column($this->pushes, 'url'))->toBe(['http://grafana-a:3000/api/live/push/probe']);
+});
+
+it('keeps the lease between ticks at the longest interval by renewing it every second while it waits', function (): void {
+    // Appendix A': live.stream.interval up to 10 s; the lease lives 5 s (Addendum R4.6).
+    config()->set('horizon-observability.live.stream.interval', 10.0);
+    $this->app->forgetInstance(Config::class);
+    $streamer = liveAgingStreamer();
+    $events = liveStreamEvents($streamer);
+
+    $streamer->run(static fn (): bool => false, 25, 4096, false);
+
+    expect(liveStreamPushTimes())->toBe([0.0, 10.0, 20.0, 30.0])
+        ->and(array_column($events->getArrayCopy(), 0))->toBe(['leader', 'exit']);
+});
+
+it('sends no keep-alive renew at the default interval, where every tick renews', function (): void {
+    $writes = [];
+    RedisCommands::start($this->app);
+    Event::listen(CommandExecuted::class, function (CommandExecuted $event) use (&$writes): void {
+        $flat = [];
+        array_walk_recursive($event->parameters, static function (mixed $value) use (&$flat): void {
+            $flat[] = is_scalar($value) ? (string) $value : '';
+        });
+
+        if (array_filter($flat, fn (string $value): bool => str_ends_with($value, $this->keys->liveLeader())) !== []) {
+            $writes[] = $this->time->seconds();
+        }
+    });
+
+    liveAgingStreamer()->run(static fn (): bool => false, 3, 4096, false);
+
+    // Per tick the renew at its start (SET NX at the first) and the renew before the push; then the release.
+    expect(liveStreamPushTimes())->toBe([0.0, 1.0, 2.0, 3.0])
+        ->and($writes)->toBe([0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 3.0]);
+});
+
+it('retries every 2 s as a follower whatever the interval, so it pushes within 7 s of the leader\'s death', function (): void {
+    config()->set('horizon-observability.live.stream.interval', 10.0);
+    $this->app->forgetInstance(Config::class);
+    $leader = liveAgingStreamer();
+    $follower = liveAgingStreamer();
+    $events = liveStreamEvents($follower);
+
+    // 0 s: the leader pushes and dies; its lease lapses at 5 s. The follower runs from 0.1 s and retries at 0.1, 2.1,
+    // 4.1 and 6.1 s, not only on its ticks 10 s apart.
+    expect($leader->tick())->toBe(LiveStreamer::PUSHED);
+    liveStreamAgingSleep()(0.1);
+    $follower->run(static fn (): bool => false, 9, 4096, false);
+
+    expect(liveStreamPushTimes())->toBe([0.0, 6.1, 16.1])
+        ->and($events->getArrayCopy())->toBe([['leader', 6.1], ['exit', 16.1]]);
+});
+
+it('follows as soon as a keep-alive renew finds the lease taken, and pushes nothing until it leads again', function (): void {
+    config()->set('horizon-observability.live.stream.interval', 10.0);
+    $this->app->forgetInstance(Config::class);
+    $lease = ($this->raw)($this->keys->liveLeader());
+    $sleep = liveStreamAgingSleep();
+    $taken = false;
+    // At 3.5 s, while the leader waits for its next tick, another process takes the lease (until 8.5 s).
+    $streamer = app()->make(LiveStreamer::class, ['clock' => $this->time->clock(), 'sleep' => function (float $seconds) use ($sleep, $lease, &$taken): void {
+        $sleep($seconds);
+
+        if (! $taken && $this->time->seconds() >= 3.5) {
+            RedisKeys::client()->set($lease, 'other-host:1:0000', 'PX', 5000);
+            $taken = true;
+        }
+    }]);
+    $events = liveStreamEvents($streamer);
+
+    $streamer->run(static fn (): bool => false, 12, 4096, false);
+
+    // The keep-alive at 4 s finds the lease taken; retries at 6 and 8 s fail, the one at 10 s takes it over.
+    expect(liveStreamPushTimes())->toBe([0.0, 10.0, 20.0])
+        ->and($events->getArrayCopy())->toBe([['leader', 0.0], ['follower', 4.0], ['leader', 10.0], ['exit', 20.0]]);
 });
 
 it('backs off per URL and counts a tick as failed only when no URL took the push', function (): void {

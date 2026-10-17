@@ -21,10 +21,13 @@ use Throwable;
 /**
  * The stream loop (Addendum R4.6): one tick every `live.stream.interval` seconds, no overlap.
  *
- * 1. **Leader election.** A follower tries `SET live:leader NX PX 5000` every {@see self::FOLLOWER_RETRY_SECONDS},
- *    so a failover takes at most about 7 s. The leader renews the lease at the start of every tick and before every
- *    push; a failed renew (the lease expired during a long tick, or was taken over) stops the tick at once and makes
- *    the process a follower, so a leader that lost its lease pushes nothing more.
+ * 1. **Leader election.** A follower tries `SET live:leader NX PX 5000` every {@see self::FOLLOWER_RETRY_SECONDS}
+ *    whatever the interval (its wait for the next tick ends early when the retry is due, and a tick runs at once), so
+ *    a failover takes at most about 7 s. The leader renews the lease at the start of every tick, before every push
+ *    and, while it waits for the next tick, at least every {@see self::KEEPALIVE_SECONDS}, so the lease never lapses
+ *    between ticks at any interval (up to 10 s); a failed renew (the lease expired during a long tick, or was taken
+ *    over) stops the tick at once and makes the process a follower, so a leader that lost its lease pushes nothing
+ *    more.
  * 2. **Snapshot** of the full scope, built anew through {@see LiveSnapshotCache::refresh()}, which also keeps the
  *    copy fresh for poll requests of the full scope.
  * 3. **Delayed window**: when its newest point is 5 s old, `LPUSH live:window:delayed "<unix_ms>:<value>"`,
@@ -58,6 +61,13 @@ use Throwable;
 final class LiveStreamer
 {
     public const FOLLOWER_RETRY_SECONDS = 2.0;
+
+    /**
+     * While it waits for the next tick, the leader renews the lease at least this often (it lives
+     * {@see LeaderLock::TTL_MS}), so the lease never lapses between ticks at an interval of up to 10 s. At intervals of
+     * 1 s or less the tick's own renew always comes first and no extra command is sent.
+     */
+    public const KEEPALIVE_SECONDS = 1.0;
 
     public const RELEASE_AFTER_FAILED_TICKS = 5;
 
@@ -122,6 +132,11 @@ final class LiveStreamer
      * Monotonic time from which a follower tries to take the lease again.
      */
     private float $nextAttemptAt = 0.0;
+
+    /**
+     * Monotonic time, taken just before the command, of the last acquire or renew that kept the lease.
+     */
+    private float $renewedAt = 0.0;
 
     private int $failedTicks = 0;
 
@@ -268,6 +283,8 @@ final class LiveStreamer
                 return self::FOLLOWER;
             }
 
+            $attemptAt = ($this->clock)();
+
             try {
                 $this->leader = $this->lock->acquire();
             } catch (Throwable $e) {
@@ -285,6 +302,7 @@ final class LiveStreamer
                 return self::FOLLOWER;
             }
 
+            $this->renewedAt = $attemptAt;
             $this->urls = [];
             $this->failedTicks = 0;
             $this->emit('leader', sprintf('Became the stream leader: pushing to %d Grafana URL(s) as stream %s.', count($this->config->liveGrafanaUrls), $this->config->liveStreamId));
@@ -393,15 +411,20 @@ final class LiveStreamer
     }
 
     /**
-     * @param  float  $tickStart  the monotonic start of the tick, from which a lost leader retries
+     * @param  float  $tickStart  the monotonic start of the tick (or of the wait for the next tick), from which a lost
+     *                            leader retries
      */
     private function renew(float $tickStart): bool
     {
+        $renewingAt = ($this->clock)();
+
         try {
             $renewed = $this->lock->renew();
             $this->redisReached();
 
             if ($renewed) {
+                $this->renewedAt = $renewingAt;
+
                 return true;
             }
 
@@ -562,13 +585,36 @@ final class LiveStreamer
     }
 
     /**
-     * Sleep until the monotonic time `$until` in slices of at most 0.1 s, so a signal stops the wait.
+     * Sleep until the monotonic time `$until` (the next tick) in slices of at most 0.1 s, so a signal stops the wait.
+     *
+     * The wait does not depend on the interval for the lease (Addendum R4.6): the leader renews it every
+     * {@see self::KEEPALIVE_SECONDS} unless the next tick comes first (it renews anyway), and a follower ends the wait
+     * when its retry is due, so the next tick tries to take the lease every {@see self::FOLLOWER_RETRY_SECONDS}. A
+     * leader whose keep-alive renew fails becomes a follower here, like at a tick.
      *
      * @param  Closure(): bool  $shouldStop
      */
     private function pause(float $until, Closure $shouldStop): void
     {
-        while (! $shouldStop() && ($remaining = $until - ($this->clock)()) > 0.0005) {
+        while (! $shouldStop() && ($remaining = $until - ($now = ($this->clock)())) > 0.0005) {
+            if ($this->leader) {
+                $renewAt = $this->renewedAt + self::KEEPALIVE_SECONDS;
+
+                if ($renewAt < $until - self::DUE_TOLERANCE_SECONDS) {
+                    if ($this->isDue($renewAt, $now)) {
+                        $this->renew($now);
+
+                        continue;
+                    }
+
+                    $remaining = min($remaining, $renewAt - $now);
+                }
+            } elseif ($this->isDue($this->nextAttemptAt, $now)) {
+                return;
+            } else {
+                $remaining = min($remaining, $this->nextAttemptAt - $now);
+            }
+
             ($this->sleep)(min($remaining, 0.1));
         }
     }
