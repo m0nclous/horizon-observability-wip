@@ -28,6 +28,8 @@ for tool in git jq python3 flock; do
         exit 2
     }
 done
+# The real git, for the cases that put a failing git in front of it.
+REAL_GIT="$(command -v git)"
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/board-tests.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
@@ -1298,7 +1300,9 @@ T03  todo         phase:B  attempts    Three [blocked by T02]
 T04  todo         phase:B  queues      Four [blocked by T02, T03]
 T05  todo         phase:B  grafana     Five — with a dash [blocked by T02, T04]
 T06  todo         phase:-  live        Six [ready]" "$(cat "$OUT")"
-    check "unparsed text is named" "board: warning: T05: unparsed text in \"depends on T01 – T02 and T04, the owner's go\": the owner's go" "$(cat "$ERR")"
+    # The phase depends on T00, which this list does not have (round 3: an id that is no task is named).
+    check "unparsed text is named" "board: warning: T05: unparsed text in \"depends on T01 – T02 and T04, the owner's go\": the owner's go
+board: warning: phase B: depends on T00, which is no task of the list (a typo? a task not written yet?), so its tasks stay blocked until such a task is done" "$(cat "$ERR")"
     (
         cd "$REPO"
         # shellcheck source-path=SCRIPTDIR/.. source=lib.sh
@@ -1458,7 +1462,10 @@ T04  todo         phase:C  queues      Four [blocked by T02, T03, T05, T06]
 T05  todo         phase:C  grafana     Five [ready]
 T06  todo         phase:C  live        Six [ready]
 T07  todo         phase:C  docs        Seven [blocked by T03, T04, T05, T06]" "$(cat "$OUT")"
-    check "a reversed range is named" "board: warning: T03: unparsed text in \"depends on T04–T02\": T04–T02" "$(cat "$ERR")"
+    # Round 3: T08–T10 are no tasks of this list, and T03 and T04 wait for each other; both are named too.
+    check "a reversed range is named" "board: warning: T03: unparsed text in \"depends on T04–T02\": T04–T02
+board: warning: T02: depends on T08, T09, T10, which are no tasks of the list (a typo? a task not written yet?), so it stays blocked until such tasks are done
+board: warning: T03, T04: their dependencies form a cycle (each waits for another of them, maybe through \"(depends on everything)\"), so none of them can start; drop one of the dependencies" "$(cat "$ERR")"
 }
 
 CASES+=("adv2 probe: WIP counting")
@@ -2006,6 +2013,7 @@ T04  todo         phase:B  queues      Four (depends on T01) [ready]
 T09  todo         phase:-  -           Nine [ready]
 T10  todo         phase:-  -           Ten [blocked by T01, T02, T05]
 T11  todo         phase:-  -           Eleven [blocked by T01]" "$(cat "$OUT")"
+    # Round 3: T05 is no task here (its heading is not read), so the dependency of T10 on it is named too.
     known="todo, in progress, testing, needs owner, done"
     check "warnings" "board: warning: T03: \"(depend on T01)\" names a dependency without a \"(depends on ...)\" clause, so it is not read (the task keeps its phase's dependencies)
 board: warning: T04: a dependency clause in the title is not read (put it after the status): Four (depends on T01)
@@ -2014,6 +2022,7 @@ board: warning: T06: not a task heading, so the board does not show it (want \"#
 board: warning: T07: not a task heading, so the board does not show it (want \"### Txx Title — \`status\`\" with an em dash and a status of $known): ### T07 Seven — \`in-progress\`
 board: warning: T08: not a task heading, so the board does not show it (want \"### Txx Title — \`status\`\" with an em dash and a status of $known): ## T08 Eight — \`todo\`
 board: warning: T09: \"(after T05 lands)\" names a dependency without a \"(depends on ...)\" clause, so it is not read (the task keeps its phase's dependencies)
+board: warning: T10: depends on T05, which is no task of the list (a typo? a task not written yet?), so it stays blocked until such a task is done
 board: warning: no area for T09 T10 T11 in $FIXTURES/areas.tsv; add a line \"Txx<TAB>area\" for every task (the Area field stays empty)" "$(cat "$ERR")"
     # set-status explains why it cannot find a task whose heading it cannot read.
     cp "$WORK/world/parse.md" "$REPO/planning/TASKS.md"
@@ -2511,6 +2520,325 @@ case_87() {
     rc=0
     status "2026-10-12 09:00" T05 "in progress" --qa "round 1 approved by x" --attach -grafana.png >"$OUT" 2>"$ERR" || rc=$?
     check "attached" "0 1" "$rc $(git -C "$REPO" ls-files planning/screenshots/T05 | grep -c 'grafana\.png$')"
+}
+
+# --- QA round 3: the fixes, beyond the findings' own cases -----------------------------------------------------------
+
+CASES+=("qa3r fix: the board workflow queues its ci jobs instead of dropping a pending one")
+case_88() {
+    if ! python3 -c 'import yaml' 2>/dev/null; then
+        echo "skipped (no PyYAML)" >&2
+        return 0
+    fi
+    root="$(cd "$BOARD/../.." && pwd)"
+    # GitHub keeps one pending job per concurrency group and cancels it when the next is queued (queue: single, the
+    # default): fine for the sync and the report, which read the newest state, not for the ci job, which decides on
+    # the run that triggered it (its comment and job record). queue: max (it may not go with cancel-in-progress).
+    check "the concurrency of every job" "sync {'cancel-in-progress': False, 'group': 'board-sync'}
+ci {'cancel-in-progress': False, 'group': 'board-ci', 'queue': 'max'}
+report {'cancel-in-progress': False, 'group': 'board-report'}" "$(python3 -I - "$root/.github/workflows/board.yml" <<'PY'
+import sys, yaml
+wf = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
+for name, job in wf["jobs"].items():
+    print(name, dict(sorted(job.get("concurrency", {}).items())))
+PY
+)"
+    # actionlint 1.7.12 does not know the key: its config ignores exactly that message, only for board.yml.
+    check "actionlint ignores only the queue key, only in board.yml" "{'paths': {'.github/workflows/board.yml': {'ignore': ['unexpected key \"queue\" for \"concurrency\" section']}}}" \
+        "$(python3 -I -c 'import sys, yaml; print(yaml.safe_load(open(sys.argv[1], encoding="utf-8")))' "$root/.github/actionlint.yaml")"
+    if command -v actionlint >/dev/null; then
+        rc=0
+        (cd "$root" && actionlint .github/workflows/board.yml) >"$WORK/actionlint.out" 2>&1 || rc=$?
+        check "actionlint passes board.yml" "0" "$rc$([[ "$rc" == 0 ]] || echo " $(cat "$WORK/actionlint.out")")"
+        # Any other unknown concurrency key is still reported.
+        mkdir -p "$WORK/lint/.github/workflows"
+        cp "$root/.github/actionlint.yaml" "$WORK/lint/.github/"
+        sed 's/^      queue: max$/      queue: max\n      queued: max/' "$root/.github/workflows/board.yml" >"$WORK/lint/.github/workflows/board.yml"
+        rc=0
+        (cd "$WORK/lint" && actionlint .github/workflows/board.yml) >"$WORK/actionlint.out" 2>&1 || rc=$?
+        check_contains "another unknown key is still an error" 'unexpected key "queued" for "concurrency" section' "$rc $(cat "$WORK/actionlint.out")"
+    else
+        echo "actionlint not on PATH: board.yml not linted" >&2
+    fi
+}
+
+CASES+=("qa3r fix: the --force option names every gate it overrides")
+# shellcheck disable=SC2016 # literal backticks in the README text
+case_89() {
+    help="$("$BOARD/set-status.sh" --help)"
+    check_contains "--force in the help" "override the gates (dependencies, WIP limits, needs owner needs --question, the branch)" "$help"
+    # Four gates refuse (check_gates and the branch check); a fifth must be named in the help too.
+    check "the gates that --force overrides" "4" "$(grep -c '^ *refuse "' "$BOARD/set-status.sh")"
+    check_contains "the README names all four" 'Gates (`--force --reason "why"` overrides all four' "$(cat "$BOARD/README.md")"
+}
+
+CASES+=("qa3r fix: board.sh list works without gh and a token, as the agents' docs say")
+case_90() {
+    new_world
+    mkdir -p "$WORK/world/nogh"
+    printf '#!/bin/sh\necho "gh must not be called by board.sh list" >&2\nexit 99\n' >"$WORK/world/nogh/gh"
+    chmod +x "$WORK/world/nogh/gh"
+    rc=0
+    (cd "$REPO" && env -u GH_TOKEN PATH="$WORK/world/nogh:$PATH" "$BOARD/board.sh" list) >"$OUT" 2>"$ERR" || rc=$?
+    check "no gh call, no token, the list" "0 T05  todo         phase:B  grafana     Grafana port [ready]" "$rc $(grep '^T05 ' "$OUT")"
+    check "nothing on stderr" "" "$(cat "$ERR")"
+    root="$(cd "$BOARD/../.." && pwd)"
+    check_contains "CLAUDE.md names list as the exception" "not in agent
+  sessions, except \`tools/board/board.sh list\`, which only parses \`TASKS.md\` (offline, no token)" "$(cat "$root/CLAUDE.md")"
+    check_contains "the README too" "The exception is \`board.sh list\`: it reads only \`TASKS.md\` and" "$(cat "$BOARD/README.md")"
+}
+
+CASES+=("qa3r fix: a QUIT in the middle of an attempt undoes it too")
+case_91() {
+    signal_case QUIT
+}
+
+# fake_git <case pattern>: a git first on PATH that fails the calls whose arguments match the pattern the way git
+# does while another process holds the index, and runs the real git for every other call.
+fake_git() {
+    mkdir -p "$WORK/world/fakegit"
+    cat >"$WORK/world/fakegit/git" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+    $1)
+        echo "fatal: Unable to create '.git/index.lock': File exists." >&2
+        exit 128
+        ;;
+esac
+exec "$REAL_GIT" "\$@"
+EOF
+    chmod +x "$WORK/world/fakegit/git"
+}
+
+CASES+=("qa3r fix: the undo restores TASKS.md without the index, and says when it cannot")
+case_92() {
+    new_world
+    before="$(tasks_sum)"
+    # The commit is refused by a hook, then the index is taken: git checkout cannot restore TASKS.md, the object
+    # store can, and the index never changed.
+    printf '#!/bin/sh\necho "pre-commit: refused" >&2\nexit 1\n' >"$REPO/.git/hooks/pre-commit"
+    chmod +x "$REPO/.git/hooks/pre-commit"
+    fake_git '"checkout -q "*" -- planning/TASKS.md"'
+    rc=0
+    PATH="$WORK/world/fakegit:$PATH" status "2026-10-12 09:00" T05 "in progress" >"$OUT" 2>"$ERR" || rc=$?
+    check_status "refused" 1 "$rc"
+    check_contains "it says that it undid the attempt" "set-status: undid this attempt: HEAD, planning/TASKS.md and the screenshots are back at" "$(cat "$ERR")"
+    check "and it did: TASKS.md and the checkout clean" "$before " "$(tasks_sum) $(git -C "$REPO" status --porcelain --untracked-files=no)"
+    check "no temporary file left" "" "$(git -C "$REPO" status --porcelain --ignored planning)"
+
+    # The push fails and neither git reset nor git checkout can restore the index entry of TASKS.md: the undo says
+    # that it could not, not that nothing changed.
+    new_world
+    printf '#!/bin/sh\necho "remote: protected branch" >&2\nexit 1\n' >"$REPO/.git/hooks/pre-push"
+    chmod +x "$REPO/.git/hooks/pre-push"
+    base="$(git -C "$REPO" rev-parse --short HEAD)"
+    fake_git '"reset -q "*" -- planning/TASKS.md"* | "checkout -q "*" -- planning/TASKS.md"'
+    rc=0
+    PATH="$WORK/world/fakegit:$PATH" status "2026-10-12 09:00" T05 "in progress" >"$OUT" 2>"$ERR" || rc=$?
+    check "it says that it could not undo the attempt" "1 set-status: could not undo this attempt in $REPO; check \`git status\` there (HEAD was $base)" \
+        "$rc $(grep -v '^fatal' "$ERR")"
+    check "and does not claim that nothing changed" "" "$(grep 'nothing changed' "$ERR" || true)"
+    check "origin unchanged" "$(git -C "$REPO" rev-parse HEAD)" "$(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
+}
+
+CASES+=("qa3r fix: after a force push, dropping the commits lets status changes go on")
+case_93() {
+    new_world
+    other_clone
+    status "2026-10-12 09:00" T05 "in progress" >/dev/null
+    dropped="$(git -C "$REPO" log -1 --format='%h %s')"
+    git -C "$OTHER" fetch -q origin
+    git -C "$OTHER" reset -q --hard "origin/$BRANCH~1"
+    git -C "$OTHER" push -q -f origin HEAD
+    before="$(tasks_sum)"
+    rc=0
+    status "2026-10-12 09:10" T04 todo --answer "Not now" >"$OUT" 2>"$ERR" || rc=$?
+    check "refused, with the way out" "1 set-status: origin/$BRANCH was force-pushed: $REPO still has 1 commit(s) that origin dropped ($dropped), and the push of a status change would bring them back. If the force push was meant, drop them (git -C \"$REPO\" reset --keep origin/$BRANCH); if not, push them yourself; then try again" \
+        "$rc $(cat "$ERR")"
+    check "nothing changed" "$before" "$(tasks_sum)"
+    # The second call still knows (the remote-tracking ref's reflog), although its fetch changes nothing.
+    rc=0
+    status "2026-10-12 09:11" T04 todo --answer "Not now" >"$OUT" 2>"$ERR" || rc=$?
+    check_contains "the next call is refused too" "1 set-status: origin/$BRANCH was force-pushed" "$rc $(cat "$ERR")"
+    # The way out: drop them, and the status change goes through on top of origin.
+    git -C "$REPO" reset -q --keep "origin/$BRANCH"
+    status "2026-10-12 09:12" T04 todo --answer "Not now" >"$OUT" 2>"$ERR"
+    check "after the reset: pushed on top of origin's head" "board: T04 -> todo (answer)
+board: T04 -> needs owner (question)" "$(git -C "$WORK/world/origin.git" log -2 --format=%s "$BRANCH")"
+
+    # Commits of --no-push were never on origin: they are not taken for dropped ones and go out with the next push.
+    new_world
+    status "2026-10-12 09:00" T05 "in progress" --no-push >/dev/null
+    status "2026-10-12 09:05" T05 testing >"$OUT" 2>"$ERR"
+    check "--no-push commits go out" "board: T05 -> testing
+board: T05 -> in progress" "$(git -C "$WORK/world/origin.git" log -2 --format=%s "$BRANCH")"
+}
+
+CASES+=("qa3r fix: every dependency clause of a tail is read, the rest is named")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_94() {
+    new_world
+    cat >"$WORK/world/parse.md" <<'EOF'
+## Phase B: packages
+
+### T00 Zero — `done`
+### T01 One — `done`
+### T02 Two — `todo` (depends on T01) (depends on T05)
+### T03 Three — `todo` (depends on T01; depends on T05 too)
+### T04 Four — `todo` (depends on T01) after T05
+### T05 Five — `todo`
+### T06 Six — `todo` (depends on T01; T05 later)
+### T07 Seven — `todo` (depends on T01; see the notes) (Depends On T05)
+EOF
+    (cd "$REPO" && TASKS_FILE="$WORK/world/parse.md" "$BOARD/board.sh" list) >"$OUT" 2>"$ERR"
+    check "list" "T00  done         phase:B  process     Zero
+T01  done         phase:B  exporter    One
+T02  todo         phase:B  exporter    Two [blocked by T05]
+T03  todo         phase:B  attempts    Three [blocked by T05]
+T04  todo         phase:B  queues      Four [ready]
+T05  todo         phase:B  grafana     Five [ready]
+T06  todo         phase:B  live        Six [ready]
+T07  todo         phase:B  docs        Seven [blocked by T05]" "$(cat "$OUT")"
+    check "warnings" "board: warning: T03: unparsed text in \"depends on T05 too\": too
+board: warning: T04: \"after T05\" names a dependency outside the parentheses of its \"(depends on ...)\" clause, so it is not read" "$(cat "$ERR")"
+}
+
+CASES+=("qa3r fix: an unknown id, a cycle and a wide range are named once")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_95() {
+    new_world
+    cat >"$WORK/world/parse.md" <<'EOF'
+## Phase B: packages (all depend on T99)
+
+### T00 Zero — `done` (depends on T00)
+### T01 One — `todo`
+### T02 Two — `todo`
+### T03 Three — `todo` (depends on T04, T0)
+### T04 Four — `todo` (depends on T05)
+### T05 Five — `todo` (depends on T03)
+
+## Phase C: tail (all depend on T00 to T5000)
+
+### T06 Six — `todo`
+### T07 Seven — `todo` (depends on everything)
+EOF
+    (cd "$REPO" && TASKS_FILE="$WORK/world/parse.md" "$BOARD/board.sh" list) >"$OUT" 2>"$ERR"
+    check "warnings" "board: warning: phase C: the range \"T00 to T5000\" spans more than 1000 ids (a typo?), so only its ends are read
+board: warning: phase B: depends on T99, which is no task of the list (a typo? a task not written yet?), so its tasks stay blocked until such a task is done
+board: warning: T03: depends on T0, which is no task of the list (a typo? a task not written yet?), so it stays blocked until such a task is done
+board: warning: phase C: depends on T5000, which is no task of the list (a typo? a task not written yet?), so its tasks stay blocked until such a task is done
+board: warning: T03, T04, T05: their dependencies form a cycle (each waits for another of them, maybe through \"(depends on everything)\"), so none of them can start; drop one of the dependencies" \
+        "$(grep -v 'no area' "$ERR")"
+    check "the list" "T00  done         phase:B  process     Zero
+T01  todo         phase:B  exporter    One [blocked by T99]
+T02  todo         phase:B  exporter    Two [blocked by T99]
+T03  todo         phase:B  attempts    Three [blocked by T04, T0]
+T04  todo         phase:B  queues      Four [blocked by T05]
+T05  todo         phase:B  grafana     Five [blocked by T03]
+T06  todo         phase:C  live        Six [blocked by T5000]
+T07  todo         phase:C  docs        Seven [blocked by T01, T02, T03, T04, T05, T06]" "$(cat "$OUT")"
+}
+
+CASES+=("qa3r fix: a task list that was never there still fails")
+case_96() {
+    new_world
+    rc=0
+    (cd "$REPO" && TASKS_FILE=planning/MISSING.md "$BOARD/board.sh" sync) >"$OUT" 2>"$ERR" || rc=$?
+    check "sync: refused" "1 board: task list not found: planning/MISSING.md" "$rc $(cat "$ERR")"
+    rc=0
+    (cd "$REPO" && TASKS_FILE=planning/MISSING.md "$BOARD/board.sh" report) >"$OUT" 2>"$ERR" || rc=$?
+    check "report: refused" "1 board: task list not found: planning/MISSING.md" "$rc $(cat "$ERR")"
+    # Deleted by a commit (T15): a notice, no gh call.
+    git -C "$REPO" rm -q -r planning
+    git -C "$REPO" commit -q -m "T15: delete legacy/ and planning/"
+    reset_log
+    rc=0
+    board sync >"$OUT" 2>"$ERR" || rc=$?
+    check "sync after T15: a notice" "0 board   planning/TASKS.md was deleted by $(git -C "$REPO" rev-parse --short HEAD) T15: delete legacy/ and planning/: nothing to sync (remove tools/board and .github/workflows/board.yml too, or restore the task list)" "$rc $(cat "$OUT")"
+    check "no gh call" "" "$(calls)"
+}
+
+CASES+=("qa3r fix: a lost push reply under another session's push leaves the main checkout at origin's head")
+case_97() {
+    new_world
+    other_clone
+    cat >"$REPO/.git/hooks/pre-push" <<EOF
+#!/bin/sh
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+[ -e "$WORK/world/lost" ] && exit 0
+touch "$WORK/world/lost"
+git -C "$REPO" push -q --no-verify origin "HEAD:refs/heads/$BRANCH" || exit 2
+cd "$OTHER" && git pull -q --ff-only && mkdir -p src && echo x >src/race.txt && git add src/race.txt &&
+    git commit -q -m "Another session's commit" && git push -q origin HEAD
+echo "fatal: the remote end hung up unexpectedly" >&2
+exit 1
+EOF
+    chmod +x "$REPO/.git/hooks/pre-push"
+    status "2026-10-12 09:00" T03 testing --qa "round 1 approved by the spec tester" >"$OUT" 2>"$ERR"
+    check_contains "it says that origin has the commit" "set-status: the push reported a failure (fatal: the remote end hung up unexpectedly error: failed to push some refs to '$WORK/world/origin.git'), but origin/$BRANCH has the commit: done" "$(cat "$ERR")"
+    check "the main checkout is origin's head, clean" "$(git -C "$WORK/world/origin.git" rev-parse "$BRANCH") " \
+        "$(git -C "$REPO" rev-parse HEAD) $(git -C "$REPO" status --porcelain --untracked-files=no)"
+}
+
+CASES+=("qa3r fix: the refusals name the squash merge and the index lock")
+case_98() {
+    new_world
+    git -C "$REPO" checkout -q -b wip/T05-grafana
+    mkdir -p "$REPO/src"
+    echo '<?php' >"$REPO/src/grafana.php"
+    git -C "$REPO" add src/grafana.php
+    git -C "$REPO" commit -q -m "Port the dashboard"
+    git -C "$REPO" checkout -q "$BRANCH"
+    git -C "$REPO" merge -q --squash wip/T05-grafana >/dev/null 2>&1
+    rc=0
+    status "2026-10-12 09:00" T03 testing >"$OUT" 2>"$ERR" || rc=$?
+    check "a squash merge" "1 set-status: a squash merge is in progress in $REPO (SQUASH_MSG and staged changes; commit or reset it); try again later" "$rc $(cat "$ERR")"
+    # A SQUASH_MSG without staged changes (the squash committed with -F, or reset) is no squash in progress.
+    git -C "$REPO" reset -q
+    rm -f "$REPO/src/grafana.php"
+    touch "$REPO/.git/SQUASH_MSG"
+    status "2026-10-12 09:01" T03 testing --qa "a note" >"$OUT" 2>"$ERR"
+    check "a stale SQUASH_MSG alone does not block" "board: T03 -> testing (QA)" "$(git -C "$WORK/world/origin.git" log -1 --format=%s "$BRANCH")"
+
+    new_world
+    touch "$REPO/.git/index.lock"
+    rc=0
+    status "2026-10-12 09:00" T05 "in progress" >"$OUT" 2>"$ERR" || rc=$?
+    rm -f "$REPO/.git/index.lock"
+    check "an index lock" "1 set-status: another git process holds the index of $REPO ($REPO/.git/index.lock; if no git runs there, a crashed one left it: remove it); try again later" "$rc $(cat "$ERR")"
+}
+
+CASES+=("qa3r fix: notes keep one line, and their length and option values are checked")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_99() {
+    new_world
+    status "2026-10-12 09:00" T05 todo --question $'Tabs\tand\x01controls\x7f?' --answer $'one\r\ntwo' >/dev/null
+    check "control characters become spaces" "Owner answer: 2026-10-12 09:00 UTC: one  two
+Owner question: 2026-10-12 09:00 UTC: Tabs and controls ?" "$(grep -A2 '^### T05 ' "$REPO/planning/TASKS.md" | tail -n 2)"
+    rc=0
+    status "2026-10-12 09:00" T05 todo --qa "$(head -c 60001 /dev/zero | tr '\0' 'a')" >"$OUT" 2>"$ERR" || rc=$?
+    check "60001 characters: refused" "1 set-status: --qa is 60001 characters, more than 60000 (a GitHub comment takes at most 65536): shorten it and link the full text (a PR review, a file on the task branch)" "$rc $(cat "$ERR")"
+    status "2026-10-12 09:01" T05 todo --qa "$(head -c 60000 /dev/zero | tr '\0' 'b')" >/dev/null
+    check "60000 characters: recorded" "1" "$(grep -c '^QA: 2026-10-12 09:01 UTC: bbbb' "$REPO/planning/TASKS.md")"
+    for args in "--qa --dry-run" "--question --no-push" "--answer --force" "--trailer --dry-run" "--attach --x.png"; do
+        rc=0
+        # shellcheck disable=SC2086 # the words are the arguments
+        status "2026-10-12 09:02" T05 todo $args >"$OUT" 2>"$ERR" || rc=$?
+        check_contains "$args: refused" "1 set-status: ${args%% *} needs a" "$rc $(cat "$ERR")"
+    done
+    check_contains "the message says why" "set-status: --qa needs a text, not the option --dry-run (an empty unquoted variable? quote it)" \
+        "$(status "2026-10-12 09:02" T05 todo --qa --dry-run 2>&1 || true)"
+    # A text that only contains "--" further on is fine.
+    status "2026-10-12 09:03" T05 todo --qa "round 1 rejected by x: --dry-run is ignored" >/dev/null
+    check "a text with -- inside" "1" "$(grep -c '^QA: 2026-10-12 09:03 UTC: round 1 rejected by x: --dry-run is ignored$' "$REPO/planning/TASKS.md")"
+}
+
+CASES+=("qa3r fix: a screenshot whose name starts with a dash")
+case_100() {
+    new_world
+    cp "$FIXTURES/shot.png" "$REPO/-grafana 13.png"
+    status "2026-10-12 09:00" T05 "in progress" --qa "round 1 approved by x" --attach "-grafana 13.png" >/dev/null
+    check "stored without the leading dash" "planning/screenshots/T05/20261012-0900-grafana-13.png" "$(git -C "$REPO" ls-files planning/screenshots/T05)"
 }
 
 run_cases

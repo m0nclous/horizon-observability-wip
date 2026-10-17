@@ -16,7 +16,8 @@
 #   --attach file.png    copy a screenshot to planning/screenshots/<Txx>/, commit it and link it from the QA text
 #                        (or from the question without --qa); repeatable
 #   --force --reason "why"
-#                        override the dependency, WIP and branch gates; the commit records what was forced and why
+#                        override the gates (dependencies, WIP limits, needs owner needs --question, the branch); the
+#                        commit records what was forced and why
 #   --trailer "Key: value"
 #                        append a trailer line to the commit message (e.g. your session's attribution); repeatable
 #   --no-push            work offline: no fetch, no push, the gates read the local state; the commit stays local
@@ -28,11 +29,14 @@
 # not; a task enters in progress or testing only below the WIP limit of that column (a QA rejection, testing ->
 # in progress with a --qa text that rejects, always passes); needs owner needs --question; the main checkout must be
 # on the integration branch.
-# Refused without override: a merge, rebase, cherry-pick or revert in progress, unmerged paths, a detached HEAD,
-# uncommitted changes of planning/TASKS.md, local commits that are not status changes (the push would publish
-# them), and local commits that origin does not have while origin moved too.
-# A failure after the first change (a commit that fails: signing, a hook, no identity; a push that fails) undoes
-# the attempt: HEAD, TASKS.md and the screenshots go back to where they were.
+# Refused without override: a merge, squash merge, rebase, cherry-pick or revert in progress, unmerged paths, a
+# detached HEAD, an index that another git process holds (index.lock), uncommitted changes of planning/TASKS.md,
+# local commits that are not status changes (the push would publish them), local commits that origin does not have
+# while origin moved too, and local commits that a force push dropped from origin (the push would bring them back).
+# Notes (--qa, --question, --answer) stay one line (control characters become spaces) of at most 60000 characters
+# (a GitHub comment takes 65536).
+# A failure after the first change (a commit that fails: signing, a hook, no identity; a push that fails; a signal)
+# undoes the attempt: HEAD, TASKS.md and the screenshots go back to where they were, or it says that it could not.
 #
 # Needs bash 4+, git, python3, flock (util-linux; on macOS `brew install flock`), od and cmp.
 #
@@ -81,6 +85,12 @@ for tool in git python3 flock od cmp; do
         die "$tool is required (set-status.sh needs git, python3, flock, od and cmp; on macOS: brew install flock)"
 done
 
+# The board lock is file descriptor 9 of this script only: git, its hooks and whatever they leave running (git's
+# detached auto maintenance, a hook's background job) must not inherit it, or the lock outlives this call and the
+# next caller waits for it.
+git() { command git "$@" 9>&-; }
+python3() { command python3 "$@" 9>&-; }
+
 ID="$1"
 STATUS="$2"
 shift 2
@@ -97,6 +107,8 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --qa | --question | --answer | --reason | --trailer)
             [[ -n "${2:-}" ]] || die "$1 needs a text"
+            # `--qa $VERDICT --dry-run` with an empty, unquoted variable must not turn --dry-run into the text.
+            [[ "$2" != --* ]] || die "$1 needs a text, not the option $2 (an empty unquoted variable? quote it)"
             case "$1" in
                 --qa) QA="$2" ;;
                 --question) QUESTION="$2" ;;
@@ -108,6 +120,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --attach)
             [[ -n "${2:-}" ]] || die "--attach needs a file"
+            [[ "$2" != --* ]] || die "--attach needs a file, not the option $2 (a file named like that goes as ./$2)"
             ATTACH+=("$2")
             shift 2
             ;;
@@ -131,10 +144,22 @@ done
 
 [[ "$ID" =~ ^T[0-9]+$ ]] || die "invalid task id: $ID"
 [[ "|$BOARD_STATUSES|" == *"|$STATUS|"* ]] || die "invalid status: $STATUS"
-QA="${QA//$'\n'/ }"
-QUESTION="${QUESTION//$'\n'/ }"
-ANSWER="${ANSWER//$'\n'/ }"
-REASON="${REASON//$'\n'/ }"
+# A note is one line of TASKS.md: newlines, carriage returns (`--qa "$(cat verdict.txt)"` of a CRLF file) and every
+# other control character become spaces, so that no note can split into lines of its own on a later edit (a stray
+# body line, or another task heading).
+QA="${QA//[[:cntrl:]]/ }"
+QUESTION="${QUESTION//[[:cntrl:]]/ }"
+ANSWER="${ANSWER//[[:cntrl:]]/ }"
+REASON="${REASON//[[:cntrl:]]/ }"
+# The sync posts each note as one issue comment, and GitHub refuses comments over 65536 characters: a longer note
+# would fail every later sync at this task. 60000 leaves room for the prefix, the marker and screenshot links.
+NOTE_MAX=60000
+for option in qa question answer; do
+    note="${option^^}"
+    value="${!note}"
+    [[ "${#value}" -le "$NOTE_MAX" ]] ||
+        die "--$option is ${#value} characters, more than $NOTE_MAX (a GitHub comment takes at most 65536): shorten it and link the full text (a PR review, a file on the task branch)"
+done
 if [[ "$FORCE" == 1 && -z "$REASON" ]]; then
     die "--force needs --reason \"why\" (the commit records it)"
 fi
@@ -151,6 +176,8 @@ MAX_KB="${BOARD_ATTACH_MAX_KB:-1024}"
 [[ "$MAX_KB" =~ ^[0-9]+$ ]] || die "invalid BOARD_ATTACH_MAX_KB: $MAX_KB"
 SOURCES=()
 for file in "${ATTACH[@]}"; do
+    # A relative path that starts with a dash would be read as an option by head, dirname and basename.
+    [[ "$file" != -* ]] || file="./$file"
     [[ -f "$file" ]] || die "screenshot not found: $file"
     [[ "$file" == *.png || "$file" == *.PNG ]] || die "screenshots must be PNG files: $file"
     [[ "$(head -c 8 "$file" | od -An -tx1 | tr -d ' \n')" == "89504e470d0a1a0a" ]] || die "not a PNG file: $file"
@@ -180,6 +207,9 @@ GIT_DIR="$(git rev-parse --absolute-git-dir)"
 checkout_problem() {
     if [[ -e "$GIT_DIR/MERGE_HEAD" ]]; then
         echo "a merge is in progress in $MAIN"
+    elif [[ -e "$GIT_DIR/SQUASH_MSG" ]] && ! git diff --cached --quiet; then
+        # A status commit would consume the squash merge's message (git removes SQUASH_MSG after any commit).
+        echo "a squash merge is in progress in $MAIN (SQUASH_MSG and staged changes; commit or reset it)"
     elif [[ -e "$GIT_DIR/rebase-merge" || -e "$GIT_DIR/rebase-apply" || -e "$GIT_DIR/REBASE_HEAD" ]]; then
         echo "a rebase is in progress in $MAIN"
     elif [[ -e "$GIT_DIR/CHERRY_PICK_HEAD" ]]; then
@@ -188,6 +218,9 @@ checkout_problem() {
         echo "a revert is in progress in $MAIN"
     elif [[ -e "$GIT_DIR/sequencer" ]]; then
         echo "a cherry-pick or revert sequence is in progress in $MAIN"
+    elif [[ -e "$GIT_DIR/index.lock" ]]; then
+        # Another git process (an agent's git status, an editor) holds the index: the commit would fail.
+        echo "another git process holds the index of $MAIN ($GIT_DIR/index.lock; if no git runs there, a crashed one left it: remove it)"
     elif [[ -n "$(git ls-files -u)" ]]; then
         echo "$MAIN has unmerged paths"
     elif ! git symbolic-ref -q HEAD >/dev/null; then
@@ -238,20 +271,29 @@ SHOT_PATHS=()
 UNDO_BASE=""
 # shellcheck disable=SC2317,SC2329 # called by the EXIT trap
 on_exit() {
-    local rc=$?
-    if [[ -n "$UNDO_BASE" ]]; then
-        if undo_to "$UNDO_BASE" 2>/dev/null; then
-            echo "set-status: undid this attempt: HEAD, $TASKS_FILE and the screenshots are back at ${UNDO_BASE:0:7}; nothing changed" >&2
+    local rc=$? base="$UNDO_BASE"
+    # Nothing cuts the undo short: a second interrupt or hangup is ignored from here on.
+    trap '' INT TERM HUP PIPE QUIT
+    if [[ -n "$base" ]]; then
+        if undo_to "$base" 2>/dev/null; then
+            echo "set-status: undid this attempt: HEAD, $TASKS_FILE and the screenshots are back at ${base:0:7}; nothing changed" >&2
         else
-            echo "set-status: could not undo this attempt in $MAIN; check \`git status\` there (HEAD was ${UNDO_BASE:0:7})" >&2
+            echo "set-status: could not undo this attempt in $MAIN; check \`git status\` there (HEAD was ${base:0:7})" >&2
+            [[ "$rc" != 0 ]] || rc=1
         fi
         UNDO_BASE=""
     fi
     rm -f "${TEMP_FILES[@]}"
-    return "$rc"
+    exit "$rc"
 }
 trap on_exit EXIT
+# Every signal that ends the script is trapped: bash then lets the running git finish before it exits through the
+# undo. An untrapped one (a closed terminal or a killed agent session sends HUP, a closed output pipe PIPE) runs the
+# undo at once, while git still commits: the undo cannot take the index, and git then moves HEAD after all.
+trap 'exit 129' HUP
 trap 'exit 130' INT
+trap 'exit 131' QUIT
+trap 'exit 141' PIPE
 trap 'exit 143' TERM
 
 # The local commits that origin does not have and that set-status.sh did not write, one "<sha> <subject>" per line:
@@ -275,15 +317,37 @@ foreign_commits() {
     done < <(git log --format='%H%x09%P%x09%s' "$UPSTREAM..HEAD")
 }
 
+# The local commits that origin had once and no longer has (a force push dropped them), one "<sha> <subject>" per
+# line: commits of $UPSTREAM..HEAD that an earlier value of the remote-tracking ref reaches (its reflog, and $1, its
+# value before this fetch) but its current value does not. A status change must not push them back unseen.
+dropped_commits() {
+    local before="$1" gone sha
+    gone="$({
+        git log -g --format=%H "$UPSTREAM" 2>/dev/null || true
+        [[ -z "$before" ]] || echo "$before"
+        echo "^$UPSTREAM"
+    } | git rev-list --stdin --ignore-missing 2>/dev/null || true)"
+    [[ -n "$gone" ]] || return 0
+    while IFS= read -r sha; do
+        [[ -n "$sha" ]] && grep -qx "$sha" <<<"$gone" && git log -1 --format='%h %s' "$sha"
+    done < <(git rev-list "$UPSTREAM..HEAD")
+    return 0
+}
+
 # Brings the main checkout up to date with origin: fetch, then fast-forward. Local commits that origin does not have
 # are kept (the push publishes them) unless origin moved too; then the caller must integrate them first.
 sync_with_origin() {
-    local error behind ahead
+    local error behind ahead before dropped
+    before="$(git rev-parse -q --verify "$UPSTREAM^{commit}" 2>/dev/null || true)"
     error="$(git fetch -q origin "+refs/heads/$BRANCH:$UPSTREAM" 2>&1)" ||
         die "cannot fetch $BRANCH from origin (${error//$'\n'/ }); --no-push works offline"
     behind="$(git rev-list --count "HEAD..$UPSTREAM")"
     ahead="$(git rev-list --count "$UPSTREAM..HEAD")"
     if [[ "$ahead" -gt 0 ]]; then
+        dropped="$(dropped_commits "$before")"
+        if [[ -n "$dropped" ]]; then
+            die "origin/$BRANCH was force-pushed: $MAIN still has $(wc -l <<<"$dropped" | tr -d ' ') commit(s) that origin dropped (${dropped//$'\n'/; }), and the push of a status change would bring them back. If the force push was meant, drop them (git -C \"$MAIN\" reset --keep origin/$BRANCH); if not, push them yourself; then try again"
+        fi
         local foreign
         foreign="$(foreign_commits)"
         if [[ -n "$foreign" ]]; then
@@ -401,7 +465,8 @@ if [[ ${#SOURCES[@]} -gt 0 ]]; then
     for source in "${SOURCES[@]}"; do
         name="$(basename "$source")"
         name="${name%.*}"
-        name="$(LC_ALL=C tr -c 'A-Za-z0-9._-' '-' <<<"$name" | sed 's/-*$//')"
+        name="$(LC_ALL=C tr -c 'A-Za-z0-9._-' '-' <<<"$name" | sed 's/^-*//; s/-*$//')"
+        [[ -n "$name" ]] || name="screenshot"
         target="$SHOT_DIR/$PREFIX-$name.png"
         for previous in "${SHOT_PATHS[@]}"; do
             [[ "$previous" != "$target" ]] || die "two screenshots map to $target; rename one"
@@ -441,7 +506,8 @@ import os, re, sys
 path = sys.argv[1]
 task, status = os.environ["ID"], os.environ["STATUS"]
 insert = [line for line in os.environ["INSERT"].split("\n") if line]
-lines = open(path, encoding="utf-8").read().split("\n")
+# newline="": no universal newlines, so that a carriage return is never read as a line break.
+lines = open(path, encoding="utf-8", newline="").read().split("\n")
 pattern = re.compile(r"^(### " + re.escape(task) + r" .*? — )`(todo|in progress|testing|needs owner|done)`")
 for i, line in enumerate(lines):
     match = pattern.match(line)
@@ -451,7 +517,7 @@ for i, line in enumerate(lines):
         break
 else:
     sys.exit("set-status: heading of " + task + " not found")
-open(path, "w", encoding="utf-8").write("\n".join(lines))
+open(path, "w", encoding="utf-8", newline="").write("\n".join(lines))
 PY
 }
 
@@ -470,15 +536,43 @@ if [[ ${#TRAILERS[@]} -gt 0 ]]; then
 fi
 
 # Undoes the commits of this attempt: HEAD, TASKS.md and the new screenshots back to $1; other staged or unstaged
-# changes of the main checkout stay as they are.
+# changes of the main checkout stay as they are. Every step is checked (callers run it in a condition, where errexit
+# is off), and it fails unless HEAD, the index entries and the files are back at $1 afterwards. Another git process
+# may hold the index (index.lock): then TASKS.md is written from the object store, which needs no index, and an
+# index entry that still differs is a failure.
 undo_to() {
-    git reset -q --soft "$1"
-    git reset -q "$1" -- "$TASKS_FILE" "${SHOT_PATHS[@]}" >/dev/null 2>&1 || true
-    git checkout -q "$1" -- "$TASKS_FILE"
-    local path
+    local base="$1" rc=0 path
+    git reset -q --soft "$base" || rc=1
+    if ! git diff --cached --quiet "$base" -- "$TASKS_FILE" "${SHOT_PATHS[@]}" 2>/dev/null; then
+        git reset -q "$base" -- "$TASKS_FILE" "${SHOT_PATHS[@]}" >/dev/null 2>&1 || rc=1
+    fi
+    if ! git checkout -q "$base" -- "$TASKS_FILE" 2>/dev/null; then
+        if git cat-file --filters "$base:$TASKS_FILE" >"$TASKS_FILE.undo" 2>/dev/null; then
+            mv -f "$TASKS_FILE.undo" "$TASKS_FILE" || rc=1
+        else
+            rm -f "$TASKS_FILE.undo"
+            rc=1
+        fi
+    fi
     for path in "${SHOT_PATHS[@]}"; do
-        git cat-file -e "$1:$path" 2>/dev/null || rm -f -- "$path"
+        git cat-file -e "$base:$path" 2>/dev/null || rm -f -- "$path" || rc=1
     done
+    [[ "$(git rev-parse HEAD 2>/dev/null)" == "$base" ]] || rc=1
+    git diff --quiet "$base" -- "$TASKS_FILE" 2>/dev/null || rc=1
+    git diff --cached --quiet "$base" -- "$TASKS_FILE" "${SHOT_PATHS[@]}" 2>/dev/null || rc=1
+    return "$rc"
+}
+
+# Undoes this attempt now (UNDO_BASE stays set until that worked, so that a signal in between still undoes it), or
+# exits 1 and says that it could not.
+undo_now() {
+    if undo_to "$UNDO_BASE" 2>/dev/null; then
+        UNDO_BASE=""
+        return 0
+    fi
+    local base="$UNDO_BASE"
+    UNDO_BASE=""
+    die "could not undo this attempt in $MAIN; check \`git status\` there (HEAD was ${base:0:7})"
 }
 
 # One attempt: sync, gates, commits, push. Sets RETRY=1 when origin moved during the attempt (the caller retries).
@@ -556,22 +650,25 @@ $body}$TRAILER_TEXT" "$TASKS_FILE"
         UNDO_BASE=""
         return 0
     fi
-    # A push that failed: landed anyway (a lost reply), rejected because origin moved (retry), or another failure.
+    # A push that failed: landed anyway (a lost reply, maybe with another session's push on top already), rejected
+    # because origin moved (retry), or another failure.
     if git fetch -q origin "+refs/heads/$BRANCH:$UPSTREAM" 2>/dev/null; then
-        if [[ "$(git rev-parse "$UPSTREAM")" == "$(git rev-parse HEAD)" ]]; then
+        if git merge-base --is-ancestor HEAD "$UPSTREAM"; then
             UNDO_BASE=""
+            echo "set-status: the push reported a failure (${error//$'\n'/ }), but origin/$BRANCH has the commit: done" >&2
+            if [[ "$(git rev-parse "$UPSTREAM")" != "$(git rev-parse HEAD)" ]] && ! git merge -q --ff-only "$UPSTREAM" >/dev/null 2>&1; then
+                echo "set-status: note: $MAIN is behind origin/$BRANCH now; the next call fast-forwards it" >&2
+            fi
             return 0
         fi
-        undo_to "$base"
-        UNDO_BASE=""
+        undo_now
         if ! git merge-base --is-ancestor "$UPSTREAM" HEAD; then
             echo "set-status: origin/$BRANCH moved while committing; the commit was undone, trying again" >&2
             RETRY=1
             return 0
         fi
     else
-        undo_to "$base"
-        UNDO_BASE=""
+        undo_now
     fi
     die "push failed (${error//$'\n'/ }); the commit was undone, nothing changed"
 }

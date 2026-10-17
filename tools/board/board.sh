@@ -66,6 +66,9 @@ REPORT_LABEL="report"
 REPORT_TITLE="[Board] Flow report"
 REPORT_MARKER="<!-- board:report -->"
 BLOCKED_MARKER="<!-- blocked:"
+# The board's own Blocked or Ready comment ends with its marker ("<!-- blocked:T02,T03 -->", "<!-- blocked: -->"); a
+# QA, question or answer that quotes the marker ends with its own marker, so it is never taken for it.
+BLOCKED_COMMENT_RE='<!-- blocked:[T0-9,]* -->$'
 # Paths that the tests workflow ignores on push (.github/workflows/tests.yml, paths-ignore): commits that change only
 # these leave the verdict of the previous tests run standing.
 BOARD_ONLY_PATHS=("$TASKS_FILE" "$(dirname "$TASKS_FILE")/screenshots")
@@ -158,6 +161,18 @@ setup_repo() {
 
 # --- Local state: tasks, areas, QA rounds, history ---------------------------------------------------------------
 
+# Whether the task list was deleted on purpose: it is missing, and a commit of the branch deleted it (T15 removes
+# planning/ for the release while tools/board and the workflow stay until they are removed too). Then sync and
+# report have nothing to mirror and succeed with a notice, so that every later board run does not fail; a task list
+# that was never there (a wrong TASKS_FILE) still fails.
+tasks_deleted() {
+    local commit
+    [[ ! -e "$TASKS_FILE" ]] || return 1
+    commit="$(git log -1 --format='%h %s' --diff-filter=D -- "$TASKS_FILE" 2>/dev/null || true)"
+    [[ -n "$commit" ]] || return 1
+    echo "board   $TASKS_FILE was deleted by $commit: nothing to $1 (remove tools/board and .github/workflows/board.yml too, or restore the task list)"
+}
+
 load_tasks() {
     board_load_tasks "$TASKS_FILE" || exit 1
     [[ ${#TASK_IDS[@]} -gt 0 ]] || die "no tasks found in $TASKS_FILE"
@@ -177,8 +192,10 @@ load_tasks() {
     board_count_rounds
 }
 
-# Started = the first "board: Txx -> in progress" commit, Finished = the last "board: Txx -> done" commit (author
-# dates, UTC). Started is shown unless the task is todo, Finished only while it is done.
+# Started = the first "board: Txx -> in progress" or "-> testing" commit (the moves that start work, as for the
+# dependency gate of set-status.sh: a task may go from todo straight to testing), Finished = the last
+# "board: Txx -> done" commit (author dates, UTC). Started is shown unless the task is todo, Finished only while it is
+# done.
 load_history() {
     declare -gA STARTED_AT=() STARTED_ON=() FINISHED_AT=() FINISHED_ON=()
     local out at on subject id to
@@ -194,7 +211,7 @@ load_history() {
         [[ "$subject" =~ $re ]] || continue
         id="${BASH_REMATCH[1]}"
         to="${BASH_REMATCH[2]}"
-        if [[ "$to" == "in progress" && -z "${STARTED_AT[$id]:-}" ]]; then
+        if [[ ("$to" == "in progress" || "$to" == "testing") && -z "${STARTED_AT[$id]:-}" ]]; then
             STARTED_AT[$id]="$at"
             STARTED_ON[$id]="$on"
         elif [[ "$to" == "done" ]]; then
@@ -523,7 +540,7 @@ sync_comments() {
         run gh issue comment "$number" --repo "$REPO" --body "$body"$'\n\n'"$marker" >/dev/null
     done <<<"$notes"
 
-    url="$(jq -r --arg marker "$BLOCKED_MARKER" '[.[] | select(.body | contains($marker))] | last | .url // empty' <<<"$comments")"
+    url="$(jq -r --arg re "$BLOCKED_COMMENT_RE" '[.[] | select(.body | test($re))] | last | .url // empty' <<<"$comments")"
     if [[ -n "$missing" ]]; then
         marker="$BLOCKED_MARKER${missing// /,} -->"
         body="**Blocked** by ${missing// /, }: this task becomes ready when they are done."
@@ -614,6 +631,7 @@ sync_task() {
 }
 
 cmd_sync() {
+    ! tasks_deleted sync || return 0
     setup_repo
     load_tasks
     load_history
@@ -746,13 +764,14 @@ build_report() {
         echo "- QA rounds: none yet."
     fi
     if [[ "$finished" -gt 0 ]]; then
-        echo "- Cycle time (first \`in progress\` to the last \`done\`): average $(awk -v list="$cycles" 'BEGIN { n = split(list, c, " "); for (i = 1; i <= n; i++) s += c[i]; printf "%.1f", s / n }') days over $finished finished $([[ "$finished" == 1 ]] && echo task || echo tasks)."
+        echo "- Cycle time (first \`in progress\` or \`testing\` to the last \`done\`): average $(awk -v list="$cycles" 'BEGIN { n = split(list, c, " "); for (i = 1; i <= n; i++) s += c[i]; printf "%.1f", s / n }') days over $finished finished $([[ "$finished" == 1 ]] && echo task || echo tasks)."
     else
         echo "- Cycle time: no finished task with a recorded start yet."
     fi
 }
 
 cmd_report() {
+    ! tasks_deleted report || return 0
     setup_repo
     load_tasks
     load_history

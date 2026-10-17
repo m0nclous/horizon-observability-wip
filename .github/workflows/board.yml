@@ -48,7 +48,8 @@ jobs:
     permissions:
       contents: read
       issues: write
-    # A pending sync is replaced by a newer one, which reads the newer TASKS.md: nothing is lost.
+    # A pending sync is replaced by a newer one (GitHub cancels the pending job of a group when another is queued),
+    # which reads the newer TASKS.md: nothing is lost.
     concurrency:
       group: board-sync
       cancel-in-progress: false
@@ -76,9 +77,14 @@ jobs:
       && github.event.workflow_run.head_branch == (vars.INTEGRATION_BRANCH || 'claude/hopeful-hawking-njeu3v') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # One job per completed tests run, in order: each decides on its own run (its comment and job record), so none may
+    # be dropped. Without queue: max GitHub keeps one pending job per group and cancels it when the next is queued:
+    # three runs that finish while one ci job runs would lose the middle one (a red weekly e2e job never recorded).
+    # queue: max keeps up to 100 pending (actionlint 1.7.12 does not know the key yet: .github/actionlint.yaml).
     concurrency:
       group: board-ci
       cancel-in-progress: false
+      queue: max
     steps:
       # The branch head and its history: a run of an older commit decides only when the commits after it change
       # nothing but TASKS.md and screenshots (which the tests workflow ignores on push).
@@ -106,6 +112,7 @@ jobs:
     if: ${{ always() && (needs.sync.result == 'success' || needs.ci.result == 'success') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # Like the sync: a pending report is replaced by a newer one, which reads the newer state.
     concurrency:
       group: board-report
       cancel-in-progress: false

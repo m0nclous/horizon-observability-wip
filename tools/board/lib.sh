@@ -10,14 +10,21 @@
 #
 # Dependency lists: ids (also lowercase), ranges with a hyphen, an en dash or an em dash (spaced or not), "..", "to",
 # "through" or "thru" (T03–T08, T02 – T04, T00 through T02), separated by commas, "and", "&", "+" or "/". The clause
-# words are read in any case ("(Depends on T01)"). Anything else in the clause is reported as a warning, and so is
-# every "### Txx" heading that is not a task heading (no em dash before the status, an unknown status such as `Todo`
-# or `in-progress`), a tail that names an id without a "depends on" clause ("(depend on T01)", "(after T05)") and a
-# dependency clause inside the title: a typo must not silently drop a dependency or a task.
+# words are read in any case ("(Depends on T01)"). A tail may hold several clauses ("(depends on T01) (depends on
+# T05)", "(depends on T01; depends on T05)"); text after a ";" inside the parentheses is commentary ("(depends on
+# T01; T05 later)"). Anything else in a clause is reported as a warning, and so is every "### Txx" heading that is
+# not a task heading (no title, no em dash before the status, an unknown status such as `Todo` or `in-progress`), a
+# tail that names an id without a "depends on" clause ("(depend on T01)", "(after T05)") or after its parentheses
+# ("(depends on T01) after T05"), a dependency clause inside the title, a range wider than BOARD_RANGE_MAX ids (only
+# its ends are read), a dependency on an id that is no task (a typo such as T0, a task not written yet) and tasks
+# whose dependencies form a cycle (two "(depends on everything)" tasks, T03 and T04 waiting for each other): a typo
+# must not silently drop a dependency or a task, nor block one for good.
 #
 # awk runs with LC_ALL=C (byte semantics) so mawk, gawk and BSD awk read the em and en dashes the same way.
 
 BOARD_STATUSES="todo|in progress|testing|needs owner|done"
+# The widest dependency range that is expanded: T02–T99999 (a typo) would make every parse slow, under the board lock.
+BOARD_RANGE_MAX=1000
 BOARD_AREAS="exporter attempts queues http batches discovery horizon-ui grafana live ci docs process"
 
 # Prints one line per task, fields separated by US (\x1f, not a whitespace character, so that an empty phase stays a
@@ -29,15 +36,26 @@ board_parse_tasks() {
         echo "board: task list not found: $file" >&2
         return 1
     }
-    LC_ALL=C awk -v statuses="$BOARD_STATUSES" '
+    LC_ALL=C awk -v statuses="$BOARD_STATUSES" -v range_max="$BOARD_RANGE_MAX" '
         function warn(message) {
             printf "board: warning: %s\n", message > "/dev/stderr"
         }
+        function trim(text) {
+            gsub(/[ \t]+/, " ", text)
+            sub(/^ /, "", text)
+            sub(/ $/, "", text)
+            return text
+        }
+        function id_of(k, width) {
+            return sprintf("T%0" width "d", k)
+        }
         # Every id of a list such as "T03–T08, T10 and T12", space-separated. Sets "leftover" to the text that is
-        # neither an id, a range nor a separator.
+        # neither an id, a range nor a separator, and "wide" to the ranges wider than range_max ids (only their ends
+        # are read: a typo such as T02–T99999 must not make the parse quadratic).
         function expand(clause,    out, rest, id, range, lo, hi, width, k, tmp) {
             out = ""
             leftover = ""
+            wide = ""
             rest = clause
             if (match(tolower(rest), /^(all depend|depends) (only )?on/)) {
                 rest = substr(rest, RLENGTH + 1)
@@ -65,28 +83,80 @@ board_parse_tasks() {
                     lo = hi
                     hi = tmp
                 }
+                if (hi - lo >= range_max) {
+                    wide = wide " " id range
+                    out = out " " id_of(lo, width) " " id_of(hi, width)
+                    continue
+                }
                 for (k = lo; k <= hi; k++) {
-                    out = out " " sprintf("T%0" width "d", k)
+                    out = out " " id_of(k, width)
                 }
             }
             leftover = leftover " " rest
             gsub(/[,&+\/]/, " ", leftover)
             gsub(/(^| )[Aa][Nn][Dd]( |$)/, " ", leftover)
             gsub(/(^| )[Aa][Nn][Dd]( |$)/, " ", leftover)
-            gsub(/[ \t]+/, " ", leftover)
-            sub(/^ /, "", leftover)
-            sub(/ $/, "", leftover)
+            leftover = trim(leftover)
+            wide = trim(wide)
             return out
         }
+        # The part of a tail between dependency clauses that lies outside their parentheses: after a clause and its
+        # ";", the text up to the next ")" is the clause'"'"'s commentary ("(depends on T01; T05 later)").
+        function outside_of(text) {
+            if (!in_group) {
+                return text
+            }
+            if (match(text, /\)/)) {
+                in_group = 0
+                return substr(text, RSTART + 1)
+            }
+            return ""
+        }
+        # Tarjan'"'"'s strongly connected components over the dependencies (task indexes): a component of more than one
+        # task is a dependency cycle, whose tasks can never start.
+        function connect(v,    list, count, k, w, size) {
+            visit[v] = ++visits
+            low[v] = visits
+            stack[++top] = v
+            stacked[v] = 1
+            count = split(final[v], list, " ")
+            for (k = 1; k <= count; k++) {
+                if (!(list[k] in known)) {
+                    continue
+                }
+                w = known[list[k]]
+                if (!(w in visit)) {
+                    connect(w)
+                    if (low[w] < low[v]) {
+                        low[v] = low[w]
+                    }
+                } else if (stacked[w] && visit[w] < low[v]) {
+                    low[v] = visit[w]
+                }
+            }
+            if (low[v] == visit[v]) {
+                size = 0
+                do {
+                    w = stack[top--]
+                    stacked[w] = 0
+                    component[w] = v
+                    size++
+                } while (w != v)
+                if (size > 1) {
+                    cyclic[v] = 1
+                }
+            }
+        }
         # A heading that looks like a task but that the task rule below does not read ("### T05 Five - `todo`",
-        # "### T06 Six — `Todo`", "## T07 ..."): named, so that a typo does not drop a task from the board unseen.
+        # "### T06 Six — `Todo`", "## T07 ...", "### T08 — `todo`" without a title): named, so that a typo does not
+        # drop a task from the board unseen.
         /^#+[ \t]*[Tt][0-9]+([^0-9]|$)/ {
-            if ($0 !~ /^### T[0-9]+ / || match($0, " — `(" statuses ")`") == 0) {
+            if ($0 !~ /^### T[0-9]+ / || match($0, " — `(" statuses ")`") == 0 || substr($0, 1, RSTART - 1) ~ /^### T[0-9]+[ \t]*$/) {
                 heading = $0
                 match(heading, /[Tt][0-9]+/)
-                known = statuses
-                gsub(/\|/, ", ", known)
-                warn("T" substr(heading, RSTART + 1, RLENGTH - 1) ": not a task heading, so the board does not show it (want \"### Txx Title — `status`\" with an em dash and a status of " known "): " heading)
+                known_statuses = statuses
+                gsub(/\|/, ", ", known_statuses)
+                warn("T" substr(heading, RSTART + 1, RLENGTH - 1) ": not a task heading, so the board does not show it (want \"### Txx Title — `status`\" with an em dash and a status of " known_statuses "): " heading)
                 if ($0 ~ /^### /) {
                     next
                 }
@@ -99,9 +169,13 @@ board_parse_tasks() {
                 phase = $3
                 sub(/:$/, "", phase)
                 if (match(tolower($0), /all depend (only )?on [^;)]*/)) {
-                    phase_deps = expand(substr($0, RSTART, RLENGTH))
+                    clause = substr($0, RSTART, RLENGTH)
+                    phase_deps = expand(clause)
                     if (leftover != "") {
-                        warn("phase " phase ": unparsed text in \"" substr($0, RSTART, RLENGTH) "\": " leftover)
+                        warn("phase " phase ": unparsed text in \"" clause "\": " leftover)
+                    }
+                    if (wide != "") {
+                        warn("phase " phase ": the range \"" wide "\" spans more than " range_max " ids (a typo?), so only its ends are read")
                     }
                 } else if (tolower($0) ~ /(^|[^a-z])depend/) {
                     warn("phase " phase ": a dependency clause that is not \"(all depend on ...)\" is not read: " $0)
@@ -120,21 +194,56 @@ board_parse_tasks() {
             tail = substr($0, RSTART + RLENGTH)
             sub(/^[^`]*`/, "", status)
             sub(/`$/, "", status)
-            deps = phase_deps
-            if (match(tolower(tail), /depends (only )?on [^;)]*/)) {
-                clause = substr(tail, RSTART, RLENGTH)
+            # Every "depends on ..." clause of the tail counts; "everything" in any of them means every other task.
+            rest = tail
+            outside = ""
+            in_group = 0
+            found = 0
+            everything = 0
+            own = ""
+            while (match(tolower(rest), /depends (only )?on [^;)]*/)) {
+                at = RSTART
+                clause = substr(rest, at, RLENGTH)
+                before = substr(rest, 1, at - 1)
+                rest = substr(rest, at + RLENGTH)
+                before = outside_of(before)
+                sub(/\([ \t]*$/, "", before)
+                outside = outside " " before
+                found = 1
                 if (tolower(clause) ~ /everything/) {
-                    deps = "*"
+                    everything = 1
                 } else {
-                    deps = expand(clause)
+                    own = own " " expand(clause)
                     if (leftover != "") {
                         warn(id ": unparsed text in \"" clause "\": " leftover)
                     }
+                    if (wide != "") {
+                        warn(id ": the range \"" wide "\" spans more than " range_max " ids (a typo?), so only its ends are read")
+                    }
                 }
-            } else if (tail ~ /[Tt][0-9]+/ || tolower(tail) ~ /(^|[^a-z])depend/) {
-                shown = tail
-                sub(/^[ \t]+/, "", shown)
-                warn(id ": \"" shown "\" names a dependency without a \"(depends on ...)\" clause, so it is not read (the task keeps its phase'"'"'s dependencies)")
+                if (substr(rest, 1, 1) == ";") {
+                    in_group = 1
+                    rest = substr(rest, 2)
+                } else {
+                    in_group = 0
+                    if (substr(rest, 1, 1) == ")") {
+                        rest = substr(rest, 2)
+                    }
+                }
+            }
+            outside = trim(outside " " outside_of(rest))
+            if (!found) {
+                deps = phase_deps
+                inherited = (phase_deps != "")
+                if (tail ~ /[Tt][0-9]+/ || tolower(tail) ~ /(^|[^a-z])depend/) {
+                    warn(id ": \"" trim(tail) "\" names a dependency without a \"(depends on ...)\" clause, so it is not read (the task keeps its phase'"'"'s dependencies)")
+                }
+            } else {
+                deps = everything ? "*" : own
+                inherited = 0
+                if (outside ~ /[Tt][0-9]+/ || tolower(outside) ~ /(^|[^a-z])depend/) {
+                    warn(id ": \"" outside "\" names a dependency outside the parentheses of its \"(depends on ...)\" clause, so it is not read")
+                }
             }
             if (tolower(title) ~ /(^|[^a-z])depends? (only )?on / && title ~ /[Tt][0-9]+/) {
                 warn(id ": a dependency clause in the title is not read (put it after the status): " title)
@@ -145,10 +254,17 @@ board_parse_tasks() {
             states[n] = status
             phases[n] = phase
             depends[n] = deps
+            from_phase[n] = inherited
         }
         END {
             for (i = 1; i <= n; i++) {
+                if (!(ids[i] in known)) {
+                    known[ids[i]] = i
+                }
+            }
+            for (i = 1; i <= n; i++) {
                 out = ""
+                unknown = ""
                 split("", seen)
                 if (depends[i] == "*") {
                     for (j = 1; j <= n; j++) {
@@ -162,11 +278,44 @@ board_parse_tasks() {
                         if (list[j] != ids[i] && !(list[j] in seen)) {
                             seen[list[j]] = 1
                             out = out " " list[j]
+                            if (!(list[j] in known)) {
+                                unknown = unknown ", " list[j]
+                            }
                         }
                     }
                 }
                 sub(/^ /, "", out)
-                printf "%s\037%s\037%s\037%s\037%s\n", ids[i], titles[i], states[i], phases[i], out
+                final[i] = out
+                # An id that is no task never becomes done: named once per task, or once per phase it came from.
+                if (unknown != "") {
+                    unknown = substr(unknown, 3)
+                    key = from_phase[i] ? "phase " phases[i] : ids[i]
+                    if (!(key in named)) {
+                        named[key] = 1
+                        plural = (unknown ~ /, /)
+                        warn(key ": depends on " unknown ", which " (plural ? "are no tasks" : "is no task") " of the list (a typo? a task not written yet?), so " (from_phase[i] ? "its tasks stay" : "it stays") " blocked until " (plural ? "such tasks are" : "such a task is") " done")
+                    }
+                }
+            }
+            for (i = 1; i <= n; i++) {
+                if (!(i in visit)) {
+                    connect(i)
+                }
+            }
+            for (i = 1; i <= n; i++) {
+                if (!(i in cyclic)) {
+                    continue
+                }
+                members = ""
+                for (j = 1; j <= n; j++) {
+                    if (component[j] == i) {
+                        members = members ", " ids[j]
+                    }
+                }
+                warn(substr(members, 3) ": their dependencies form a cycle (each waits for another of them, maybe through \"(depends on everything)\"), so none of them can start; drop one of the dependencies")
+            }
+            for (i = 1; i <= n; i++) {
+                printf "%s\037%s\037%s\037%s\037%s\n", ids[i], titles[i], states[i], phases[i], final[i]
             }
         }
     ' "$file"

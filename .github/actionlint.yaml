@@ -1,0 +1,7 @@
+# actionlint (1.7.12, the newest release) does not know the concurrency key `queue` yet, which GitHub Actions
+# supports (`queue: max`: up to 100 pending jobs per group instead of one). The board workflow's ci job needs it
+# (.github/workflows/board.yml); only that message is ignored, and only for that file.
+paths:
+  .github/workflows/board.yml:
+    ignore:
+      - 'unexpected key "queue" for "concurrency" section'

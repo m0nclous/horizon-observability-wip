@@ -27,8 +27,9 @@ Conventions:
   merged; make the integration branch green first. A green push run does not clear a red weekly e2e job: after the
   fix, run the `tests` workflow by hand on the integration branch (MCP `actions_run_trigger`).
 - `tools/board/board.sh` talks to the GitHub API and runs in GitHub Actions (or on the owner's machine), not in agent
-  sessions; agents use `set-status.sh` (git, no API call) and the GitHub MCP tools. `tools/board/tests/run.sh` tests
-  the board tooling offline (stub `gh`); run it after changing `tools/board/`.
+  sessions, except `tools/board/board.sh list`, which only parses `TASKS.md` (offline, no token) and shows the
+  `[ready]` tasks; agents use it, `set-status.sh` (git, no API call) and the GitHub MCP tools.
+  `tools/board/tests/run.sh` tests the board tooling offline (stub `gh`); run it after changing `tools/board/`.
 - Push task code to its task branch `wip/Txx-<slug>` on `origin` and open a draft PR to `claude/hopeful-hawking-njeu3v`;
   only `set-status.sh` commits and `integrator:` commits go to `claude/hopeful-hawking-njeu3v` directly. The integrator
   merges (MCP merge commit, or `--no-ff` locally in a separate worktree, never in the main checkout) only when the

@@ -26,14 +26,16 @@ decision 14 in `planning/README.md` and the flow rules proposed under it (pendin
   owner's machine) the mention notifies nobody; the owner can enable *Settings → Notifications → Include your own
   updates* to get those by email;
 - one **Blocked by T12, T13** comment per blocked task, edited in place when the missing dependencies change and
-  turned into **Ready** when they are all done;
+  turned into **Ready** when they are all done (it is found by the board's own marker at its end, so a note that
+  quotes the marker is never overwritten);
 - the board card in the Status column of the table and the fields **Phase**, **Area** (from `areas.tsv`; the sync
-  warns about tasks without a line), **QA rounds**, **Started** (first `board: Txx -> in progress` commit) and
-  **Finished** (last `board: Txx -> done` commit, only while done; a reopened task loses it, a task back in todo
-  loses Started). Missing fields are created; the options of a single-select field (a new phase, the **Needs owner**
-  column) must be added in the board settings, and the sync names any that are missing. A field of the same name but
-  another type, one that cannot be created and one that refuses a write are skipped with a warning, and so is a card
-  that cannot be added (the next sync tries again): they cannot stop the status sync.
+  warns about tasks without a line), **QA rounds**, **Started** (first `board: Txx -> in progress` or `-> testing`
+  commit: the moves that start work) and **Finished** (last `board: Txx -> done` commit, only while done; a reopened
+  task loses it, a task back in todo loses Started). Missing fields are created; the options of a single-select
+  field (a new phase, the **Needs owner** column) must be added in the board settings, and the sync names any that
+  are missing. A field of the same name but another type, one that cannot be created and one that refuses a write
+  are skipped with a warning, and so is a card that cannot be added (the next sync tries again): they cannot stop the
+  status sync.
 
 The board comes last: issues, labels and comments are synced first, so a board that cannot be read at all (the
 token's `project` scope, a wrong number or owner) leaves them in place and fails the run with a message that says so.
@@ -46,18 +48,25 @@ what), area, QA rounds, start, finish and cycle days, plus the QA rejection rate
 that failed (GitHub pins at most 3 issues) is tried again on every run.
 
 `board.sh ci` is the stop-the-line gate (below). Every command is idempotent: a second run with nothing new makes no
-write. `--dry-run` prints the writes instead of making them (with `GH_TOKEN` it reads the current state and prints
+write. After T15 deletes `planning/` (the commit that deletes the task list is in the history), `sync` and `report`
+exit 0 with a notice instead of failing every later board run; remove `tools/board/` and `board.yml` when the board
+is retired. `--dry-run` prints the writes instead of making them (with `GH_TOKEN` it reads the current state and prints
 only what would change; without it, it reads nothing).
 
 Dependencies come from the heading tail: `(depends on T02, T03–T08)`, `(depends only on T00; ...)`,
 `(depends on everything)`; a task without one inherits its phase heading's `(all depend on T02; ...)`, and any other
-`## ` heading ends the phase. Clause words are read in any case (`(Depends on T01)`). Lists take ids (any case),
-ranges with a hyphen, en or em dash (spaced or not), `..`, `to`, `through` or `thru`, and the separators `,`, `and`,
-`&`, `+`, `/`; any other text in the clause up to `;` or `)` is reported as a warning (`board.sh list` shows them).
-So are a `### Txx` heading that is not a task heading (a hyphen instead of the em dash, `Todo`, `in-progress`: the
-task would be missing from the board and `set-status.sh` would not find it), a tail that names an id without a
-`depends on` clause (`(depend on T01)`, `(after T05)`) and a dependency clause inside the title: a typo must not
-silently drop a dependency or a task.
+`## ` heading ends the phase. Clause words are read in any case (`(Depends on T01)`), and every clause of a tail
+counts (`(depends on T01) (depends on T05)`, `(depends on T01; depends on T05)`); text after a `;` inside the
+parentheses is commentary (`(depends on T01; T05 later)`). Lists take ids (any case), ranges with a hyphen, en or
+em dash (spaced or not), `..`, `to`, `through` or `thru`, and the separators `,`, `and`, `&`, `+`, `/`; any other
+text in the clause up to `;` or `)` is reported as a warning (`board.sh list` shows them). So are a `### Txx`
+heading that is not a task heading (no title, a hyphen instead of the em dash, `Todo`, `in-progress`: the task would
+be missing from the board and `set-status.sh` would not find it), a tail that names an id without a `depends on`
+clause (`(depend on T01)`, `(after T05)`) or after its parentheses (`(depends on T01) after T05`) and a dependency
+clause inside the title: a typo must not silently drop a dependency or a task. Warned about too, because they would
+block a task for good: a dependency on an id that is no task (`T0`, a task not written yet), tasks whose
+dependencies form a cycle (two `(depends on everything)` tasks, or T03 and T04 waiting for each other), and a range
+wider than 1000 ids (a typo such as `T02–T99999`; only its two ends are read, so the parse stays fast).
 
 ## Changing a status
 
@@ -76,7 +85,8 @@ tools/board/set-status.sh T12 testing --trailer "Co-Authored-By: ..." --trailer 
 It works in the main checkout (from any worktree, under a lock):
 
 1. It waits up to `BOARD_WAIT` seconds (default 300, without holding the lock) while the main checkout is in the
-   middle of a merge, rebase, cherry-pick or revert, has unmerged paths, a detached HEAD or uncommitted changes of
+   middle of a merge, squash merge (`SQUASH_MSG` with staged changes), rebase, cherry-pick or revert, has unmerged
+   paths, a detached HEAD, an index that another git process holds (`index.lock`) or uncommitted changes of
    `planning/TASKS.md`, and refuses if that does not clear. Changes of other files stay out of its commits.
 2. It refuses unless the main checkout is on the integration branch (`BOARD_INTEGRATION_BRANCH`, default
    `claude/hopeful-hawking-njeu3v`): the board reads only that branch.
@@ -85,21 +95,31 @@ It works in the main checkout (from any worktree, under a lock):
    Any other local commit that origin does not have (an integrator's merge under test, a commit with a `board:`
    subject that carries code) is refused: the push would publish it. Push such commits yourself when they are ready,
    or merge in a separate worktree (below). Local commits while origin moved too are refused as well ("integrate
-   them first").
+   them first"), and so are local commits that a force push dropped from origin (an earlier value of
+   `origin/<branch>` in its reflog has them, the current one does not): the push would bring them back.
+   `git reset --keep origin/<branch>` drops them if the force push was meant.
 4. It applies the gates, adds the QA, question or answer line right under the heading
    (`QA: 2026-10-17 11:20 UTC: ...`), commits only that file as `board: Txx -> <status>` and pushes. When the push
    loses a race with another push, it undoes its commit, waits a random 0.1 s to 3 s and starts again from step 3
-   (the gates run again on the new state), up to `BOARD_PUSH_TRIES` (default 10) attempts. Any other failure after
-   the first change (a commit refused by signing, a hook or a missing identity; a push that fails; an interrupt)
-   undoes the attempt too and exits non-zero: HEAD, `TASKS.md` and the screenshots go back to where they were, so
-   the shared main checkout never stays dirty for the next caller.
+   (the gates run again on the new state), up to `BOARD_PUSH_TRIES` (default 10) attempts. A push that reports a
+   failure although origin has the commit (a lost reply, even with another session's push on top) counts as done.
+   Any other failure after the first change (a commit refused by signing, a hook or a missing identity; a push that
+   fails; an interrupt, a hangup or a closed pipe, which wait for the running git) undoes the attempt too and exits
+   non-zero: HEAD, `TASKS.md` and the screenshots go back to where they were, so the shared main checkout never stays
+   dirty for the next caller. An undo that cannot get there says so instead of "nothing changed". The board lock is
+   not inherited by git or its hooks, so a background job they leave behind does not hold it.
 
 `--no-push` works offline (no fetch, no push; the gates read the local state, the commit stays local),
 `--dry-run` fetches and prints the diff and the checks (against origin's task list when the checkout is behind) and
-changes nothing. Commits carry no trailers unless given: `--trailer "Key: value"` (repeatable) or `BOARD_TRAILERS`
-(newline-separated lines), for example the attribution lines a session must add to its commits.
+changes nothing. An option's value never starts with `--` (`--qa $EMPTY --dry-run` is refused instead of recording
+the text "--dry-run"; a screenshot named like that goes as `./--name.png`). A note (`--qa`, `--question`, `--answer`)
+is one line: newlines, carriage returns and other control characters become spaces, so a CRLF file read with
+`"$(cat verdict.txt)"` cannot split it into lines of its own; it may have at most 60000 characters (a GitHub comment
+takes 65536: link a longer report instead). Commits carry no trailers unless given: `--trailer "Key: value"`
+(repeatable) or `BOARD_TRAILERS` (newline-separated lines), for example the attribution lines a session must add to
+its commits.
 
-Gates (`--force --reason "why"` overrides them; the commit records what was forced and why):
+Gates (`--force --reason "why"` overrides all four; the commit records what was forced and why):
 
 - **Dependencies:** starting work (`todo` -> `in progress` or `testing`, and `needs owner` -> `in progress` or
   `testing` for a task that had not started before its question) and `done` need every dependency `done`. Moves that
@@ -139,7 +159,10 @@ would change the linked commit.)
 When a run of the `tests` workflow on the integration branch (`claude/hopeful-hawking-njeu3v`, variable
 `INTEGRATION_BRANCH`) fails, the board workflow opens **[CI] The integration branch is red** (label `stop-the-line`)
 with the run link and comments once per further red run with the failed job names. Push runs, the weekly run and
-manual runs all count; pull request runs have their own checks. Cancelled runs change nothing.
+manual runs all count; pull request runs have their own checks. Cancelled runs change nothing. Every completed run
+gets its own `ci` job, one at a time and in order: the job's concurrency group queues them (`queue: max`) instead of
+keeping only the newest pending one, which would drop a run that finishes while two others wait (actionlint 1.7.12
+does not know the key yet; `.github/actionlint.yaml` ignores that one message for `board.yml`).
 
 Each red comment records, hidden, the conclusion of every job of its run. A green run closes the issue only when
 every job is green by its latest record, that is when it ran every job that is still red: a push run skips the e2e
@@ -206,8 +229,10 @@ integrator checks it before merging, and everyone helps to make the branch green
 ## Local use
 
 `board.sh` calls the GitHub API through `gh`; it runs in GitHub Actions or on the owner's machine, not in agent
-sandboxes (it needs bash 4+, gh, git, jq and awk). `set-status.sh` makes no API call; it needs bash 4+, git,
-python3, `flock` (util-linux; on macOS `brew install flock`), `od` and `cmp`, and names a missing one.
+sandboxes (it needs bash 4+, gh, git, jq and awk). The exception is `board.sh list`: it reads only `TASKS.md` and
+`areas.tsv`, makes no API call and needs no token, so agents run it anywhere (bash 4+ and awk). `set-status.sh`
+makes no API call; it needs bash 4+, git, python3, `flock` (util-linux; on macOS `brew install flock`), `od` and
+`cmp`, and names a missing one.
 
 ```bash
 gh auth login --scopes project          # once

@@ -37,4 +37,4 @@ Green: no open `stop-the-line` issue.
 ## Quality
 
 - QA rounds: 2 (1 approved, 1 rejected), rejection rate 50 %.
-- Cycle time (first `in progress` to the last `done`): average 2.5 days over 1 finished task.
+- Cycle time (first `in progress` or `testing` to the last `done`): average 2.5 days over 1 finished task.
