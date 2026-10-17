@@ -229,10 +229,10 @@ final readonly class Queues
         $statuses = explode('|', Attempts::COUNTED);
         $byStatus = Promql::either(
             Promql::andOn(Promql::sum($this->attempts->delta(Attempts::COUNTED, $range), 'queue', 'status'), $queues, 'queue'),
-            '0 * '.Promql::paren(self::perValue($queues, 'status', $statuses)),
+            '0 * '.Promql::paren($this->perValue($queues, 'status', $statuses)),
         );
         $targets[] = Common::rawTarget('C', Promql::binary(
-            Promql::paren(self::perValue($supervised, 'status', $statuses)),
+            Promql::paren($this->perValue($supervised, 'status', $statuses)),
             '*',
             Promql::paren($this->promql->filtered($byStatus, true)),
             on: ['queue', 'status'],
@@ -255,7 +255,7 @@ final readonly class Queues
      *
      * @param  list<string>  $values
      */
-    private static function perValue(string $expr, string $label, array $values): string
+    private function perValue(string $expr, string $label, array $values): string
     {
         return Promql::either(...array_map(static fn (string $value): string => Promql::withLabel($expr, $label, $value), $values));
     }

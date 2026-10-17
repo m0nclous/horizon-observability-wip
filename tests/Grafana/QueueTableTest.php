@@ -105,7 +105,7 @@ it('gives the legacy attempts columns of the Jobs table from one query by status
     $selection = new Selection($promql);
     $jobs = new Jobs(new Common($promql), $promql, $selection, $attempts, new Workers($promql, $selection, '$busy_window'));
     // The rows of the table: the classes that ran, wait or run, and the idle ones (legacy ROWS)
-    $rows = (fn (): string => $this->rows())->call($jobs);
+    $rows = Closure::bind(static fn (Jobs $table): string => $table->rows(), null, Jobs::class)($jobs);
     $by = ['queue', 'job_class'];
     $delta = static fn (string $statuses): string => Promql::sum($attempts->delta($statuses, Promql::RANGE), ...$by);
     $count = static fn (string $statuses): string => $promql->filtered(Promql::either(Promql::andOn(Promql::call('round', $delta($statuses)), $rows, ...$by), '0 * '.$rows), true);
