@@ -1513,7 +1513,7 @@ They read their queues from the workbench Horizon config, use `Random\Randomizer
 
 | Laravel | PHP | Horizon (lowest) | Testbench | Pest / PHPUnit | Larastan (static job only) |
 |---|---|---|---|---|---|
-| 11.23+ | 8.2–8.4 | 5.29.1 (5.22.0 before the phase B floor raise) | 9.5.x (lowest leg; testbench-core 9.6.3) … 9.18 | Pest 3.8+ / PHPUnit 11.5; Pest 4 on PHP ≥ 8.3 | 3.1+ |
+| 11.23+ | 8.2–8.4 | 5.29.1 (5.22.0 before the phase B floor raise) | 9.5.0 (lowest leg; testbench-core 9.5.0) … 9.18 | Pest 3.8+ / PHPUnit 11.5 needs Laravel ≥ 11.39.1 (collision 8.7), so the lowest leg pins Pest `^3.0` and runs Pest 3.0.0 / PHPUnit 11.3.4 on 11.23.0; Pest 4 on PHP ≥ 8.3 | 3.1+ |
 | 12.x | 8.2–8.5 | 5.30.3 | 10.0.0 (needs 12.0.1, so the lowest leg resolves 12.0.1) … 10.12 | Pest 3.8+ on 8.2; Pest 4 on ≥ 8.3 | 3.1+ |
 | 13.x | 8.3–8.5 | 5.44.0 | 11.0.0 … 11.3 | Pest 4.1+ / PHPUnit 12 | 3.9.3+ |
 
@@ -1731,9 +1731,12 @@ tests:
         - { laravel: '11.*', testbench: '^9.5' }
         - { laravel: '12.*', testbench: '^10.0' }
         - { laravel: '13.*', testbench: '^11.0' }
-        - { php: '8.2', laravel: '^11.23', testbench: '^9.5',  stability: prefer-lowest, client: predis,   predis: '^2.0', redis: 'redis:6.2-alpine' }
-        - { php: '8.2', laravel: '^12.0',  testbench: '^10.0', stability: prefer-lowest, client: phpredis, redis: 'redis:6.2-alpine' }
-        - { php: '8.3', laravel: '^13.0',  testbench: '^11.0', stability: prefer-lowest, client: phpredis, redis: 'valkey/valkey:7.2-alpine' }
+        # `floor`: what each prefer-lowest leg must resolve (checked after the resolution). `pest: '^3.0'`: Pest 3.8
+        # needs collision 8.7, which conflicts with Laravel < 11.39.1, so the package's own Pest range would move the
+        # L11 leg to 11.39.1.
+        - { php: '8.2', laravel: '^11.23', testbench: '^9.5',  pest: '^3.0', stability: prefer-lowest, client: predis, predis: '^2.0.2', redis: 'redis:6.2-alpine', floor: 'laravel/framework:11.23.0 laravel/horizon:5.29.1 predis/predis:2.0.2' }
+        - { php: '8.2', laravel: '^12.0',  testbench: '^10.0', stability: prefer-lowest, client: phpredis, redis: 'redis:6.2-alpine', floor: 'laravel/framework:12.0.1 laravel/horizon:5.30.3' }
+        - { php: '8.3', laravel: '^13.0',  testbench: '^11.0', stability: prefer-lowest, client: phpredis, redis: 'valkey/valkey:7.2-alpine', floor: 'laravel/framework:13.0.0 laravel/horizon:5.44.0' }
         - { php: '8.4', laravel: '12.*',   testbench: '^10.0', stability: prefer-stable, client: predis,   predis: '^3.0', redis: 'redis:7.4-alpine' }
         - { php: '8.5', laravel: '13.*',   testbench: '^11.0', stability: prefer-stable, client: predis,   predis: '^3.0', redis: 'valkey/valkey:8-alpine' }
         - { php: '8.4', laravel: '13.*',   testbench: '^11.0', stability: prefer-stable, client: phpredis, redis: 'redis:8-alpine' }
@@ -1743,18 +1746,27 @@ tests:
   steps:
     - actions/checkout@v7
     - shivammathur/setup-php@v2 with extensions: redis, pcntl, posix, pdo_sqlite, mbstring; coverage: none
-    - composer remove --dev --no-update larastan/larastan rector/rector driftingly/rector-laravel laravel/pint ergebnis/composer-normalize phpstan/extension-installer phpstan/phpstan-deprecation-rules
-    - composer require --no-update "laravel/framework:${{ matrix.laravel }}"
-    - composer require --dev --no-update "orchestra/testbench:${{ matrix.testbench }}" ${{ matrix.predis && format('"predis/predis:{0}"', matrix.predis) || '' }}
-    - composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
-    - composer show laravel/framework laravel/horizon orchestra/testbench pestphp/pest predis/predis
+    - name: Resolve the leg
+      env: { COMPOSER_POLICY_ADVISORIES_BLOCK: '0' }   # this step only, see below
+      run: |
+        composer remove --dev --no-update larastan/larastan rector/rector driftingly/rector-laravel laravel/pint ergebnis/composer-normalize phpstan/extension-installer phpstan/phpstan-deprecation-rules
+        composer require --no-update "laravel/framework:${{ matrix.laravel }}"
+        composer require --dev --no-update "orchestra/testbench:${{ matrix.testbench }}" ${{ matrix.pest && format('"pestphp/pest:{0}"', matrix.pest) || '' }} ${{ matrix.predis && format('"predis/predis:{0}"', matrix.predis) || '' }}
+        composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
+    - name: Resolved versions        # prints them, then fails when a prefer-lowest leg missed its floor
+      env: { FLOOR: '${{ matrix.floor }}' }
+      run: |
+        composer show | grep -E '^(laravel/framework|laravel/horizon|orchestra/testbench|pestphp/pest|predis/predis) '
+        for pin in $FLOOR; do [ "$(composer show | awk -v name="${pin%%:*}" '$1 == name { print $2 }')" = "${pin#*:}" ] || exit 1; done
     - vendor/bin/pest --ci --exclude-group=cluster --exclude-group=e2e
 ```
 
-The matrix gives 10 base legs plus 6 targeted legs. The prefer-lowest legs resolve:
-- Laravel 11.39.1 with Horizon 5.29.1, testbench 9.5.0 (core 9.6.3) and Pest 3.8 (Pest 3.8 needs collision 8.7, which conflicts with Laravel < 11.39.1, so 11.23–11.39.0 are covered by the shims' tests and upstream checks only; measured in phase B);
+The matrix gives 10 base legs plus 6 targeted legs. `composer show` takes one package, so the versions step greps one listing. The prefer-lowest legs resolve (T18, CI run 39040463193), and the floor check fails the leg when one of them moves:
+- Laravel 11.23.0 with Horizon 5.29.1, predis 2.0.2, testbench 9.5.0 (core 9.5.0) and Pest 3.0.0 / PHPUnit 11.3.4 (the leg pins Pest `^3.0`: Pest 3.8 needs collision 8.7, which conflicts with Laravel < 11.39.1, so with the package's own Pest range the leg resolved 11.39.1 and left 11.23–11.39.0 to the shims' tests);
 - Laravel 12.0.1 with Horizon 5.30.3;
 - Laravel 13.0.0 with Horizon 5.44.0.
+
+Composer 2.10 (setup-php installs 2.10.3) refuses versions with security advisories: every Laravel 11 release (past its security support) and the oldest 12.x/13.x points. The matrix tests the supported range, so "Resolve the leg" lifts only the advisories policy (`COMPOSER_POLICY_ADVISORIES_BLOCK=0`, in that step only). `COMPOSER_NO_BLOCKING` and the older `COMPOSER_NO_SECURITY_BLOCKING` are rejected: both disable every policy, the malware list included, for all packages the leg installs. The other jobs keep Composer's defaults.
 
 Removing the static tooling is an optimisation: Composer would otherwise pick old versions anyway. It keeps resolution fast and honest.
 
@@ -1764,7 +1776,7 @@ Removing the static tooling is an optimisation: Composer would otherwise pick ol
 |---|---|
 | `cluster` | PHP 8.4, Laravel 13.* stable (≥ 13.20). GitHub services cannot override `command`, so a step runs `docker run -d -p 7000:7000 redis:7.4-alpine redis-server --port 7000 --cluster-enabled yes --save '' --appendonly no`, then `redis-cli -p 7000 CLUSTER ADDSLOTSRANGE 0 16383`. Then `pest --group=cluster` once with `REDIS_CLIENT=phpredis` and once with `predis`. |
 | `static` | PHP 8.4, Laravel 13: `composer validate --strict`, `composer normalize --dry-run`, `pint --test`, `rector --dry-run`, `phpstan analyse --error-format=github` (level 9). |
-| `coverage` | PHP 8.4, Laravel 13, pcov: `pest --coverage --min=85 --exclude-group=cluster --exclude-group=e2e`. |
+| `coverage` | PHP 8.4, Laravel 13, pcov: `pest --coverage --min=85 --exclude-group=cluster --exclude-group=e2e`. Measured 98.0 % in T18 (CI runs 39030156036 and 39040463193), so the 85 % minimum stays as a floor with headroom. |
 | `grafana` | `composer test:grafana`. `pest --group=grafana` writes `build/grafana-rules.yml` (all expressions, macros substituted) and `build/scrape.txt` (seeded exposition). `docker run --rm --entrypoint promtool -v $PWD/build:/w quay.io/prometheus/prometheus:v3.15.0 check rules /w/grafana-rules.yml` and `… check metrics < build/scrape.txt`. Provisioning smoke: `docker compose up -d prometheus grafana`, poll `/api/health`, `GET /api/dashboards/uid/horizon-observability`, assert that `/api/v1/provisioning/alert-rules` has 4 rules, and fail on any provisioning `level=error` log line. |
 | `dist` | `git archive HEAD \| tar -t \| sort` must equal the allowlist: `src/`, `config/`, `routes/`, `resources/`, `composer.json`, `LICENSE`, `README.md`, `CHANGELOG.md`, `UPGRADE.md`. |
 | `e2e` | Schedule and dispatch only. Redis service; `composer build`; two `testbench serve` processes (`:8000`, `:8001`) and Horizon in the background; `docker compose up -d prometheus grafana` with `prometheus.replicas.yml`; then with `prometheus.yml`. `workbench:simulate-load` for about 10 minutes. It compares panel query results between the two topologies (the dedupe gate), runs `node bin/screenshot.mjs` and uploads the PNGs (visual regression of the look). Addendum: also the `docker/grafana/live-probe.json` checks (WP-L2), the `bin/perf.mjs` report on the medium profile (R2.2; non-blocking until WP11) and screenshots for `--live=poll` and `--live=stream` (Q9′ WP11). |
@@ -1819,7 +1831,7 @@ The weekly cron runs the matrix at prefer-stable, which picks up new Laravel, Ho
 
 ### Rationale
 
-- The matrix tests every shim at its oldest point (11.23, in practice 11.39.1 with Horizon 5.29.1, see 8.5; 12.0.1; 13.0), every branching client and server combination (phpredis/predis; Redis 6.2/7.4/8; Valkey 7.2/8; cluster) and every supported PHP × Laravel pair, without a full cartesian product. That is about 17 test jobs.
+- The matrix tests every shim at its oldest point (11.23.0 with Horizon 5.29.1 and predis 2.0.2, see 8.5; 12.0.1; 13.0.0; a floor check fails a leg that misses its point), every branching client and server combination (phpredis/predis; Redis 6.2/7.4/8; Valkey 7.2/8; cluster) and every supported PHP × Laravel pair, without a full cartesian product. That is about 17 test jobs.
 - Golden and contract tests turn "keep the look and behaviour" into executable checks. The docker stack makes screenshots reproducible against the workbench.
 
 ### Rejected alternatives
