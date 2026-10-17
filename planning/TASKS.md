@@ -137,7 +137,24 @@ PHP 8.2 locally; the 11.23/5.22 facts used were checked upstream). What later ta
 
 ## Phase B: parallel work packages (all depend on T02; T10 only on T00)
 
-### T03 WP1 Exposition and access — `in progress`
+Integration: 2026-10-17. Merges f965a54..14782c0 (`--no-ff`, order T03, T05, T04, T07, T06, T08, T09, T11; no
+conflicts, suite green after each), integrator commits 42cc742..f5c42ed plus this TASKS update. Resolved: testbench.yaml
+without `laravel: '@testbench'` (testbench-core 9.x); `Tests\Support\Apps::DEFAULTS` pin the test environment (array
+cache, in-memory DB also for batches and failed jobs, `app.key`), so the suite no longer depends on `composer build`;
+`LogRecorder::channel()`, `RunsWorker --memory=4096`, phpunit `memory_limit` 1G; Horizon floor `^5.29.1` (Laravel
+>= 11.27.0 with Horizon <= 5.29.0 is a fatal `pop()` mismatch, checked on upstream tags), predis dev floor `^2.0.2`;
+config problems logged in the console and on the scrape only (no cache I/O on denied requests, Arch Q2.4);
+`FailureReporter` logs with the `null` store; `DelayedJobStore` uses `QueueInspector::queueKey()` (cluster); the live
+self-metrics only in `AttemptsCollector`; `CircuitBreaker` counts dropped attempts only; the maintenance exception
+names the four lists; repeated `--exclude-group` (a comma list excluded nothing); PROMTOOL in the coverage job; Add
+§C2.4/C2.5, Arch Q6.11 and Appendix D aligned. Gates: Pest 1751 green on phpredis (cluster group and promtool test
+included), 1749 + 2 phpredis-only skips on predis; cluster group 8/8 on both clients (single-node cluster with
+`--cluster-announce-ip 127.0.0.1`); PHPStan 9, Pint, Rector, `composer validate --strict`, `composer normalize
+--dry-run`; `php -l` on 8.2.34 and 8.5.11 over src, config, routes, tests, workbench (293 files); workbench smoke
+(401 without token, scrape 200 and promtool-clean, all five collectors 1, job lists and `/live` 200, Grafana link in
+`/horizon`). Lowest legs: deferred to CI.
+
+### T03 WP1 Exposition and access — `done`
 Arch Q1, Q2.3–2.5, Q9 table. Own text renderer (format 0.0.4, real histograms), exporter with per-collector isolation and
 scrape-timeout budget, self-metrics, `MetricsController`, `AccessPolicy`, `Authorize`/`ForceJson` middleware.
 Addendum (Add §Q9′ WP1): self-metric names `<ns>_exporter_*`; the live self-metrics are read from `meta` (Add §R4.11;
@@ -146,8 +163,14 @@ Acceptance: Arch Q9 WP1 row (golden exposition, promtool-clean, isolation/partia
 rotation, api_token, IPs, callback, maintenance exception; C3, C4, C5-endpoint). Addendum: golden exposition with
 `ho_exporter_*`; the live series are absent until `meta.live_push_at` exists. promtool check:
 `docker run --rm -i --entrypoint promtool quay.io/prometheus/prometheus:v3.15.0 check metrics < tests/Fixtures/exposition/<file>.txt`.
+Done (2026-10-17, 721e34d..75ceb40, merged in f965a54; review 290ca18, 1e5597a, 4b1f4ff, 75ceb40: 4 findings fixed):
+TextFormat 0.0.4 (empty label values omitted, `le` normalised), Exporter isolated and budgeted
+(`X-Prometheus-Scrape-Timeout-Seconds`, `ho_exporter_*`), MetricsController (HEAD skips the scrape), AccessPolicy/
+Authorize/ForceJson (the callback must return `true`; IPs checked before tokens; denials logged at info in-process, no
+cache, DB or Redis work); golden exposition promtool-clean (automated when PROMTOOL is set); C1, C3, C4, C5, C17 named
+tests; lowest legs deferred to CI.
 
-### T04 WP2 Attempts — `in progress`
+### T04 WP2 Attempts — `done`
 Arch Q6.2–6.6, 6.8, 6.10, Q9 table. `AttemptTracker` (WeakMap, RedisJob after JobProcessing only, Laravel 11.23/12/13
 shims), `AttemptStore` (one EVAL per attempt, private short-timeout client, circuit breaker), `CounterResetGuard`,
 `LegacyReadyAt` folded into the EVAL, `HistogramSnapshot`, `AttemptsCollector`, Lua `record_attempt`/`reset_guard`.
@@ -160,33 +183,64 @@ Acceptance: Arch Q9 WP2 row (C2, C6, C11, C18, C19, C20, A01, A05). Addendum: ex
 recorded at `t` is exported by simulated scrapes at `t + 0…135 s` and not after `15(b+10)`); a table test over
 S ∈ {5, 10, 15, 30, 45, 60} s and deviations up to ±7.5 s asserts at least two exporting scrapes (Add §R3.4); ring test
 (N attempts in known buckets give the exact window counts); a disabled live mode writes no ring key.
+Done (2026-10-17, fbe6a19..d618323, merged in 0d87e6d; review a2b3544, 5bd4f7d, d618323: idle classes pruned only when
+the class set is full, `le` independent of `serialize_precision`, legacy-stack test fixes): `record_attempt`/
+`extremes_read`/`reset_guard` Lua, AttemptTracker, AttemptStore, CounterResetGuard, LegacyReadyAt, AttemptsCollector (9
+commands per scrape, plus the live push self-metrics from `meta`); C2 C6 C9 C10 C11 C18 C19 C20 A01 A05 (and C21) tests
+on both clients plus the cluster group; extremes guarantee for S 5–60 s with ±7.5 s; ring writer contract; T04 tests
+green on Laravel 11.39.1 / Horizon 5.29.1 (reviewer, locally); the other lowest legs deferred to CI.
 
-### T05 WP3 Horizon and queue state — `in progress`
+### T05 WP3 Horizon and queue state — `done`
 Arch Q6.3, Q9 table. `HorizonCollector`, `QueueCollector`, `HorizonUrl`, `QueueInspector`/`QueueSnapshot`,
 Lua `queue_state`, readiness parity with `PayloadClock`.
 Addendum (Add §Q9′ WP3, §D′): `queue_state.lua` live mode (ARGV `mode` = `full` or `live`) and `QueueInspector::live()`;
 T12 needs it.
 Acceptance: Arch Q9 WP3 row (C5, C8, C14-metrics, C17) incl. `horizon_info{url,api_path,tts_url}`. Addendum: parity
 test unchanged; live mode scans at most 20 items and 1 MB per queue; reserved pairs only on request.
+Done (2026-10-17, d2d8904..03797fc, merged in efda089; review 47fc972, f654ccb, 03797fc: cluster queues read under the
+framework's hash tag, a 16 MB reserved cap, a budget check between the two Horizon reads): `queue_state.lua` (full and
+live), QueueInspector (`supports()`, `queueKey()`)/QueueSnapshot, HorizonCollector, QueueCollector, HorizonUrl
+(`apiPath()`; keeps the path of `app.url`); C5, C8, C9-queues, C12, C14-metrics, C17 and C19 parity tests on both
+clients and the cluster group, T05 tests also on Redis 6.2; lowest legs deferred to CI.
 
-### T06 WP4 Job lists — `in progress`
+### T06 WP4 Job lists — `done`
 Arch Q2, Q9 table. `JobListController`, `JobListService`, `JobRows`, `ExceptionSummary`, `Horizon/JobStore`,
 `Queues/DelayedJobStore`, Lua `job_details`/`delayed_jobs`.
 Acceptance: Arch Q9 WP4 row (JSON fields/units identical to legacy, C13 empty filter = 0 Redis commands, C14, 422s).
 The legacy code is not runnable: write the expected JSON snapshots by hand from
 `legacy/src/Http/Resources/Horizon{Pending,Completed,Failed,Delayed}JobResource.php` and the Arch Q2.1 field table.
+Done (2026-10-17, 2f31ca5..4108b88, merged in c7c9992; review 04e12ee, 06eb61b, 4108b88: 4 findings fixed): job lists
+with pilot-identical JSON (hand-written snapshots in `tests/Fixtures/job-lists`), bounded Lua-assisted scans (at most 20
+calls; delayed calls at most 8 MB), a Redis failure answers 503 `Job list unavailable.`, the `class` exceptions mode
+shows a class name only; C4, C13, C14 named tests (mutation-checked); integration: the delayed list reads the
+cluster-aware key (7cd636b); lowest legs deferred to CI.
 
-### T07 WP5 Batches — `in progress`
+### T07 WP5 Batches — `done`
 Arch Q6.7, Q9 table. `BatchKind`, `BatchReader` (two bounded queries), `BatchLinks`, `BatchesCollector`.
 Acceptance: Arch Q9 WP5 row (C1, C9-batches, C15; DynamoDB/missing table detection).
+Done (2026-10-17, b078d6f..20f0923, merged in 967c517; review c9ad397, cfc9172, 20f0923: the detection memo expires 10
+minutes after the check, the link read is capped at the 10 000 newest, phpredis error replies fail like predis):
+BatchKind (hex tokens, hook), BatchReader (cached detection, two bounded queries with `LIMIT 5000`), BatchLinks (memo,
+breaker, hourly prune, one `ZRANGE`), BatchesCollector (100 kinds + `(other)`, 200/2000 batch caps, newest batch per
+(kind, name)); C1 "dynamodb driver skipped", C9 CapsTest, C15 BoundedQueryTest; lowest legs deferred to CI.
 
-### T08 WP6 Job-class discovery — `in progress`
+### T08 WP6 Job-class discovery — `done`
 Arch Q6.9, Q9 table. `Discovery/*`, `JobClassesCollector`, `CacheCommand`/`ClearCommand`, workbench discovery fixtures.
 Acceptance: Arch Q9 WP6 row (C22; `optimize` hook iff Laravel >= 11.27.1).
+Done (2026-10-17, afefdab..d4270da, merged in cf0a6f6; review 44efa6a, 68dab78, d4270da: a 512 KiB prefilter cap,
+classes without extends/implements never loaded, a scan marker against fatal-looping discovery): token-prefiltered
+discovery (never includes helpers, misnamed or include/require files; Composer `findFile` guard; `__invoke` accepted),
+`bootstrap/cache` file + 1 h runtime cache, `queue_job_classes` collector, cache/clear with the `optimize` hook iff
+>= 11.27.1; C22 tests (JobClassFinderTest "functions file never included", CacheCommandTest); integrator-request afefdab
+accepted (the ArchTest exemption narrowed to the two abstract fixtures in 9f23d67); lowest legs deferred to CI.
 
-### T09 WP7 Horizon menu link — `in progress`
+### T09 WP7 Horizon menu link — `done`
 Arch Q7, Q9 table. `InjectGrafanaLink` middleware + `menu-link.blade.php`.
 Acceptance: link right after "Dashboard" on Horizon 5.22 … latest; absent without URL; JSON untouched (C16 rendering).
+Done (2026-10-17, e71d41b, b9c8d10, merged in 9f2c308; review: 0 defects): InjectGrafanaLink + `menu-link.blade.php`; the
+link sits right after "Dashboard" in the real `GET /horizon` in both provider orders, checked on Horizon 5.22.0, 5.44.0
+and 5.50.1 (the sidebar is identical in all 71 tags 5.22.0–5.50.1); absent without a valid URL or when disabled; the
+JSON API is byte-identical; missing markers leave the page untouched (C16); full lowest-leg suite deferred to CI.
 
 ### T10 WP8A Grafana golden port — `done` (depends only on T00; start first, it is on the critical path)
 Arch Q5.1, 5.6 (M1, M2), Q9 table. Port `legacy/grafana/generate_queues_dashboard.py` to PHP under `src/Grafana/**`
@@ -198,7 +252,7 @@ The Python reference reproduces the golden: `python3 -I legacy/grafana/generate_
 Progress (2026-10-17, f8bd16d): M1 byte-identical (sha256 equals the Python output), M2 `===` the parsed YAML; seams in `DashboardOptions` (live/job/dedupe rejected until T13); dead `STATUS_EXPR`/`batches_table` not ported; lowest legs: deferred to CI.
 Review (2026-10-17, 3b430d6): `Json` floats now exactly Python `repr()` and independent of the `precision` ini; every selector via `Promql::selector()` (T13 job/dedupe seam); gates re-run, also on PHP 8.2.34.
 
-### T11 WP9 Dev stack, CI, load simulation — `in progress`
+### T11 WP9 Dev stack, CI, load simulation — `done`
 Arch Q8.2–8.5, Q9 table. `docker-compose.yml` (Redis, Prometheus with remote-write receiver, Grafana with Infinity +
 Business Text plugins and provisioning, `GRAFANA_IMAGE` switch for **12.4.13 / 13.2.4**), `docker/**`, `.github/**`
 (matrix PHP × Laravel 11/12/13 × lowest/stable × phpredis/predis × Redis/Valkey + cluster leg; static, grafana, dist,
@@ -224,6 +278,13 @@ with the token read from `docker/grafana/live-token` (usable once T12 lands); th
 Acceptance: Arch Q9 WP9 row; `docker compose up` provisions Grafana 12 and 13 without errors. Addendum:
 `bin/perf.mjs capture/replay/report` reproduces the Add §R2.1 legacy row within ±25 % on the reference profile;
 `bootstrap-live.sh` is idempotent.
+Done (2026-10-17, c7f9056..3374891, merged in 14782c0; review 10b8d4f, cb670ba, 3374891: 6 findings fixed, among them
+loopback-only ports, a per-event concurrency group, PHP 8.5 and 128M portability): docker-compose dev stack (Grafana
+12.4.13 and 13.2.4 provision cleanly; Prometheus target up with bearer auth at 10 s; app image with
+`variables_order=EGPCS`), CI (16 legs, cluster, static, coverage, grafana, dist, weekly e2e; release.yml),
+`workbench:simulate-load` (C25 tests), perf profile (SyntheticModel byte-identical; the R2.1 deterministic figures
+reproduce exactly, wall times +12–30 % on the shared host), `bootstrap-live.sh` idempotent; integrator-request 1739346
+(normalized composer.json) accepted; the coverage threshold (85 %) was not measured locally.
 
 ### T12 WP-L1 + WP-L2 Live backend — `todo` (depends on T02, T03, T04, T05, T11)
 Add §R4, §Q9′. One task: WP-L1, then WP-L2. Live snapshot service, `GET {base}/live` controller with ~1 s stampede-safe
@@ -249,6 +310,14 @@ pushes within 7 s. SIGTERM releases the lock. `--once` and `--max-time` work. e2
 13.2.4 with `docker/grafana/live-probe.json` built from the Add §R4.8 panel JSON (not with T13 output): poll and stream
 tiles show live values, stream tiles update at least every 2 s, and no duplicate fields appear across 3 dashboard
 refreshes.
+Notes from phase B (2026-10-17): the ring fields are `conn␟queue␟status` with the AttemptStatus values, TTL 180 from
+`AttemptRing::ttl()`, written by `record_attempt.lua` and untouched by the reset guard (T04); call
+`QueueInspector::supports()` before `live()` (it throws InvalidArgumentException or UnsupportedTopology otherwise) and
+build keys with `queueKey()` (cluster hash tag, as DelayedJobStore does); BatchLinks reads at most the 10 000 newest
+links and throws on error replies on both clients; the live self-metrics are exported by AttemptsCollector from `meta`
+(both absent until `live_push_at` exists; the reset guard `HDEL`s `live_push_failures` on a restore); the compose
+`stream` service is ready; LiveScopeTest's batch case is in the `redis` group; Laravel 13.26+ `Queue::forward()` makes a
+forwarded queue look empty to every reader (T05 review).
 
 ## Phase C: sequential tail
 
@@ -287,6 +356,13 @@ Before deleting `tests/Fixtures/grafana/legacy/*`, freeze the legacy layout proj
 Acceptance: Arch Q9 WP8B row and the Add §Q9′ WP8B, WP8C and WP8D rows; performance budget met; look unchanged vs
 `planning/baseline/` with `--live=off`; the poll and stream renders deviate only as listed in Add §R4.1 (pending owner
 acceptance, README decision 9).
+Notes from phase B (2026-10-17): `JobRows::fields()` is unchanged and every column of the Infinity panels #18–#22
+exists in the rows (T06); docker-compose.yml has three `# T13:` mounts to switch to `resources/grafana/**`, then delete
+the placeholder provisioning `docker/grafana/provisioning/{datasources/horizon-observability.yaml,dashboards}` (the CI
+jobs read the uid from the mounted file); write `build/grafana-rules.yml` and use `->group('grafana')` /
+`->group('e2e')` so the CI jobs pick them up (T11); the pilot's horizon-failures rule logs a no-data template error that
+T13's rules replace; TextFormat omits empty label values (`horizon_info{tts_url}` is absent without TTS); the batch kind
+`(other)` matches no links as a filter.
 
 ### T14 WP10 Operations commands — `todo` (depends on T03–T09, T12)
 Arch Q7, Q9 table. `install`, `check`, `flush` commands, `Support/Diagnostics`, `about` integration.
@@ -308,6 +384,12 @@ Redis queue, refuses in production, and is safe to run twice. `check` prints one
 Acceptance additions: a scripted e2e (`tests/e2e/first-dashboard.sh`, weekly CI) starting from `composer create-project
 laravel/laravel` + Horizon reaches a dashboard with non-empty Overview tiles in <= 5 minutes using only the README quick
 start commands; `install` re-run is a no-op; `--docker` output passes `docker compose config`.
+Notes from phase B (2026-10-17): `AccessPolicy::mode()` strings (Add §C2.4); `BatchReader::driver()`,
+`connectionName()`, `table()` and `available()` (throws when the database cannot be reached); `JobClassCache::generatedAt()`;
+the dry run can parse `exporter_collector_success`/`_duration_seconds` from `Exporter::scrape()` (which also logs config
+problems); report whether the Grafana link is active (valid URL and the middleware in `horizon.middleware`, T09);
+ServiceProviderTest "runs the other command stubs successfully" still runs install, check and flush: adapt it when they
+become real (T08 removed cache and clear).
 
 ### T15 WP11 Integration, docs, release — `todo` (depends on everything)
 README (English: install, config, Prometheus scrape job at 10 s, Grafana 12/13 setup, live modes, security), UPGRADE.md
@@ -325,3 +407,14 @@ else (validated by the T14 e2e script and by a cold-read review of the README by
 Stop and ask the owner before the office dry run, pushing any tag, Packagist registration and the repository transfer.
 When deleting `legacy/` and `planning/`, rewrite CLAUDE.md to contributor conventions only (no planning references) and
 remove `/legacy` and `/planning` from `.gitattributes`.
+Notes from phase B (2026-10-17) for the README: indexes on `job_batches(created_at)`, `(finished_at)`, `(cancelled_at)`
+and scheduling `queue:prune-batches`; the 10 000-link read cap and that `(other)` cannot be a filter (T07); narrow
+`job_class_paths` when `horizon-observability:cache` (and so `optimize`) dies on an unloadable class, and the runtime
+cache can be up to 1 h stale after a deploy without `cache` (T08); re-cache routes after changing the Grafana URL on
+Horizon < 5.45, and run `config:clear` after `composer remove` (T09); Horizon's `next` (6.x) has no Blade sidebar, so the
+link is silently absent there (T09); Laravel 13.26+ `Queue::forward()` (T05); the dev loop, the perf profile
+(`docker/perf/README.md`) and the `variables_order` note (T11); the Horizon floor `^5.29.1`. For the full matrix: the L11
+prefer-lowest leg resolves Laravel 11.39.1 (Pest 3.8 needs collision 8.7), so 11.23–11.39.0 are covered by the shim
+tests only; the 85 % coverage threshold has not been measured yet. Residual risks (T04): on 13.33+ with
+`killOnTimeout=false` a SIGALRM right after the record `EVAL` opens the breaker for 30 s; predis plus a ready_at or
+batch-link write interrupted by SIGALRM can desync the private client.
