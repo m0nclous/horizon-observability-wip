@@ -39,9 +39,9 @@ use Throwable;
  *   as a dropped attempt: a link is refreshed by the next dispatch anyway.
  * - Nothing ever reaches the dispatching code: every failure is logged (throttled) and swallowed.
  *
- * **Reading**: links seen during the last {@see self::TTL_SECONDS} (7 days), with one `ZRANGE`. The batches collector
- * also removes older ones once per scrape ({@see self::prune()}); reads ignore them either way. Reads use no breaker;
- * they fail visibly.
+ * **Reading**: links seen during the last {@see self::TTL_SECONDS} (7 days), at most the {@see self::MAX_LINKS} most
+ * recently seen, with one `ZRANGE`. The batches collector also removes older ones once per scrape
+ * ({@see self::prune()}); reads ignore them either way. Reads use no breaker; they fail visibly.
  *
  * @internal
  */
@@ -61,6 +61,12 @@ final class BatchLinks
      * Entries of each per-process memo (batch kinds by id, write times by link); a full memo starts over.
      */
     public const MEMO_LIMIT = 1000;
+
+    /**
+     * Links read at most, the most recently seen: a kind hook that yields a kind per batch cannot make a read (once
+     * per scrape, job-list request and live snapshot with a Batch filter) grow with the batches of a week.
+     */
+    public const MAX_LINKS = 10000;
 
     /**
      * @var array<string, string> batch id => kind
@@ -181,11 +187,12 @@ final class BatchLinks
             return ['queues' => [], 'jobs' => []];
         }
 
+        $wanted = array_fill_keys($kinds, true);
         $queues = [];
         $jobs = [];
 
         foreach ($this->all() as $link) {
-            if (in_array($link->kind, $kinds, true)) {
+            if (isset($wanted[$link->kind])) {
                 $queues[$link->queue] = true;
                 $jobs[$link->jobClass] = true;
             }
@@ -201,7 +208,8 @@ final class BatchLinks
 
     /**
      * Links seen since `$now - 7 days` with the time they were last seen, sorted by link. One `ZRANGE ... WITHSCORES`
-     * of the whole set, which the pruning keeps to about 7 days of links.
+     * of the {@see self::MAX_LINKS} highest scores (ranks `-MAX_LINKS` to `-1`), from a set the pruning keeps to about
+     * 7 days of links.
      *
      * @return list<array{link: BatchLink, seenAt: int}>
      */
@@ -209,7 +217,12 @@ final class BatchLinks
     {
         $storage = $this->storage();
         // phpredis takes the WITHSCORES flag as a bool, predis as the modifier; both answer member => score.
-        $reply = $storage->command('zrange', [$this->keys()->batchLinks(), 0, -1, $storage instanceof PhpRedisConnection ? true : 'WITHSCORES']);
+        $reply = $storage->command('zrange', [
+            $this->keys()->batchLinks(),
+            -self::MAX_LINKS,
+            -1,
+            $storage instanceof PhpRedisConnection ? true : 'WITHSCORES',
+        ]);
         $since = $now->getTimestamp() - self::TTL_SECONDS;
         $entries = [];
 

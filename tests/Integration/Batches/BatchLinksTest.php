@@ -276,13 +276,41 @@ describe('reading', function (): void {
         batchLinksTestSeed(Keys::field('import', 'other', 'slow', 'App\\Jobs\\A'), $now);
         batchLinksTestSeed(Keys::field('export', 'redis', 'mail', 'App\\Jobs\\C'), $now);
         batchLinksTestSeed(Keys::field('stale', 'redis', 'sms', 'App\\Jobs\\D'), $now - BatchLinks::TTL_SECONDS - 1);
+        // A hook may return digits only.
+        batchLinksTestSeed(Keys::field('42', 'redis', 'numbers', 'App\\Jobs\\N'), $now);
 
         $links = app(BatchLinks::class);
 
         expect($links->forKinds(['import']))->toBe(['queues' => ['default', 'slow'], 'jobs' => ['App\\Jobs\\A', 'App\\Jobs\\B']])
+            ->and($links->forKinds(['42']))->toBe(['queues' => ['numbers'], 'jobs' => ['App\\Jobs\\N']])
             ->and($links->forKinds(['import', 'export']))->toBe(['queues' => ['default', 'mail', 'slow'], 'jobs' => ['App\\Jobs\\A', 'App\\Jobs\\B', 'App\\Jobs\\C']])
             ->and($links->forKinds(['stale']))->toBe(['queues' => [], 'jobs' => []])
             ->and($links->forKinds(['missing']))->toBe(['queues' => [], 'jobs' => []]);
+    });
+
+    it('reads at most the 10 000 most recently seen links', function (): void {
+        // A kind hook that yields a kind per batch must not make every read grow with a week of batches.
+        $now = BATCH_LINKS_TEST_NOW;
+        $members = [];
+
+        foreach (range(0, BatchLinks::MAX_LINKS) as $i) {
+            $members[Keys::field('kind-'.$i, 'redis', 'default', 'X')] = $now - BatchLinks::MAX_LINKS + $i;
+        }
+
+        foreach (array_chunk($members, 1000, true) as $chunk) {
+            RedisKeys::client()->zadd(TestCase::redisPrefix().'horizon:'.(new Keys)->batchLinks(), $chunk);
+        }
+
+        $commands = RedisCommands::start(app());
+        $kinds = array_map(
+            static fn (array $entry): string => $entry['link']->kind,
+            app(BatchLinks::class)->recent(CarbonImmutable::createFromTimestamp($now)),
+        );
+
+        expect($kinds)->toHaveCount(BatchLinks::MAX_LINKS)
+            ->and($kinds)->not->toContain('kind-0')
+            ->and($kinds)->toContain('kind-1', 'kind-'.BatchLinks::MAX_LINKS)
+            ->and($commands->names(RedisClients::STORAGE))->toBe(['ZRANGE']);
     });
 
     it('answers an empty kind list without a Redis command', function (): void {
