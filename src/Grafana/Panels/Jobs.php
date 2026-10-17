@@ -52,7 +52,7 @@ final readonly class Jobs
      */
     public function pendingChart(int $y): array
     {
-        $pending = $this->promql->metric('queue_jobs_pending');
+        $pending = $this->promql->selector('queue_jobs_pending');
         $pendingMax = Promql::either(
             Promql::sum(Promql::range('max_over_time', $pending, Promql::INTERVAL), ...self::BY_JOB),
             Promql::sum($pending, ...self::BY_JOB),
@@ -77,7 +77,7 @@ final readonly class Jobs
                 // zero only while its metrics are scraped: without metrics "No data", not zero.
                 $this->common->target(
                     'B',
-                    Promql::sum($pendingMax).' or 0 * '.Promql::group($this->promql->metric('queue_pending_jobs')),
+                    Promql::sum($pendingMax).' or 0 * '.Promql::group($this->promql->selector('queue_pending_jobs')),
                     instant: false,
                     legend: 'Total',
                 ),
@@ -141,25 +141,29 @@ final readonly class Jobs
     {
         $by = self::BY_JOB;
         $rows = $this->rows();
-        $duration = $this->promql->metric('queue_job_duration_seconds');
-        $durationCount = Promql::sum(Promql::range('increase', $duration.'_count', Promql::RANGE), ...$by);
-        $max = Promql::max(Promql::range('max_over_time', $this->promql->metric('queue_job_duration_max_seconds'), Promql::RANGE), ...$by);
+        // Increase of a duration histogram series in the period, per class
+        $durationIncrease = fn (string $series, string ...$labels): string => Promql::sum(
+            Promql::range('increase', $this->promql->selector('queue_job_duration_seconds_'.$series), Promql::RANGE),
+            ...$labels,
+        );
+        $durationCount = $durationIncrease('count', ...$by);
+        $max = Promql::max(Promql::range('max_over_time', $this->promql->selector('queue_job_duration_max_seconds'), Promql::RANGE), ...$by);
         // Bucket estimates interpolate inside a bucket and can exceed the exact maximum, so the table caps p95
         // at the maximum. Without a maximum (attempts before the metric existed) the estimate stays as is.
         $p95 = Promql::paren(Promql::andOn(
-            Promql::call('histogram_quantile', '0.95', Promql::sum(Promql::range('increase', $duration.'_bucket', Promql::RANGE), 'le', ...$by)),
+            Promql::call('histogram_quantile', '0.95', $durationIncrease('bucket', 'le', ...$by)),
             Promql::paren($durationCount.' > 0'),
             ...$by,
         ));
-        $pending = Promql::sum($this->promql->metric('queue_jobs_pending'), ...$by).' or 0 * '.$rows;
+        $pending = Promql::sum($this->promql->selector('queue_jobs_pending'), ...$by).' or 0 * '.$rows;
 
         $targets = [
             'A' => $pending,
             'B' => $this->count(Attempts::FAILED),
             'C' => $this->count(Attempts::RETRIED),
             'D' => $this->attemptsOf(Attempts::COMPLETED).' / '.Promql::paren($this->attemptsOf(Attempts::FINISHED).' > 0'),
-            'E' => Promql::sum($this->promql->metric('queue_jobs_reserved'), ...$by).' or 0 * '.$rows,
-            'F' => Promql::sum(Promql::range('increase', $duration.'_sum', Promql::RANGE), ...$by).' / '.Promql::paren($durationCount.' > 0'),
+            'E' => Promql::sum($this->promql->selector('queue_jobs_reserved'), ...$by).' or 0 * '.$rows,
+            'F' => $durationIncrease('sum', ...$by).' / '.Promql::paren($durationCount.' > 0'),
             'G' => Promql::either(
                 Promql::orOn(
                     Promql::paren(Promql::binary($p95, '<=', $max, on: $by)),
@@ -169,7 +173,7 @@ final readonly class Jobs
                 $p95,
             ),
             'H' => $this->count(Attempts::TIMED_OUT),
-            'I' => Promql::min(Promql::range('min_over_time', $this->promql->metric('queue_job_duration_min_seconds'), Promql::RANGE), ...$by),
+            'I' => Promql::min(Promql::range('min_over_time', $this->promql->selector('queue_job_duration_min_seconds'), Promql::RANGE), ...$by),
             'J' => $max,
             // A stub row of dashes without jobs: otherwise an empty period shows only headers, without the Job
             // and Queue columns
@@ -243,12 +247,12 @@ final readonly class Jobs
     private function rows(): string
     {
         $by = self::BY_JOB;
-        $attempts = $this->promql->metric('queue_jobs_total');
-        $classes = $this->promql->metric('queue_job_classes');
+        $attempts = $this->promql->selector('queue_jobs_total');
+        $classes = $this->promql->selector('queue_job_classes');
 
         $active = Promql::either(
-            Promql::group($this->promql->metric('queue_jobs_pending'), ...$by),
-            Promql::group($this->promql->metric('queue_jobs_reserved'), ...$by),
+            Promql::group($this->promql->selector('queue_jobs_pending'), ...$by),
+            Promql::group($this->promql->selector('queue_jobs_reserved'), ...$by),
             Promql::group(Promql::range('increase', $attempts, Promql::RANGE).' > 0', ...$by),
         );
         $idle = Promql::andOn(Promql::group($attempts, ...$by), Promql::group($classes, 'job_class'), 'job_class');

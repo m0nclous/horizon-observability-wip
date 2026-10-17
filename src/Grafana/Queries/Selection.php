@@ -34,7 +34,7 @@ final readonly class Selection
      */
     public function queues(): string
     {
-        return Promql::group($this->promql->metric('queue_pending_jobs'), 'queue');
+        return Promql::group($this->promql->selector('queue_pending_jobs'), 'queue');
     }
 
     /**
@@ -42,7 +42,7 @@ final readonly class Selection
      */
     public function zeroIfMetrics(): string
     {
-        return 'on () 0 * '.Promql::group($this->promql->metric('horizon_status'));
+        return 'on () 0 * '.Promql::group($this->promql->selector('horizon_status'));
     }
 
     /**

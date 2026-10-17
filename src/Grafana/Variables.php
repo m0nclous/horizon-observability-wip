@@ -79,7 +79,7 @@ final readonly class Variables
     private function supervisorQuery(): string
     {
         return Promql::call('query_result', Promql::group(
-            Promql::range('last_over_time', $this->promql->metric('horizon_supervisor_processes'), self::KNOWN_FOR),
+            Promql::range('last_over_time', $this->promql->selector('horizon_supervisor_processes'), self::KNOWN_FOR),
             'supervisor',
         ));
     }
@@ -90,7 +90,7 @@ final readonly class Variables
      */
     private function queueQuery(): string
     {
-        $queues = Promql::group($this->promql->metric('queue_pending_jobs'), 'queue');
+        $queues = Promql::group($this->promql->selector('queue_pending_jobs'), 'queue');
         $supervised = fn (string ...$matchers): string => Promql::group(
             Promql::range('last_over_time', $this->promql->selector('horizon_supervisor_processes', ...$matchers), self::KNOWN_FOR),
             'queue',
@@ -118,7 +118,7 @@ final readonly class Variables
         $seen = Promql::group(Promql::vector('', $families, Promql::re('queue', '$queue')), 'queue', 'job_class');
         $neverRan = Promql::withLabel(
             Promql::unlessOn(
-                Promql::group($this->promql->metric('queue_job_classes'), 'job_class'),
+                Promql::group($this->promql->selector('queue_job_classes'), 'job_class'),
                 Promql::group(Promql::vector('', $families), 'job_class'),
                 'job_class',
             ),
@@ -154,13 +154,13 @@ final readonly class Variables
         ), 'supervisor');
         $processes = fn (string $label, string $family): string => Promql::countValues(
             $label,
-            Promql::max($this->promql->metric($family), 'supervisor'),
+            Promql::max($this->promql->selector($family), 'supervisor'),
             'supervisor',
         );
         $facts = Promql::binary(
             Promql::binary($processes('min', 'horizon_supervisor_min_processes'), '*', $processes('max', 'horizon_supervisor_max_processes'), on: ['supervisor'], groupLeft: ['max']),
             '*',
-            $this->promql->metric('horizon_supervisor_info'),
+            $this->promql->selector('horizon_supervisor_info'),
             on: ['supervisor'],
             groupLeft: ['balance', 'connection'],
         );
@@ -196,7 +196,7 @@ final readonly class Variables
     private function batchTitleQuery(): string
     {
         $kinds = $this->batches->selectedKinds();
-        $info = $this->promql->metric('queue_batch_info');
+        $info = $this->promql->selector('queue_batch_info');
         $dot = ' '.Glyph::DOT.' ';
         $title = Promql::labelReplace(
             Promql::labelJoin(Promql::andOn($info, $kinds, 'batch'), 'display', "\t", 'batch', 'queue', 'connection'),
@@ -277,7 +277,7 @@ final readonly class Variables
     private function info(string $name, string $label): array
     {
         $query = Promql::call('query_result', Promql::group(
-            Promql::range('last_over_time', $this->promql->metric('horizon_info'), self::INFO_LOOKBACK),
+            Promql::range('last_over_time', $this->promql->selector('horizon_info'), self::INFO_LOOKBACK),
             $label,
         ));
 

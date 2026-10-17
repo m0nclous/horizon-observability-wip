@@ -30,9 +30,9 @@ final readonly class Waits
     public function ratio(): string
     {
         return Promql::binary(
-            Promql::max($this->promql->metric('queue_oldest_pending_job_age'), 'queue'),
+            Promql::max($this->promql->selector('queue_oldest_pending_job_age'), 'queue'),
             '/',
-            Promql::max($this->promql->metric('horizon_wait_threshold_seconds'), 'queue'),
+            Promql::max($this->promql->selector('horizon_wait_threshold_seconds'), 'queue'),
             on: ['queue'],
         );
     }
@@ -69,7 +69,7 @@ final readonly class Waits
     public function worstAge(): string
     {
         $age = Promql::andOn(
-            Promql::max($this->promql->metric('queue_oldest_pending_job_age'), 'queue'),
+            Promql::max($this->promql->selector('queue_oldest_pending_job_age'), 'queue'),
             Promql::topk(1, $this->ratio()),
             'queue',
         );
@@ -85,7 +85,7 @@ final readonly class Waits
         $queues = $this->selection->queues();
 
         return Promql::paren(Promql::either(
-            Promql::andOn(Promql::max($this->promql->metric('queue_oldest_pending_job_age'), 'queue'), $queues, 'queue'),
+            Promql::andOn(Promql::max($this->promql->selector('queue_oldest_pending_job_age'), 'queue'), $queues, 'queue'),
             '0 * '.$queues,
         ));
     }

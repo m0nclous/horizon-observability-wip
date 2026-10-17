@@ -41,7 +41,7 @@ final readonly class AlertRulesBuilder
     {
         $dashboard = (new DashboardBuilder($this->options))->build();
         $promql = new Promql($this->options->metricPrefix);
-        $status = $promql->metric('horizon_status');
+        $status = $promql->selector('horizon_status');
         $window = Thresholds::FAILURE_WINDOW_MINUTES.'m';
         $attemptsIn = fn (string $statuses): string => Promql::sum(
             Promql::range('increase', $promql->selector('queue_jobs_total', Promql::re('status', $statuses)), $window),
@@ -57,7 +57,7 @@ final readonly class AlertRulesBuilder
                 Promql::count($status),
                 $this->below(1),
                 noData: 'Alerting',
-                summary: 'Prometheus has no '.$status.', /metrics of the app is not scraped',
+                summary: 'Prometheus has no '.$promql->metric('horizon_status').', /metrics of the app is not scraped',
                 panelId: PanelRegistry::idOf($dashboard, 'Horizon'),
             ),
             // As the red Horizon tile: paused or not running. Without metrics No queue metrics fires instead.

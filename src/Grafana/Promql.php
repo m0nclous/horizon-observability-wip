@@ -12,11 +12,13 @@ namespace DF\HorizonObservability\Grafana;
  * so the dashboard can be composed from small named parts instead of long literal strings. Expressions are
  * passed as PromQL text; label values, replacements and regexes as plain values, which {@see quote()} escapes.
  *
- * An instance knows the metric prefix ({@see metric()}, {@see selector()}) and applies the dashboard filters
- * to finished expressions ({@see filtered()}).
+ * An instance knows the metric prefix and applies the dashboard filters to finished expressions
+ * ({@see filtered()}). Every vector selector of a package family is written by {@see selector()}; {@see metric()}
+ * gives the bare name only where a name is needed as text (a `__name__` regex, an alert summary).
  *
  * Seams for WP8B: the job scope matcher and the replica dedupe wrappers (Arch Q5.6 steps 4 and 10) belong in
- * {@see selector()} and {@see filtered()}; the legacy profile has neither.
+ * {@see selector()}, the one place every package selector comes from, and in {@see filtered()}; the legacy
+ * profile has neither.
  *
  * @internal
  */
@@ -85,7 +87,8 @@ final readonly class Promql
     }
 
     /**
-     * The full metric name of a family, e.g. `queue_jobs_total` -> `office_queue_jobs_total`.
+     * The full metric name of a family, e.g. `queue_jobs_total` -> `office_queue_jobs_total`. Use
+     * {@see selector()} for a vector selector.
      */
     public function metric(string $family): string
     {
@@ -93,7 +96,8 @@ final readonly class Promql
     }
 
     /**
-     * A selector of a package family: `office_queue_jobs_total{status=~"failed"}`.
+     * A vector selector of a package family: `office_queue_jobs_total{status=~"failed"}`, or the bare name
+     * without matchers.
      */
     public function selector(string $family, string ...$matchers): string
     {

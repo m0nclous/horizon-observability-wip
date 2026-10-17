@@ -35,8 +35,8 @@ final readonly class BatchState
      */
     public function inRange(): string
     {
-        $closed = $this->last($this->promql->metric('queue_batch_closed_timestamp_seconds'));
-        $created = $this->last($this->promql->metric('queue_batch_created_timestamp_seconds'));
+        $closed = $this->last($this->promql->selector('queue_batch_closed_timestamp_seconds'));
+        $created = $this->last($this->promql->selector('queue_batch_created_timestamp_seconds'));
 
         return Promql::paren(Promql::either(
             Promql::group($closed.' >= '.Promql::FROM_SECONDS, 'batch', 'name'),
@@ -67,7 +67,7 @@ final readonly class BatchState
      */
     public function classes(): string
     {
-        return Promql::group($this->promql->metric('queue_batch_job_classes'), 'batch', 'queue', 'job_class');
+        return Promql::group($this->promql->selector('queue_batch_job_classes'), 'batch', 'queue', 'job_class');
     }
 
     /**

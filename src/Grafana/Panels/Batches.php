@@ -58,17 +58,17 @@ final readonly class Batches
         ));
 
         $targets = [
-            $this->common->target('A', $this->batches->selectedKindsOrZero(Promql::sum($this->promql->metric('queue_batches_running'), 'batch')), format: 'table', jobFilter: false),
+            $this->common->target('A', $this->batches->selectedKindsOrZero(Promql::sum($this->promql->selector('queue_batches_running'), 'batch')), format: 'table', jobFilter: false),
             $this->common->target('B', $progress, format: 'table', jobFilter: false),
             // Waiting: Laravel counts failed jobs as pending
             $this->common->target('C', $this->batches->selectedKindsOrZero(Promql::call('clamp_min', $pending.' - '.$failed, '0')), format: 'table', jobFilter: false),
             // Failed in the period, as Failed in the queue tables, not only in the batches running now
             $this->common->target('D', $this->batches->selectedKindsOrZero($this->batches->perKind($this->attempts->delta(Attempts::FAILED, Promql::RANGE))), format: 'table'),
-            $this->common->target('E', $this->batches->selectedKindsOrZero($this->batches->perKind($this->promql->metric('queue_jobs_reserved'))), format: 'table'),
+            $this->common->target('E', $this->batches->selectedKindsOrZero($this->batches->perKind($this->promql->selector('queue_jobs_reserved'))), format: 'table'),
             $this->common->target(
                 'F',
                 Promql::either(
-                    Promql::andOn(Promql::max($this->promql->metric('queue_batch_oldest_age_seconds'), 'batch'), $kinds, 'batch'),
+                    Promql::andOn(Promql::max($this->promql->selector('queue_batch_oldest_age_seconds'), 'batch'), $kinds, 'batch'),
                     '-1 + 0 * '.$kinds,
                 ),
                 format: 'table',

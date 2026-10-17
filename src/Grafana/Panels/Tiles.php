@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Grafana\Panels;
 
 use DF\HorizonObservability\Grafana\Glyph;
+use DF\HorizonObservability\Grafana\Json;
 use DF\HorizonObservability\Grafana\PanelRegistry;
 use DF\HorizonObservability\Grafana\Promql;
 use DF\HorizonObservability\Grafana\Queries\AlertState;
@@ -115,7 +116,7 @@ final readonly class Tiles
      */
     private function horizon(array $gridPos): array
     {
-        $status = $this->promql->metric('horizon_status');
+        $status = $this->promql->selector('horizon_status');
         $band = Promql::either(
             Promql::min(Promql::range('min_over_time', $status, Promql::INTERVAL)),
             Promql::min($status),
@@ -192,7 +193,7 @@ final readonly class Tiles
     {
         $maxProcesses = Promql::countValues(
             'max',
-            Promql::max($this->promql->metric('horizon_supervisor_max_processes'), 'supervisor'),
+            Promql::max($this->promql->selector('horizon_supervisor_max_processes'), 'supervisor'),
             'supervisor',
         );
         $value = Promql::binary(Promql::paren($this->workers->processesValue()), '*', $maxProcesses, on: ['supervisor'], groupLeft: ['max']);
@@ -243,8 +244,8 @@ final readonly class Tiles
     private function pending(array $gridPos): array
     {
         $pending = $this->selection->byJobSelection(
-            Promql::sum($this->promql->metric('queue_pending_jobs')),
-            Promql::sum($this->promql->metric('queue_jobs_pending')).' or '.$this->selection->zeroIfMetrics(),
+            Promql::sum($this->promql->selector('queue_pending_jobs')),
+            Promql::sum($this->promql->selector('queue_jobs_pending')).' or '.$this->selection->zeroIfMetrics(),
         );
 
         $limit = Waits::SECONDS_TEXT_LIMIT;
@@ -331,7 +332,7 @@ final readonly class Tiles
     private function delayed(array $gridPos): array
     {
         $delayed = $this->selection->byJobSelection(
-            Promql::sum($this->promql->metric('queue_delayed_jobs')).' - '.Promql::sum($this->promql->metric('queue_delayed_due_jobs')),
+            Promql::sum($this->promql->selector('queue_delayed_jobs')).' - '.Promql::sum($this->promql->selector('queue_delayed_due_jobs')),
         );
 
         return Common::stat(
@@ -386,8 +387,8 @@ final readonly class Tiles
                 Common::renameByRegex('^(\d+\.\d)$', 'Success: $1%'),
                 // No attempts in the period
                 Common::renameByRegex('^-1$', 'Success: '.Glyph::DASH),
-                Common::calculate('C', 'warning', 'attempts', '*', (string) Thresholds::FAILURE_SHARE_WARNING),
-                Common::calculate('C', 'critical', 'attempts', '*', (string) Thresholds::FAILURE_SHARE_CRITICAL),
+                Common::calculate('C', 'warning', 'attempts', '*', Json::number(Thresholds::FAILURE_SHARE_WARNING)),
+                Common::calculate('C', 'critical', 'attempts', '*', Json::number(Thresholds::FAILURE_SHARE_CRITICAL)),
                 Common::configFromData('C', [
                     Common::handler('attempts', '__ignore'),
                     Common::thresholdHandler('warning', 'yellow'),

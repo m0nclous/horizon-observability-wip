@@ -57,6 +57,21 @@ it('renders deterministically', function (): void {
     expect(renderLegacy())->toBe(renderLegacy());
 });
 
+it('renders the same bytes whatever the float ini settings', function (string $setting, string $value): void {
+    $previous = ini_get($setting);
+    ini_set($setting, $value);
+
+    try {
+        expect(renderLegacy())->toBe(LegacyFixtures::read('queues.json'));
+    } finally {
+        ini_set($setting, (string) $previous);
+    }
+})->with([
+    ['precision', '17'],
+    ['precision', '1'],
+    ['serialize_precision', '17'],
+]);
+
 it('takes the legacy literals from the options', function (array $overrides, Closure $expected): void {
     expect(renderLegacy($overrides))->toBe($expected(LegacyFixtures::read('queues.json')));
 })->with([

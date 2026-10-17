@@ -14,7 +14,10 @@ use stdClass;
  * which produced the legacy dashboard: two-space indentation, a bare `,` at the end of each item line, `": "` after
  * keys, raw (unescaped) Unicode and slashes, `[]` and `{}` for empty containers and Python's `repr()` for floats
  * (`0.9`, `1.0`, `1e-05`, `1e+16`). PHP lists print as JSON arrays, every other array and every
- * `stdClass` prints as a JSON object, so an empty object is written as `new stdClass()`.
+ * `stdClass` prints as a JSON object, so an empty object is written as `new stdClass()`, and so is an object
+ * whose only keys are `"0"`, `"1"`, ... (PHP turns those keys into a list).
+ *
+ * The output depends on no ini setting (`precision`, `serialize_precision`) and no locale.
  *
  * @internal
  */
@@ -32,6 +35,11 @@ final class Json
     private const MAX_POSITIONAL_EXPONENT = 15;
 
     /**
+     * Digits after the point of the 17 significant digits that identify any float.
+     */
+    private const MAX_PRECISION = 16;
+
+    /**
      * Prints the document followed by a newline.
      *
      * @param  array<array-key, mixed>|stdClass  $document
@@ -39,6 +47,15 @@ final class Json
     public static function encode(array|stdClass $document): string
     {
         return self::value($document, '')."\n";
+    }
+
+    /**
+     * A number as {@see encode()} prints it, for numbers Grafana takes as text (such as the `fixed` operand of a
+     * calculation): `(string)` of a float follows the `precision` ini setting.
+     */
+    public static function number(int|float $value): string
+    {
+        return is_int($value) ? (string) $value : self::float($value);
     }
 
     private static function value(mixed $value, string $indent): string
@@ -107,23 +124,7 @@ final class Json
 
         // sprintf() drops the sign of -0.0, so the sign is taken separately.
         $sign = $value < 0 || fdiv(1, $value) < 0 ? '-' : '';
-        $magnitude = abs($value);
-
-        // The correctly rounded shortest scientific form, independent of the serialize_precision ini setting.
-        $precision = 0;
-
-        do {
-            $scientific = sprintf('%.'.$precision.'e', $magnitude);
-            $precision++;
-        } while ((float) $scientific !== $magnitude && $precision < 17);
-
-        if (preg_match('/^(\d)(?:\.(\d+))?e([+-]\d+)$/', $scientific, $parts) !== 1) {
-            throw new InvalidArgumentException('Unexpected float format '.$scientific.'.');
-        }
-
-        [, $first, $rest, $exponent] = $parts;
-        $digits = rtrim($first.$rest, '0');
-        $exponent = (int) $exponent;
+        [$digits, $exponent] = self::shortest(abs($value));
 
         if ($digits === '') {
             return $sign.'0.0';
@@ -143,5 +144,37 @@ final class Json
         $fraction = substr($digits, $exponent + 1);
 
         return $sign.$integer.'.'.($fraction === '' ? '0' : $fraction);
+    }
+
+    /**
+     * The significant digits (without trailing zeros; empty for zero) and the decimal exponent of the shortest
+     * decimal that reads back as $magnitude, the nearest one when several of that length do (Python's `repr()`,
+     * David Gay's shortest mode).
+     *
+     * For each length, sprintf() gives the correctly rounded candidate. Where it does not read back, its
+     * neighbour on the other side of $magnitude still can: at a power of two the rounding interval of a float
+     * is half as wide below as above.
+     *
+     * @return array{0: string, 1: int}
+     */
+    private static function shortest(float $magnitude): array
+    {
+        for ($precision = 0; ; $precision++) {
+            $nearest = sprintf('%.'.$precision.'e', $magnitude);
+            [$mantissa, $exponent] = explode('e', $nearest);
+            $digits = str_replace('.', '', $mantissa);
+            $exponent = (int) $exponent;
+
+            // 17 significant digits always read back
+            if ((float) $nearest === $magnitude || $precision >= self::MAX_PRECISION) {
+                return [rtrim($digits, '0'), $exponent];
+            }
+
+            $neighbour = (string) ((int) $digits + ((float) $nearest < $magnitude ? 1 : -1));
+
+            if ((float) ($neighbour.'e'.($exponent - strlen($digits) + 1)) === $magnitude) {
+                return [rtrim($neighbour, '0'), $exponent + strlen($neighbour) - strlen($digits)];
+            }
+        }
     }
 }

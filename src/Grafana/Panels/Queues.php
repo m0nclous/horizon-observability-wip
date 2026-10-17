@@ -139,27 +139,27 @@ final readonly class Queues
             // Pending, Processes, Delayed and Oldest wait are per whole queue, or with a batch or jobs selected
             // per their classes: waiting and busy workers; delayed jobs and ages have no classes (a dash).
             'B' => $this->selection->byJobSelection(
-                Promql::sum($this->promql->metric('queue_pending_jobs'), 'queue'),
-                $this->orZero(Promql::sum($this->promql->metric('queue_jobs_pending'), 'queue')),
+                Promql::sum($this->promql->selector('queue_pending_jobs'), 'queue'),
+                $this->orZero(Promql::sum($this->promql->selector('queue_jobs_pending'), 'queue')),
             ),
             'C' => $this->orZero(Promql::sum($this->attempts->delta(Attempts::COMPLETED, $range), 'queue')),
             // Running processes: 0 while Horizon is paused or stopped, as on the Supervisor Processes tile
             'D' => $this->selection->byJobSelection(
                 $this->orZero(Promql::binary(
-                    Promql::sum($this->promql->metric('horizon_current_processes'), 'queue'),
+                    Promql::sum($this->promql->selector('horizon_current_processes'), 'queue'),
                     '*',
                     $this->workers->horizonRunning(),
                     on: [],
                     groupLeft: [],
                 )),
-                $this->orZero(Promql::sum($this->promql->metric('queue_jobs_reserved'), 'queue')),
+                $this->orZero(Promql::sum($this->promql->selector('queue_jobs_reserved'), 'queue')),
             ),
             'E' => $this->orZero(Promql::sum($this->attempts->delta(Attempts::FAILED, $range), 'queue')),
             'F' => $this->selection->byJobSelection($this->oldestCell()),
             // As the Delayed tile: not due yet
             'G' => $this->selection->byJobSelection($this->orZero(Promql::paren(
-                Promql::sum($this->promql->metric('queue_delayed_jobs'), 'queue')
-                .' - '.Promql::sum($this->promql->metric('queue_delayed_due_jobs'), 'queue'),
+                Promql::sum($this->promql->selector('queue_delayed_jobs'), 'queue')
+                .' - '.Promql::sum($this->promql->selector('queue_delayed_due_jobs'), 'queue'),
             ))),
             'H' => $this->orZero(Promql::sum($this->attempts->delta(Attempts::RETRIED, $range), 'queue')),
             'I' => $this->orZero(Promql::sum($this->attempts->delta(Attempts::TIMED_OUT, $range), 'queue')),
