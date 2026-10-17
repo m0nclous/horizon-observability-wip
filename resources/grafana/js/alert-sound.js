@@ -1,15 +1,20 @@
-// The panel hides itself and lifts the whole grid by its row: Grafana places single panels itself and would move
-// them back, but leaves the margin of the whole grid alone
+// The hidden top row: this panel and the shared source of the queue tables (panel 24), which must render to run
+// its queries. The panel hides both and lifts the whole grid by their row: Grafana places single panels itself and
+// would move them back, but leaves the margin of the whole grid alone
+const HIDDEN = ['panel-24'];
 const item = context.element.closest('.react-grid-item');
 const grid = item && item.parentElement;
 if (grid && !item.style.visibility) {
   const tops = [...new Set([...grid.children].map((child) => Math.round(child.getBoundingClientRect().top)))]
     .sort((a, b) => a - b);
-  item.style.visibility = 'hidden';
+  const others = HIDDEN.map((key) => grid.querySelector('[data-viz-panel-key="' + key + '"]'))
+    .map((panel) => panel && panel.closest('.react-grid-item'));
+  [item, ...others].forEach((hidden) => hidden && (hidden.style.visibility = 'hidden'));
   grid.style.marginTop = -(tops.length > 1 ? tops[1] - tops[0] : item.offsetHeight + 8) + 'px';
 }
 
-// Firing rules: GRAFANA_ALERTS instances, one per queue for the per-queue rules
+// Firing rules: GRAFANA_ALERTS instances, one per queue for the per-queue rules. A row without a rule (a frame of
+// another shape while the panel re-renders) is skipped
 const frame = ((context.panelData && context.panelData.series) || [])[0];
 const column = (name) => {
   const field = frame && frame.fields.find((item) => item.name === name);
@@ -20,7 +25,10 @@ const length = frame ? (frame.length !== undefined ? frame.length : (frame.field
 const [ruleOf, nameOf] = [column('grafana_rule_uid'), column('alertname')];
 const rules = new Map();
 for (let index = 0; index < length; index++) {
-  rules.set(ruleOf(index), nameOf(index));
+  const rule = ruleOf(index);
+  if (rule !== undefined && rule !== null) {
+    rules.set(rule, String(nameOf(index) === undefined || nameOf(index) === null ? rule : nameOf(index)));
+  }
 }
 const firing = rules.size;
 // The phrase is the titles of the firing rules. Speech synthesis reads "2x" as "two x", so the factor is spelled out

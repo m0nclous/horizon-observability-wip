@@ -36,7 +36,8 @@ it('pins the layout', function (): void {
 
     // id, type, title, [h, w, x, y], row, repeat, repeatDirection, maxPerRow, collapsed
     expect($rows)->toBe([
-        [23, 'marcusolsson-dynamictext-panel', '', [1, 24, 0, 0], null, null, null, null, null],
+        [23, 'marcusolsson-dynamictext-panel', '', [1, 12, 0, 0], null, null, null, null, null],
+        [24, 'table', 'Queues source', [1, 12, 12, 0], null, null, null, null, null],
         [10, 'row', 'Overview', [1, 24, 0, 1], null, null, null, null, false],
         [1, 'stat', 'Horizon', [5, 2, 0, 2], 10, null, null, null, null],
         [3, 'stat', 'Supervisor Processes', [5, 6, 2, 2], 10, null, null, null, null],
@@ -62,8 +63,11 @@ it('pins the layout', function (): void {
 });
 
 it('keeps the layout and the look of the legacy dashboard', function (DashboardOptions $options): void {
-    // The frozen projection of the pilot's dashboard (Arch Q5.6): no option may change the look
-    expect(LayoutProjection::full(renderedDashboard($options)))->toBe(LayoutProjection::frozen());
+    // The frozen projection of the pilot's dashboard (Arch Q5.6) with the documented WP8C changes: no option may
+    // change the look
+    $dashboard = renderedDashboard($options);
+
+    expect(LayoutProjection::full($dashboard))->toBe(LayoutProjection::optimised(LayoutProjection::frozen(), $dashboard));
 })->with([
     'package defaults' => [new DashboardOptions],
     'another identity, job and prefix' => [new DashboardOptions(metricPrefix: 'acme_', uid: 'queues', title: 'Queues', job: 'app')],
@@ -71,7 +75,7 @@ it('keeps the layout and the look of the legacy dashboard', function (DashboardO
 ]);
 
 it('keeps the look of the committed render', function (): void {
-    expect(LayoutProjection::full(Rendered::dashboard()))->toBe(LayoutProjection::frozen());
+    expect(LayoutProjection::full(Rendered::dashboard()))->toBe(LayoutProjection::optimised(LayoutProjection::frozen(), Rendered::dashboard()));
 });
 
 it('fills the Overview row with tiles from edge to edge', function (): void {

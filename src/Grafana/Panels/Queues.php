@@ -17,17 +17,29 @@ use stdClass;
 
 /**
  * The Queues table, repeated per supervisor (hidden variable `supervisor_title`) so the queues that share a
- * pool of processes stand together. A queue belongs to the supervisor it was last seen with within a day:
- * while Horizon is down its supervisors are missing from the metrics, yet the tables must stay.
+ * pool of processes stand together. A queue belongs to the supervisors it was seen with within a day: while
+ * Horizon is down its supervisors are missing from the metrics, yet the tables must stay.
  *
  * Left to right: pool utilisation, workers now (processes), the queue now (pending, delayed, oldest wait over
  * the limit), totals of the period (wait p95, completed, failed, of which timeouts, retries, success rate).
+ *
+ * The queries run once for all supervisors in the hidden queue source #24 (ADDENDUM R2.4 O5): every row carries
+ * its supervisor, and each copy of the table reads #24 through the `-- Dashboard --` datasource and keeps the rows
+ * of its own supervisor. Without it each copy ran every query for all queues and then dropped the other
+ * supervisors' rows: N supervisors cost N times.
  *
  * @internal
  */
 final readonly class Queues
 {
     public const HEIGHT = 5;
+
+    /**
+     * Any explicit value makes Grafana run the hidden source: without one, a panel hidden before its first render
+     * never runs its queries and every copy of the table stays empty (verified on 12 and 13, ADDENDUM R2.4 O5). Its
+     * queries are instant, so the value changes nothing else.
+     */
+    private const SOURCE_MAX_DATA_POINTS = 100;
 
     /**
      * Utilisation zones of the percent bar: a pattern of the three-digit percent without leading zeros in
@@ -53,7 +65,7 @@ final readonly class Queues
     public function table(int $y): array
     {
         return [
-            'datasource' => Common::prometheus(),
+            'datasource' => Common::dashboard(),
             'fieldConfig' => [
                 'defaults' => Common::tableDefaults(),
                 'overrides' => [
@@ -79,16 +91,20 @@ final readonly class Queues
             'gridPos' => Common::gridPos(self::HEIGHT, 24, 0, $y),
             'id' => PanelRegistry::QUEUES,
             'options' => Common::tableOptions(['Utilization' => true]),
-            'targets' => $this->targets(),
+            'targets' => [['datasource' => Common::dashboard(), 'panelId' => PanelRegistry::QUEUE_SOURCE, 'refId' => 'A', 'withTransforms' => false]],
             'title' => '${supervisor_title:text}',
             'transformations' => [
+                // The rows of this copy's supervisor; the dash of the table without supervisors keeps the stub row
+                ['id' => 'filterByValue', 'options' => ['filters' => [
+                    ['config' => ['id' => 'equal', 'options' => ['value' => '${supervisor_title}']], 'fieldName' => 'supervisor'],
+                ], 'match' => 'any', 'type' => 'include']],
                 Common::merge(),
                 ['id' => 'organize', 'options' => [
                     // age, limit, level, p95 and p95_level are parts of the Oldest wait and Wait p95 texts;
-                    // the values of F and K and the stub row are not shown
+                    // the values of F and K, the stub row and the supervisor of the source rows are not shown
                     'excludeByName' => [
                         'Time' => true, 'age' => true, 'limit' => true, 'level' => true, 'Value #F' => true,
-                        'p95' => true, 'p95_level' => true, 'Value #K' => true, 'Value #Z' => true,
+                        'p95' => true, 'p95_level' => true, 'Value #K' => true, 'Value #Z' => true, 'supervisor' => true,
                     ],
                     'includeByName' => new stdClass,
                     'indexByName' => [
@@ -112,21 +128,46 @@ final readonly class Queues
     }
 
     /**
+     * The hidden queue source #24 (ADDENDUM R2.4 O5): the table queries for every supervisor at once, in the hidden
+     * top grid row next to the alert sound panel, whose script hides both.
+     *
+     * @return array<string, mixed>
+     */
+    public function source(): array
+    {
+        return [
+            'datasource' => Common::prometheus(),
+            'gridPos' => Common::gridPos(AlertSound::HEIGHT, 24 - AlertSound::WIDTH, AlertSound::WIDTH, 0),
+            'id' => PanelRegistry::QUEUE_SOURCE,
+            'maxDataPoints' => self::SOURCE_MAX_DATA_POINTS,
+            'targets' => $this->targets(),
+            'title' => 'Queues source',
+            'transparent' => true,
+            'type' => 'table',
+        ];
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     private function targets(): array
     {
         $queues = $this->selection->queues();
         $range = Promql::RANGE;
-        $knownQueues = Promql::group(
-            $this->promql->over('last_over_time', Metric::SupervisorProcesses, Variables::KNOWN_FOR, [Promql::re('supervisor', '$supervisor_title')]),
+        // Each queue and every supervisor it was seen with within a day: a row per (queue, supervisor), so a queue
+        // that several supervisors work is in each of their tables
+        $supervised = Promql::group(
+            $this->promql->over('last_over_time', Metric::SupervisorProcesses, Variables::KNOWN_FOR),
             'queue',
+            'supervisor',
         );
-        // Only the queues of the supervisor this copy of the table is repeated for
-        $scoped = fn (string $expr, bool $jobFilter = true): string => Promql::andOn(
+        // $labels: the labels of the value the table shows besides queue (the texts of the cells)
+        $scoped = fn (string $expr, bool $jobFilter = true, string ...$labels): string => Promql::binary(
+            $supervised,
+            '*',
             Promql::paren($this->promql->filtered($expr, $jobFilter)),
-            $knownQueues,
-            'queue',
+            on: ['queue'],
+            groupLeft: array_values($labels),
         );
 
         // Pool utilisation for the percent bar; the job filter does not apply. Every queue has a row here.
@@ -173,15 +214,19 @@ final readonly class Queues
             'K' => $this->selection->byJobSelection($this->waitP95Cell()),
         ];
 
+        $labels = ['F' => ['cell'], 'K' => ['p95_cell']];
         $targets = [Common::rawTarget('A', $utilisation, format: 'table')];
 
         foreach ($queries as $refId => $expr) {
-            $targets[] = Common::rawTarget($refId, $scoped($expr), format: 'table');
+            $targets[] = Common::rawTarget($refId, $scoped($expr, true, ...$labels[$refId] ?? []), format: 'table');
         }
 
         // A stub row of dashes when there are no queues: otherwise only headers remain, without the Queue column,
-        // and the table does not stretch.
-        $stub = Promql::unlessOn(Promql::withLabel('vector(1)', 'queue', Glyph::DASH), Promql::paren($utilisation));
+        // and the table does not stretch. Its supervisor is the title of the only table without supervisors.
+        $stub = Promql::unlessOn(
+            Promql::withLabel(Promql::withLabel('vector(1)', 'queue', Glyph::DASH), 'supervisor', Glyph::DASH),
+            Promql::paren($utilisation),
+        );
         $targets[] = Common::rawTarget('Z', $stub, format: 'table');
 
         return $targets;

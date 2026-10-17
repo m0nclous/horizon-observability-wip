@@ -15,7 +15,7 @@ use RuntimeException;
  *
  * The full projection of the legacy dashboard is frozen in `tests/Fixtures/grafana/default/layout-projection.json`
  * (as decoded JSON: an empty object reads as an empty list, on both sides of the comparison); it outlived the
- * legacy goldens, which WP8B deleted.
+ * legacy goldens, which WP8B deleted. WP8C changes it only as {@see optimised()} lists.
  */
 final class LayoutProjection
 {
@@ -24,6 +24,12 @@ final class LayoutProjection
     private const LAYOUT_KEYS = ['id', 'type', 'title', 'gridPos', 'repeat', 'repeatDirection', 'maxPerRow', 'collapsed'];
 
     private const LOOK_KEYS = ['options', 'fieldConfig', 'transformations'];
+
+    private const ALERT_SOUND = 23;
+
+    private const QUEUES = 5;
+
+    private const QUEUE_SOURCE = 24;
 
     /**
      * The layout fields only.
@@ -62,6 +68,69 @@ final class LayoutProjection
 
         /** @var list<array<string, mixed>> $frozen */
         return $frozen;
+    }
+
+    /**
+     * The frozen legacy projection with the documented, look-preserving changes of WP8C (ADDENDUM R2.4), so that any
+     * other difference fails:
+     * - O5: the hidden queue source #24 shares the hidden top grid row with #23 (both half wide); it is taken from
+     *   $dashboard after checking that it sits in that row. The queue table #5 first keeps the rows of its own
+     *   supervisor and does not show their supervisor column.
+     *
+     * @param  list<array<string, mixed>>  $frozen
+     * @param  array<array-key, mixed>  $dashboard  the render under test, decoded
+     * @return list<array<string, mixed>>
+     */
+    public static function optimised(array $frozen, array $dashboard): array
+    {
+        $source = null;
+
+        foreach (self::full($dashboard) as $panel) {
+            if (($panel['id'] ?? null) === self::QUEUE_SOURCE) {
+                $source = $panel;
+            }
+        }
+
+        if ($source === null || $source['gridPos'] !== ['h' => 1, 'w' => 12, 'x' => 12, 'y' => 0] || $source['row'] !== null) {
+            throw new RuntimeException('The queue source #24 is missing or not in the hidden top row.');
+        }
+
+        $expected = [];
+
+        foreach ($frozen as $panel) {
+            $id = $panel['id'] ?? null;
+
+            if ($id === self::ALERT_SOUND) {
+                $panel['gridPos']['w'] = 12;
+                $expected[] = $panel;
+                $expected[] = $source;
+
+                continue;
+            }
+
+            if ($id === self::QUEUES && is_array($panel['transformations'] ?? null)) {
+                $transformations = $panel['transformations'];
+
+                foreach ($transformations as $index => $transformation) {
+                    if (is_array($transformation) && ($transformation['id'] ?? null) === 'organize') {
+                        $transformations[$index]['options']['excludeByName']['supervisor'] = true;
+                    }
+                }
+
+                $panel['transformations'] = [[
+                    'id' => 'filterByValue',
+                    'options' => [
+                        'filters' => [['config' => ['id' => 'equal', 'options' => ['value' => '${supervisor_title}']], 'fieldName' => 'supervisor']],
+                        'match' => 'any',
+                        'type' => 'include',
+                    ],
+                ], ...$transformations];
+            }
+
+            $expected[] = $panel;
+        }
+
+        return $expected;
     }
 
     /**

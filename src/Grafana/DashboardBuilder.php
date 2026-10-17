@@ -127,7 +127,8 @@ final readonly class DashboardBuilder
         $jobLists = new JobLists;
         $batches = new Batches($common, $promql, $attempts, $batchState, $this->options->rpmMinutes());
 
-        $panels = [(new AlertSound($common, $alertState, Resources::alertSoundScript()))->panel()];
+        // The hidden top row: the alert sound and the shared source of the queue tables (O5)
+        $panels = [(new AlertSound($common, $alertState, Resources::alertSoundScript()))->panel(), $queues->source()];
         $y = AlertSound::HEIGHT;
 
         $panels[] = Common::row(PanelRegistry::OVERVIEW_ROW, 'Overview', $y);

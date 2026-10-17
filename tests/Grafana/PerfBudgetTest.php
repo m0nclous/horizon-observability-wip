@@ -85,6 +85,16 @@ it('refreshes only the batch variables with the time range (O3)', function (): v
         ->and($budget->variableRequests())->toBeLessThanOrEqual(StaticBudget::MAX_VARIABLE_REQUESTS);
 });
 
+it('sends at most 12 requests per refresh: the queue tables read the hidden source #24 (O5)', function (): void {
+    $budget = committedBudget();
+    $source = array_values(array_filter(Rendered::dashboard()['panels'], static fn (array $panel): bool => $panel['id'] === StaticBudget::QUEUE_SOURCE));
+
+    expect($budget->requests())->toBeLessThanOrEqual(StaticBudget::MAX_REQUESTS)
+        ->and($budget->queueSource())->toBe([])
+        ->and($source[0]['maxDataPoints'] ?? null)->toBe(100)
+        ->and($budget->panelBytes()[5])->toBe(0);
+});
+
 it('finds a day-long counter lookback, also in collapsed rows and variables', function (): void {
     $budget = new StaticBudget(budgetDashboard([
         budgetPanel(1, ['sum(last_over_time(ho_queue_jobs_total{job=~".+"}[1d] offset 1h))']),

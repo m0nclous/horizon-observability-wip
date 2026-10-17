@@ -23,7 +23,8 @@ it('requires Grafana 12.3 and exactly the plugins the dashboard uses', function 
         }
 
         foreach ([$panel['datasource'] ?? null, ...array_column($panel['targets'] ?? [], 'datasource')] as $datasource) {
-            if (is_array($datasource)) {
+            // Grafana's built-in datasources (-- Dashboard --, -- Mixed --) are no requirement
+            if (is_array($datasource) && $datasource['type'] !== 'datasource') {
                 $used['datasource'][] = $datasource['type'];
             }
         }
