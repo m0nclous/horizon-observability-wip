@@ -13,12 +13,7 @@ function captionFixtures(): array
 }
 
 it('formats every caption and level rule of Addendum R4.4', function (string $rule, array $arguments, mixed $expected): void {
-    $method = match ($rule) {
-        'wait_level' => 'waitLevel',
-        'utilization_level' => 'utilizationLevel',
-        'horizon_level' => 'horizonLevel',
-        default => $rule,
-    };
+    $method = lcfirst(str_replace('_', '', ucwords($rule, '_')));
 
     expect(Captions::{$method}(...$arguments))->toBe($expected);
 })->with(function (): Generator {

@@ -1,0 +1,247 @@
+{
+    "v": 1,
+    "generated_at": 1792201716123,
+    "age_ms": 0,
+    "ttl_ms": 1000,
+    "scope": {
+        "supervisors": null,
+        "queues": [
+            "default",
+            "slow",
+            "reports",
+            "mail",
+            "sms"
+        ],
+        "job_filter": false
+    },
+    "horizon": {
+        "status": 1,
+        "level": 0,
+        "color": "green",
+        "caption": "Running"
+    },
+    "pending": {
+        "value": 5,
+        "oldest_seconds": 17,
+        "oldest_queue": "default",
+        "wait_ratio": 1.7,
+        "level": 1,
+        "color": "yellow",
+        "caption": "Oldest: 17 s · default"
+    },
+    "delayed": {
+        "value": 2,
+        "due": 1
+    },
+    "reserved": {
+        "value": 4
+    },
+    "throughput": {
+        "window_seconds": 60,
+        "bucket_seconds": 5,
+        "completed": 42,
+        "failed": 2,
+        "retried": 1,
+        "completed_per_minute": 42,
+        "failed_per_minute": 2.0,
+        "caption": "RPM: 42"
+    },
+    "supervisors": [
+        {
+            "name": "supervisor-default",
+            "display": "default",
+            "connection": "redis",
+            "balance": "auto",
+            "processes": 3,
+            "min_processes": 1,
+            "max_processes": 3,
+            "busy": 2,
+            "utilization": 0.667,
+            "level": 0,
+            "color": "green",
+            "caption": "default · max 3",
+            "queues": [
+                "default"
+            ]
+        },
+        {
+            "name": "supervisor-pool",
+            "display": "pool",
+            "connection": "redis",
+            "balance": "off",
+            "processes": 2,
+            "min_processes": 1,
+            "max_processes": 2,
+            "busy": 2,
+            "utilization": 1.0,
+            "level": 2,
+            "color": "red",
+            "caption": "pool · max 2",
+            "queues": [
+                "mail",
+                "sms"
+            ]
+        },
+        {
+            "name": "supervisor-slow",
+            "display": "slow",
+            "connection": "redis",
+            "balance": "auto",
+            "processes": 2,
+            "min_processes": 1,
+            "max_processes": 2,
+            "busy": 0,
+            "utilization": 0.0,
+            "level": 0,
+            "color": "green",
+            "caption": "slow · max 2",
+            "queues": [
+                "slow",
+                "reports"
+            ]
+        }
+    ],
+    "queues": [
+        {
+            "connection": "redis",
+            "queue": "default",
+            "pending": 3,
+            "reserved": 2,
+            "delayed": 1,
+            "delayed_due": 1,
+            "oldest_seconds": 17,
+            "wait_threshold_seconds": 10,
+            "wait_ratio": 1.7,
+            "level": 1,
+            "color": "yellow",
+            "completed_per_minute": 40,
+            "failed_per_minute": 2.0,
+            "supervisors": [
+                "supervisor-default"
+            ]
+        },
+        {
+            "connection": "redis",
+            "queue": "slow",
+            "pending": 2,
+            "reserved": 0,
+            "delayed": 0,
+            "delayed_due": 0,
+            "oldest_seconds": 12,
+            "wait_threshold_seconds": 30,
+            "wait_ratio": 0.4,
+            "level": 0,
+            "color": "green",
+            "completed_per_minute": 2,
+            "failed_per_minute": 0.0,
+            "supervisors": [
+                "supervisor-slow"
+            ]
+        },
+        {
+            "connection": "redis",
+            "queue": "reports",
+            "pending": 0,
+            "reserved": 0,
+            "delayed": 0,
+            "delayed_due": 0,
+            "oldest_seconds": 0,
+            "wait_threshold_seconds": 60,
+            "wait_ratio": 0.0,
+            "level": 0,
+            "color": "green",
+            "completed_per_minute": 0,
+            "failed_per_minute": 0.0,
+            "supervisors": [
+                "supervisor-slow"
+            ]
+        },
+        {
+            "connection": "redis",
+            "queue": "mail",
+            "pending": 0,
+            "reserved": 1,
+            "delayed": 0,
+            "delayed_due": 0,
+            "oldest_seconds": 0,
+            "wait_threshold_seconds": 60,
+            "wait_ratio": 0.0,
+            "level": 0,
+            "color": "green",
+            "completed_per_minute": 0,
+            "failed_per_minute": 0.0,
+            "supervisors": [
+                "supervisor-pool"
+            ]
+        },
+        {
+            "connection": "redis",
+            "queue": "sms",
+            "pending": 0,
+            "reserved": 1,
+            "delayed": 1,
+            "delayed_due": 0,
+            "oldest_seconds": 0,
+            "wait_threshold_seconds": 60,
+            "wait_ratio": 0.0,
+            "level": 0,
+            "color": "green",
+            "completed_per_minute": 0,
+            "failed_per_minute": 0.0,
+            "supervisors": [
+                "supervisor-pool"
+            ]
+        }
+    ],
+    "tiles": [
+        {
+            "tile": "pending",
+            "key": "",
+            "caption": "Oldest: 17 s · default",
+            "value": 5.0,
+            "color": "yellow",
+            "level": 1
+        },
+        {
+            "tile": "delayed",
+            "key": "",
+            "caption": "",
+            "value": 2.0,
+            "color": "text",
+            "level": 0
+        },
+        {
+            "tile": "supervisor",
+            "key": "supervisor-default",
+            "caption": "default · max 3",
+            "value": 3.0,
+            "color": "green",
+            "level": 0
+        },
+        {
+            "tile": "supervisor",
+            "key": "supervisor-pool",
+            "caption": "pool · max 2",
+            "value": 2.0,
+            "color": "red",
+            "level": 2
+        },
+        {
+            "tile": "supervisor",
+            "key": "supervisor-slow",
+            "caption": "slow · max 2",
+            "value": 2.0,
+            "color": "green",
+            "level": 0
+        },
+        {
+            "tile": "throughput",
+            "key": "",
+            "caption": "RPM: 42",
+            "value": 42.0,
+            "color": "text",
+            "level": 0
+        }
+    ],
+    "errors": []
+}

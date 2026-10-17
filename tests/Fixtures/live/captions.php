@@ -27,6 +27,28 @@ return [
         'minutes' => [[1020, 'slow'], "Oldest: 17 min {$dot} slow"],
         'pooled queue label' => [[42, 'mail,sms'], "Oldest: 42 s {$dot} mail,sms"],
     ],
+    // The exact age (as exported, at most 3 decimals): the unit from the exact age, the number rounded once, as the
+    // off-mode tile does with round(age < 120) and round((age >= 120) / 60).
+    'oldest_exact' => [
+        'unknown age' => [[null, 'default'], "Oldest: {$dash}"],
+        'nothing waits' => [[0.0, 'default'], "Oldest: {$dash}"],
+        'negative age' => [[-0.2, 'default'], "Oldest: {$dash}"],
+        'not finite' => [[INF, 'default'], "Oldest: {$dash}"],
+        'not a number' => [[NAN, 'default'], "Oldest: {$dash}"],
+        'no queue' => [[17.2, null], "Oldest: {$dash}"],
+        'empty queue name' => [[17.2, ''], "Oldest: {$dash}"],
+        'waits less than half a second' => [[0.3, 'default'], "Oldest: 0 s {$dot} default"],
+        'rounds half up' => [[0.5, 'default'], "Oldest: 1 s {$dot} default"],
+        'seconds' => [[89.6, 'default'], "Oldest: 90 s {$dot} default"],
+        'last second value' => [[119.4, 'slow'], "Oldest: 119 s {$dot} slow"],
+        'rounds to 120 below the limit' => [[119.6, 'slow'], "Oldest: 120 s {$dot} slow"],
+        'just below the limit' => [[119.999, 'slow'], "Oldest: 120 s {$dot} slow"],
+        'first minute value' => [[120.0, 'slow'], "Oldest: 2 min {$dot} slow"],
+        'minutes rounded once, down' => [[149.6, 'slow'], "Oldest: 2 min {$dot} slow"],
+        'minutes rounded once, half up' => [[150.0, 'slow'], "Oldest: 3 min {$dot} slow"],
+        'minutes rounded once, 3.495 min' => [[209.7, 'slow'], "Oldest: 3 min {$dot} slow"],
+        'minutes' => [[1020.4, 'slow'], "Oldest: 17 min {$dot} slow"],
+    ],
     'supervisor' => [
         'display name' => [['default', 3], "default {$dot} max 3"],
         'zero max' => [['pool', 0], "pool {$dot} max 0"],

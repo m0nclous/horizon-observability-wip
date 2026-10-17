@@ -29,7 +29,7 @@ use UnexpectedValueException;
  * @phpstan-type TileRow array{tile: string, key: string, caption: string, value: float|null, color: string, level: int}
  * @phpstan-type ErrorRow array{source: string, message: string}
  * @phpstan-type SupervisorInput array{name: string, connection: string, balance: string, processes: int, min_processes: int, max_processes: int, busy: int, queues: list<string>}
- * @phpstan-type QueueInput array{connection: string, queue: string, pending: int, reserved: int, delayed: int, delayed_due: int, oldest_seconds: int, wait_threshold_seconds: int|null, completed_per_minute: int|null, failed_per_minute: float|null, supervisors: list<string>}
+ * @phpstan-type QueueInput array{connection: string, queue: string, pending: int, reserved: int, delayed: int, delayed_due: int, oldest_seconds: int|float, wait_threshold_seconds: int|null, completed_per_minute: int|null, failed_per_minute: float|null, supervisors: list<string>}
  * @phpstan-type ThroughputInput array{completed: int, failed: int, retried: int}
  *
  * @internal
@@ -83,7 +83,10 @@ final readonly class LiveSnapshot
      * @param  list<SupervisorInput>  $supervisors  `processes` as Horizon reports them; `busy` = reserved jobs of the
      *                                              supervisor's queues (of the selected classes with a Job filter)
      * @param  list<QueueInput>  $queues  queues read successfully; `pending` = ready jobs (`LLEN` + due delayed),
-     *                                    `delayed` = not yet due, `oldest_seconds` = 0 when nothing waits
+     *                                    `delayed` = not yet due, `oldest_seconds` = the exact age in seconds (0 when
+     *                                    nothing waits): the wait ratio, the level, the worst queue and the caption use
+     *                                    it as is, as the off-mode tile does with the exported age, and the output
+     *                                    fields show it rounded
      * @param  ThroughputInput|null  $throughput  ring counts over the 60 s window (failed = failed + timed_out); null
      *                                            without ring data
      * @param  list<ErrorRow>  $errors
@@ -133,8 +136,10 @@ final readonly class LiveSnapshot
 
         foreach ($queues as $queue) {
             $threshold = $queue['wait_threshold_seconds'];
+            // The ratio of the exact age (Addendum R4.2 step 5): 10.4 s over a 10 s limit is level 1, not 10 / 10.
             $ratio = $threshold !== null && $threshold > 0 ? $queue['oldest_seconds'] / $threshold : null;
             $level = Captions::waitLevel($ratio);
+            $seconds = (int) round($queue['oldest_seconds']);
 
             $queueRows[] = [
                 'connection' => $queue['connection'],
@@ -143,7 +148,7 @@ final readonly class LiveSnapshot
                 'reserved' => $queue['reserved'],
                 'delayed' => $queue['delayed'],
                 'delayed_due' => $queue['delayed_due'],
-                'oldest_seconds' => $queue['oldest_seconds'],
+                'oldest_seconds' => $seconds,
                 'wait_threshold_seconds' => $threshold,
                 'wait_ratio' => $ratio === null ? null : round($ratio, 2),
                 'level' => $level,
@@ -153,6 +158,8 @@ final readonly class LiveSnapshot
                 'supervisors' => $queue['supervisors'],
             ];
 
+            // Something waits when the exact age is above 0, as the off-mode tile's `age > 0` on the exported age:
+            // 0.3 s still names the queue ("Oldest: 0 s").
             if ($queue['oldest_seconds'] > 0 && ($worst === null || self::worse($queue, $ratio, $worst, $worstRatio))) {
                 $worst = $queue;
                 $worstRatio = $ratio;
@@ -171,14 +178,16 @@ final readonly class LiveSnapshot
             ];
         } else {
             $level = Captions::waitLevel($worstRatio);
+            $seconds = (int) round($worst['oldest_seconds']);
             $pending = [
                 'value' => array_sum(array_column($queues, 'pending')),
-                'oldest_seconds' => $worst['oldest_seconds'],
+                'oldest_seconds' => $seconds,
                 'oldest_queue' => $worst['queue'],
                 'wait_ratio' => $worstRatio === null ? null : round($worstRatio, 2),
                 'level' => $level,
                 'color' => Captions::color($level),
-                'caption' => Captions::oldest($worst['oldest_seconds'], $worst['queue']),
+                // The unit and the number from the exact age, rounded once (119.6 s is "120 s", 149.6 s "2 min").
+                'caption' => Captions::oldestExact((float) $worst['oldest_seconds'], $worst['queue']),
             ];
         }
 
@@ -259,6 +268,35 @@ final readonly class LiveSnapshot
     }
 
     /**
+     * The same snapshot with the queue part unknown: no queue in scope could be read, so Pending, Delayed and
+     * Reserved are null with caption `Live unavailable` and colour `text` (Addendum R4.10), and the supervisors keep
+     * their processes but lose the utilisation colour (busy workers are unknown; `text`, level 0) unless Horizon is
+     * not running. The Horizon state and the throughput stay as read.
+     */
+    public function withQueuesUnavailable(): self
+    {
+        $running = $this->horizon['status'] === 1;
+        $supervisors = array_map(static fn (array $row): array => $running
+            ? [...$row, 'busy' => 0, 'utilization' => 0.0, 'level' => 0, 'color' => Captions::TEXT]
+            : $row, $this->supervisors);
+
+        return new self(
+            $this->generatedAt,
+            $this->ageMs,
+            $this->ttlMs,
+            $this->scope,
+            $this->horizon,
+            ['value' => null, 'oldest_seconds' => 0, 'oldest_queue' => null, 'wait_ratio' => null, 'level' => 0, 'color' => Captions::TEXT, 'caption' => Captions::UNAVAILABLE],
+            ['value' => null, 'due' => null],
+            ['value' => null],
+            $this->throughput,
+            $supervisors,
+            [],
+            $this->errors,
+        );
+    }
+
+    /**
      * The same snapshot with the cache age at response time.
      */
     public function withAge(int $ageMs): self
@@ -310,15 +348,29 @@ final readonly class LiveSnapshot
     }
 
     /**
-     * {@see self::toArray()} as JSON (floats keep their fraction, `1.0`).
+     * {@see self::toArray()} as JSON (floats keep their fraction, `1.0`). Bytes that are not valid UTF-8 (a queue or
+     * supervisor name) become U+FFFD, as in the `/live` response, so such a snapshot is cached like any other instead
+     * of failing to encode and being built on every request.
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), self::JSON_FLAGS);
+        return json_encode($this->toArray(), self::JSON_FLAGS | JSON_INVALID_UTF8_SUBSTITUTE);
     }
 
     /**
-     * The tile rows in push order (Addendum R4.7): pending, delayed, supervisors by display name, throughput.
+     * Whether the snapshot carries live data: false for {@see self::unavailable()} and for any snapshot whose
+     * Horizon state and queue state are both unknown (caption `Live unavailable` on the Horizon and Pending parts).
+     * The snapshot cache stores only available snapshots, so the next request after a failed build tries again.
+     */
+    public function isAvailable(): bool
+    {
+        return $this->horizon['status'] !== null || $this->pending['caption'] !== Captions::UNAVAILABLE;
+    }
+
+    /**
+     * The tile rows in push order (Addendum R4.7): pending, delayed, supervisors by display name, throughput. A
+     * supervisor tile shows the running processes, or with a Job or Batch filter the busy workers of the selected
+     * classes.
      *
      * @return list<array{tile: string, key: string, caption: string, value: float|null, color: string, level: int}>
      */
@@ -330,7 +382,10 @@ final readonly class LiveSnapshot
         ];
 
         foreach ($this->supervisors as $supervisor) {
-            $tiles[] = $this->tile('supervisor', $supervisor['name'], $supervisor['caption'], $supervisor['processes'], $supervisor['color'], $supervisor['level']);
+            // With a Job or Batch filter the tile counts the workers busy with the selected classes, as the off-mode
+            // tile does (Addendum R4.1); like the processes, they read 0 while Horizon is not running.
+            $value = $this->scope['job_filter'] ? ($this->horizon['status'] === 1 ? $supervisor['busy'] : 0) : $supervisor['processes'];
+            $tiles[] = $this->tile('supervisor', $supervisor['name'], $supervisor['caption'], $value, $supervisor['color'], $supervisor['level']);
         }
 
         $tiles[] = $this->tile('throughput', '', $this->throughput['caption'], $this->throughput['completed_per_minute'], Captions::TEXT, 0);
@@ -471,7 +526,7 @@ final readonly class LiveSnapshot
             return $ratioA > $ratioB;
         }
 
-        if ($a['oldest_seconds'] !== $b['oldest_seconds']) {
+        if ((float) $a['oldest_seconds'] !== (float) $b['oldest_seconds']) {
             return $a['oldest_seconds'] > $b['oldest_seconds'];
         }
 

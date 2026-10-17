@@ -62,6 +62,29 @@ it('skips supervisors that do not start and groups by connection', function (): 
     expect(topology()->queuesByConnection())->toBe(['redis' => ['a', 'b'], 'redis-two' => ['b']]);
 });
 
+it('lists the supervisors that start with their connection and split queues', function (): void {
+    expect(topology()->supervisors())->toBe([
+        ['name' => 'supervisor-default', 'connection' => 'redis', 'queues' => ['default']],
+        ['name' => 'supervisor-slow', 'connection' => 'redis', 'queues' => ['slow', 'reports']],
+        ['name' => 'supervisor-pool', 'connection' => 'redis', 'queues' => ['mail', 'sms']],
+    ]);
+
+    config()->set('queue.connections.redis.queue', 'jobs');
+    config()->set('horizon.defaults', []);
+    config()->set('horizon.environments', ['testing' => [
+        'a' => ['connection' => 'redis', 'queue' => 'a, b,a', 'maxProcesses' => 2],
+        'off' => ['connection' => 'redis', 'queue' => 'off', 'maxProcesses' => 0],
+        'other' => ['connection' => 'redis-two', 'queue' => ['b'], 'processes' => 1],
+        'implicit' => ['connection' => 'redis'],
+    ]]);
+
+    expect(topology()->supervisors())->toBe([
+        ['name' => 'a', 'connection' => 'redis', 'queues' => ['a', 'b']],
+        ['name' => 'other', 'connection' => 'redis-two', 'queues' => ['b']],
+        ['name' => 'implicit', 'connection' => 'redis', 'queues' => ['jobs']],
+    ]);
+});
+
 it('uses the connection default queue for a supervisor without queue', function (): void {
     config()->set('queue.connections.redis.queue', 'jobs');
     config()->set('horizon.defaults', []);

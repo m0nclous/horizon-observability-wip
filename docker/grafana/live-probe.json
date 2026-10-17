@@ -1,0 +1,1165 @@
+{
+  "description": "e2e fixture of the live modes (Addendum R4.8, T12): the poll and stream panel shapes of the R4.8 panel JSON, built by hand, independent of the T13 renderer. Datasources: Prometheus uid 'prometheus', Infinity uid 'horizon-observability-api' (docker/grafana/provisioning), Grafana Live stream id 'horizon_observability'.",
+  "uid": "horizon-observability-live-probe",
+  "title": "Horizon Observability live probe",
+  "tags": [
+    "horizon-observability",
+    "e2e"
+  ],
+  "editable": false,
+  "graphTooltip": 0,
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m"
+    ]
+  },
+  "timezone": "utc",
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "12.3.0"
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "yesoreyeram-infinity-datasource",
+      "name": "Infinity",
+      "version": "4.1.1"
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "hide": 2,
+        "current": {
+          "selected": true,
+          "text": "Prometheus",
+          "value": "prometheus"
+        },
+        "options": []
+      },
+      {
+        "name": "app_api",
+        "type": "datasource",
+        "query": "yesoreyeram-infinity-datasource",
+        "hide": 2,
+        "current": {
+          "selected": true,
+          "text": "Horizon Observability API",
+          "value": "horizon-observability-api"
+        },
+        "options": []
+      },
+      {
+        "name": "api_path",
+        "type": "constant",
+        "query": "/horizon/observability",
+        "hide": 2
+      },
+      {
+        "name": "scrape_interval",
+        "type": "constant",
+        "query": "10s",
+        "hide": 2
+      },
+      {
+        "name": "supervisor",
+        "type": "custom",
+        "label": "supervisor",
+        "query": "",
+        "includeAll": true,
+        "multi": true,
+        "hide": 2,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "skipUrlSync": false
+      },
+      {
+        "name": "batch_kind",
+        "type": "custom",
+        "label": "batch_kind",
+        "query": "",
+        "includeAll": true,
+        "multi": true,
+        "hide": 2,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "skipUrlSync": false
+      },
+      {
+        "name": "queue",
+        "type": "custom",
+        "label": "queue",
+        "query": "",
+        "includeAll": true,
+        "multi": true,
+        "hide": 2,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "skipUrlSync": false
+      },
+      {
+        "name": "job_class",
+        "type": "custom",
+        "label": "job_class",
+        "query": "",
+        "includeAll": true,
+        "multi": true,
+        "hide": 2,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Poll (Infinity, ${api_path}/live)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 103,
+      "type": "stat",
+      "title": "Supervisor Processes",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${app_api}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "—",
+                  "color": "text",
+                  "index": 0
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "locale"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 14
+        }
+      },
+      "targets": [
+        {
+          "refId": "S",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${app_api}"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "${api_path}/live?${supervisor:queryparam}&${batch_kind:queryparam}&${queue:queryparam}&${job_class:queryparam}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "tiles",
+          "columns": [
+            {
+              "selector": "tile",
+              "text": "tile",
+              "type": "string"
+            },
+            {
+              "selector": "key",
+              "text": "key",
+              "type": "string"
+            },
+            {
+              "selector": "caption",
+              "text": "caption",
+              "type": "string"
+            },
+            {
+              "selector": "value",
+              "text": "value",
+              "type": "number"
+            },
+            {
+              "selector": "color",
+              "text": "color",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "any",
+            "filters": [
+              {
+                "fieldName": "tile",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "supervisor"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "tile": {
+                "operation": "groupby"
+              },
+              "key": {
+                "operation": "groupby"
+              },
+              "caption": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "last"
+                ]
+              },
+              "value": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "last"
+                ]
+              },
+              "color": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "last"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "rowsToFields",
+          "options": {
+            "mappings": [
+              {
+                "fieldName": "caption (last)",
+                "handlerKey": "field.name"
+              },
+              {
+                "fieldName": "value (last)",
+                "handlerKey": "field.value"
+              },
+              {
+                "fieldName": "color (last)",
+                "handlerKey": "color"
+              },
+              {
+                "fieldName": "tile",
+                "handlerKey": "__ignore"
+              },
+              {
+                "fieldName": "key",
+                "handlerKey": "__ignore"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "type": "stat",
+      "title": "Pending",
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Mixed --"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 8,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "—",
+                  "color": "text",
+                  "index": 0
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "locale"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 14
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(ho_queue_pending_jobs)",
+          "legendFormat": "__auto",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "L",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${app_api}"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "${api_path}/live?${supervisor:queryparam}&${batch_kind:queryparam}&${queue:queryparam}&${job_class:queryparam}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "generated_at",
+              "text": "Time",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "pending.value",
+              "text": "Value",
+              "type": "number"
+            }
+          ]
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${app_api}"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "${api_path}/live?${supervisor:queryparam}&${batch_kind:queryparam}&${queue:queryparam}&${job_class:queryparam}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "pending.caption",
+              "text": "caption",
+              "type": "string"
+            },
+            {
+              "selector": "pending.color",
+              "text": "color",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "filter": {
+            "id": "byRefId",
+            "options": "A|L"
+          },
+          "options": {}
+        },
+        {
+          "id": "configFromData",
+          "options": {
+            "configRefId": "C",
+            "mappings": [
+              {
+                "fieldName": "caption",
+                "handlerKey": "displayName"
+              },
+              {
+                "fieldName": "color",
+                "handlerKey": "color"
+              }
+            ]
+          }
+        }
+      ],
+      "interval": "$scrape_interval"
+    },
+    {
+      "id": 108,
+      "type": "stat",
+      "title": "Completed",
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Mixed --"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 14,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "—",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "locale"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 14
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(ho_queue_jobs_total{status=\"completed\"}) or vector(0)",
+          "legendFormat": "__auto",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${app_api}"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "${api_path}/live?${supervisor:queryparam}&${batch_kind:queryparam}&${queue:queryparam}&${job_class:queryparam}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "throughput.caption",
+              "text": "caption",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "transformations": [
+        {
+          "id": "configFromData",
+          "options": {
+            "configRefId": "C",
+            "mappings": [
+              {
+                "fieldName": "caption",
+                "handlerKey": "displayName"
+              }
+            ]
+          }
+        }
+      ],
+      "interval": "$scrape_interval"
+    },
+    {
+      "id": 109,
+      "type": "stat",
+      "title": "Delayed",
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Mixed --"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 19,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "—",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "locale"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 14
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(ho_queue_delayed_jobs) - sum(ho_queue_delayed_due_jobs)",
+          "legendFormat": "__auto",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "L",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${app_api}"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "${api_path}/live?${supervisor:queryparam}&${batch_kind:queryparam}&${queue:queryparam}&${job_class:queryparam}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "generated_at",
+              "text": "Time",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "delayed.value",
+              "text": "Value",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "filter": {
+            "id": "byRefId",
+            "options": "A|L"
+          },
+          "options": {}
+        }
+      ],
+      "interval": "$scrape_interval"
+    },
+    {
+      "id": 200,
+      "type": "row",
+      "title": "Stream (Grafana Live, stream/horizon_observability)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "panels": []
+    },
+    {
+      "id": 203,
+      "type": "stat",
+      "title": "Supervisor Processes",
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 0,
+        "y": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "—",
+                  "color": "text",
+                  "index": 0
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "locale"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 14
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "queryType": "measurements",
+          "channel": "stream/horizon_observability/tiles",
+          "buffer": 500
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "any",
+            "filters": [
+              {
+                "fieldName": "tile",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "supervisor"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "tile": {
+                "operation": "groupby"
+              },
+              "key": {
+                "operation": "groupby"
+              },
+              "caption": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "last"
+                ]
+              },
+              "value": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "last"
+                ]
+              },
+              "color": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "last"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "rowsToFields",
+          "options": {
+            "mappings": [
+              {
+                "fieldName": "caption (last)",
+                "handlerKey": "field.name"
+              },
+              {
+                "fieldName": "value (last)",
+                "handlerKey": "field.value"
+              },
+              {
+                "fieldName": "color (last)",
+                "handlerKey": "color"
+              },
+              {
+                "fieldName": "tile",
+                "handlerKey": "__ignore"
+              },
+              {
+                "fieldName": "key",
+                "handlerKey": "__ignore"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 202,
+      "type": "stat",
+      "title": "Pending",
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 8,
+        "y": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "—",
+                  "color": "text",
+                  "index": 0
+                }
+              }
+            }
+          ],
+          "noValue": "—",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "locale"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 14
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "queryType": "measurements",
+          "channel": "stream/horizon_observability/tiles",
+          "buffer": 500
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "any",
+            "filters": [
+              {
+                "fieldName": "tile",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "pending"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "tile": {
+                "operation": "groupby"
+              },
+              "key": {
+                "operation": "groupby"
+              },
+              "caption": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "last"
+                ]
+              },
+              "value": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "last"
+                ]
+              },
+              "color": {
+                "operation": "aggregate",
+                "aggregations": [
+                  "last"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "id": "rowsToFields",
+          "options": {
+            "mappings": [
+              {
+                "fieldName": "caption (last)",
+                "handlerKey": "field.name"
+              },
+              {
+                "fieldName": "value (last)",
+                "handlerKey": "field.value"
+              },
+              {
+                "fieldName": "color (last)",
+                "handlerKey": "color"
+              },
+              {
+                "fieldName": "tile",
+                "handlerKey": "__ignore"
+              },
+              {
+                "fieldName": "key",
+                "handlerKey": "__ignore"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 209,
+      "type": "stat",
+      "title": "Delayed",
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 19,
+        "y": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "—",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "locale"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 14
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "queryType": "measurements",
+          "channel": "stream/horizon_observability/delayed"
+        }
+      ],
+      "transformations": [],
+      "maxDataPoints": 180,
+      "timeFrom": "15m",
+      "hideTimeOverride": true
+    }
+  ],
+  "annotations": {
+    "list": []
+  }
+}

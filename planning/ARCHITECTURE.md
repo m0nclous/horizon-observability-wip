@@ -2388,6 +2388,7 @@ final class Captions
 {
     public const WAIT_WARN = 1.0; public const WAIT_CRIT = 2.0; public const UTIL_WARN = 70; public const UTIL_CRIT = 90;
     public static function oldest(?int $ageSeconds, ?string $queue): string;     // "Oldest: 17 s · default" | "Oldest: 3 min · slow" | "Oldest: —"
+    public static function oldestExact(?float $ageSeconds, ?string $queue): string; // the same from the exact age, rounded once: 119.6 → "Oldest: 120 s · q" (T12)
     public static function supervisor(string $name, int $maxProcesses): string;  // "default · max 3"
     public static function rpm(?int $perMinute): string;                         // "RPM: 42" | "RPM: —"
     public static function waitLevel(?float $ratio): int;                        // 0|1|2
@@ -2504,7 +2505,7 @@ All keys sit under `{horizon-observability}:v1:` on the storage connection, whic
 | `live:snapshot:<sha1(scope)>` | string | fresh snapshot JSON (schema v1); presence means fresh | `cache_ttl` (1 s) |
 | `live:snapshot-stale:<sha1(scope)>` | string | the same JSON, served while another request rebuilds | `max(2 s, 10 × cache_ttl)` |
 | `live:snapshot-lock:<sha1(scope)>` | string | lock token | 2 s |
-| `live:leader` | string | `host:pid:rand` of the stream leader (leader lock) | 5 s, renewed every tick and before every push |
+| `live:leader` | string | `host:pid:rand` of the stream leader (leader lock) | 5 s, renewed every tick, before every push and at least every second between ticks |
 | `live:window:delayed` | list | `"<unix_ms>:<value>"`, newest first, trimmed to 179 | 1 h |
 
 `␟` is `\x1f`. Old pilot keys (`prometheus:queue:*`) are never read. The `live:*` keys come from Addendum E′; `horizon-observability:flush` deletes them with `SCAN` on the prefix.
