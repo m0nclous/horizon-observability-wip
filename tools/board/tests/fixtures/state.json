@@ -1,0 +1,41 @@
+{
+  "user": "m0nclous",
+  "repo": "m0nclous/board-fixture",
+  "labels": [
+    {"name": "bug", "color": "d73a4a", "description": "Something isn't working"}
+  ],
+  "issues": [],
+  "project": {
+    "id": "PVT_board5",
+    "number": 5,
+    "title": "Horizon Observability",
+    "serial": 100,
+    "fields": [
+      {"id": "PVTF_title", "name": "Title", "type": "ProjectV2Field", "dataType": "TITLE"},
+      {"id": "PVTF_assignees", "name": "Assignees", "type": "ProjectV2Field", "dataType": "ASSIGNEES"},
+      {"id": "PVTSSF_status", "name": "Status", "type": "ProjectV2SingleSelectField", "options": [
+        {"id": "st_todo", "name": "Todo"},
+        {"id": "st_progress", "name": "In Progress"},
+        {"id": "st_testing", "name": "Testing"},
+        {"id": "st_done", "name": "Done"}
+      ]}
+    ],
+    "items": []
+  },
+  "owner_needs_me": true,
+  "runs": {
+    "900": {"jobs": [
+      {"name": "PHP 8.2 / L^11.23 / prefer-lowest / predis / redis:6.2-alpine", "conclusion": "failure"},
+      {"name": "PHP 8.3 / L13.* / prefer-stable / phpredis / redis:7.4-alpine", "conclusion": "success"},
+      {"name": "Static analysis and style", "conclusion": "success"},
+      {"name": "Dist archive contents", "conclusion": "failure"}
+    ]},
+    "901": {"jobs": [
+      {"name": "Coverage (pcov, minimum 85 %)", "conclusion": "timed_out"},
+      {"name": "Static analysis and style", "conclusion": "success"}
+    ]},
+    "902": {"jobs": [
+      {"name": "Static analysis and style", "conclusion": "success"}
+    ]}
+  }
+}

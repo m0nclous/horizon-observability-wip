@@ -1,0 +1,7 @@
+gh label list --repo m0nclous/board-fixture --limit 1000 --json name,color,description --jq '.[] | [.name, (.color | ascii_downcase), .description] | @tsv'
+gh label create report --repo m0nclous/board-fixture --color 5319e7 --description 'Flow report of the board' --force
+gh issue list --repo m0nclous/board-fixture --state all --label task --limit 1000 --json number,state,url,title,labels --jq '.[] | [.number, .state, .url, .title, ([.labels[].name] | join("\u001f"))] | @tsv'
+gh issue list --repo m0nclous/board-fixture --state open --label stop-the-line --limit 100 --json number --jq '.[].number'
+gh issue list --repo m0nclous/board-fixture --state all --label report --limit 100 --json number,state,title --jq '[.[] | select(.title == "[Board] Flow report")] | sort_by(.number) | .[0] // empty | [.number, .state] | @tsv'
+gh issue create --repo m0nclous/board-fixture --title '[Board] Flow report' --body '<report body>' --label report
+gh issue pin 9 --repo m0nclous/board-fixture

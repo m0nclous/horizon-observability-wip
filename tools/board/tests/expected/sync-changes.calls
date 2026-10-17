@@ -1,0 +1,12 @@
+gh issue edit 4 --repo m0nclous/board-fixture --remove-label testing
+gh issue close 4 --repo m0nclous/board-fixture --reason completed
+gh issue comment 4 --repo m0nclous/board-fixture --body '**QA:** 2026-10-12 11:00 UTC: round 1 approved by the spec and adversarial testers\n\n<!-- qa:ab65d1926344 -->'
+gh project item-edit --id PVTI_109 --project-id PVT_board5 --field-id PVTSSF_status --single-select-option-id st_done
+gh project item-edit --id PVTI_109 --project-id PVT_board5 --field-id PVTF_103 --number 1
+gh project item-edit --id PVTI_109 --project-id PVT_board5 --field-id PVTF_105 --date 2026-10-12
+gh issue comment 5 --repo m0nclous/board-fixture --body '**Owner answer:** 2026-10-12 10:00 UTC: Yes, keep the 1 s cache\n\n<!-- owner-answer:633853cc1944 -->'
+gh issue edit 6 --repo m0nclous/board-fixture --add-label 'in progress' --remove-label ready
+gh project item-edit --id PVTI_111 --project-id PVT_board5 --field-id PVTSSF_status --single-select-option-id st_progress
+gh project item-edit --id PVTI_111 --project-id PVT_board5 --field-id PVTF_104 --date 2026-10-12
+gh issue comment 7 --repo m0nclous/board-fixture --body '**Blocked** by T02, T04, T05: this task becomes ready when they are done.\n\n<!-- blocked:T02,T04,T05 -->'
+gh issue comment 8 --repo m0nclous/board-fixture --body '**Blocked** by T02, T04, T05, T06: this task becomes ready when they are done.\n\n<!-- blocked:T02,T04,T05,T06 -->'

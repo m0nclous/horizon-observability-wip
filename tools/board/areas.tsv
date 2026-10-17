@@ -1,0 +1,21 @@
+# Area of every task of planning/TASKS.md for the board's Area field (tools/board/board.sh).
+# One "Txx<TAB>area" line per task. Areas: exporter attempts queues http batches discovery horizon-ui grafana live ci
+# docs process (BOARD_AREAS in tools/board/lib.sh). Ids without a line leave the Area field empty.
+T00	process
+T01	docs
+T02	exporter
+T03	exporter
+T04	attempts
+T05	queues
+T06	http
+T07	batches
+T08	discovery
+T09	horizon-ui
+T10	grafana
+T11	ci
+T12	live
+T13	grafana
+T14	exporter
+T15	docs
+T16	exporter
+T17	grafana

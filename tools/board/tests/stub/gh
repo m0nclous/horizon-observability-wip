@@ -1,0 +1,416 @@
+#!/usr/bin/env python3
+"""Offline stand-in for the GitHub CLI, used by tools/board/tests/run.sh.
+
+Every invocation is appended to $GH_STUB_LOG as one JSON array of its arguments. Answers come from the JSON state in
+$GH_STUB_STATE (seeded from tools/board/tests/fixtures/state.json), and writes update that state, so a second run of
+board.sh sees the issues, labels, comments and board items of the first. Only the gh commands that board.sh calls
+are implemented, with gh's flags and output shapes (`--json` field selection, `--jq` through jq, `--format json` for
+projects); anything else exits 64 so that an unexpected call fails the test. Nothing here touches the network.
+
+GH_STUB_FAIL="issue pin" makes every call starting with those arguments fail (exit 1).
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+
+VALUE_FLAGS = {
+    "--add-label", "--attempt", "--body", "--color", "--comment", "--data-type", "--date", "--description",
+    "--field-id", "--format", "--id", "--jq", "--json", "--label", "--limit", "--name", "--number", "--owner",
+    "--project-id", "--reason", "--remove-label", "--repo", "--single-select-option-id", "--single-select-options",
+    "--state", "--text", "--title", "--url",
+}
+BOOL_FLAGS = {"--clear", "--force"}
+ISSUE_FIELDS = {"number", "title", "body", "state", "url", "labels", "comments", "isPinned"}
+
+
+def fail(message, code=1):
+    sys.stderr.write(message.rstrip("\n") + "\n")
+    sys.exit(code)
+
+
+def unsupported(args):
+    fail("gh stub: unsupported call: gh " + " ".join(args), 64)
+
+
+def parse(args):
+    opts, positional, i = {}, [], 0
+    while i < len(args):
+        arg = args[i]
+        if arg in VALUE_FLAGS:
+            if i + 1 >= len(args):
+                fail("flag needs an argument: " + arg)
+            opts.setdefault(arg, []).append(args[i + 1])
+            i += 2
+        elif arg in BOOL_FLAGS:
+            opts[arg] = [True]
+            i += 1
+        elif arg.startswith("-"):
+            fail("unknown flag: " + arg)
+        else:
+            positional.append(arg)
+            i += 1
+    return opts, positional
+
+
+def one(opts, flag, default=None):
+    values = opts.get(flag)
+    return values[-1] if values else default
+
+
+def many(opts, flag):
+    # gh splits string-slice flags (--label, --add-label, --remove-label) on commas.
+    return [part.strip() for value in opts.get(flag, []) for part in value.split(",") if part.strip()]
+
+
+class Stub:
+    def __init__(self, path):
+        self.path = path
+        with open(path, encoding="utf-8") as handle:
+            self.state = json.load(handle)
+
+    def save(self):
+        tmp = self.path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump(self.state, handle, indent=2, sort_keys=True, ensure_ascii=False)
+            handle.write("\n")
+        os.replace(tmp, self.path)
+
+    # --- output ---------------------------------------------------------------------------------------------------
+
+    def emit(self, data, opts, fields=None):
+        if "--json" in opts:
+            wanted = one(opts, "--json").split(",")
+            unknown = [name for name in wanted if fields is not None and name not in fields]
+            if unknown:
+                fail("Unknown JSON field: " + ", ".join(unknown))
+            if isinstance(data, list):
+                data = [{name: item[name] for name in wanted} for item in data]
+            else:
+                data = {name: data[name] for name in wanted}
+        text = json.dumps(data, ensure_ascii=False)
+        jq = one(opts, "--jq")
+        if jq is not None:
+            done = subprocess.run(["jq", "-r", jq], input=text, capture_output=True, text=True)
+            if done.returncode != 0:
+                fail("jq: " + done.stderr)
+            sys.stdout.write(done.stdout)
+        else:
+            sys.stdout.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+
+    # --- repository -----------------------------------------------------------------------------------------------
+
+    def repo(self, opts):
+        repo = one(opts, "--repo", self.state["repo"])
+        if repo != self.state["repo"]:
+            fail("GraphQL: Could not resolve to a Repository with the name '%s'." % repo)
+        return repo
+
+    def label(self, name):
+        for label in self.state["labels"]:
+            if label["name"] == name:
+                return label
+        return None
+
+    def issue(self, ref, opts):
+        repo = self.repo(opts)
+        match = re.fullmatch(r"(?:https://github\.com/%s/issues/)?#?(\d+)" % re.escape(repo), ref)
+        if not match:
+            fail("invalid issue reference: " + ref)
+        for issue in self.state["issues"]:
+            if issue["number"] == int(match.group(1)):
+                return issue
+        fail("GraphQL: Could not resolve to an issue or pull request with the number of %s." % match.group(1))
+
+    def issue_json(self, issue):
+        repo = self.state["repo"]
+        labels = []
+        for name in issue["labels"]:
+            label = self.label(name) or {"name": name, "color": "ededed", "description": ""}
+            labels.append({"id": "LA_" + name, "name": name, "color": label["color"], "description": label["description"]})
+        return {
+            "number": issue["number"],
+            "title": issue["title"],
+            "body": issue["body"],
+            "state": issue["state"],
+            "url": "https://github.com/%s/issues/%d" % (repo, issue["number"]),
+            "labels": labels,
+            "comments": [{"author": {"login": self.state["user"]}, "body": body} for body in issue["comments"]],
+            "isPinned": issue.get("pinned", False),
+        }
+
+    def require_labels(self, names):
+        for name in names:
+            if self.label(name) is None:
+                fail("could not add label: '%s' not found" % name)
+
+    def cmd_api(self, args, opts, positional):
+        if positional != ["user"]:
+            unsupported(args)
+        self.emit({"login": self.state["user"]}, opts)
+
+    def cmd_repo(self, args, opts, positional):
+        if positional != ["view"]:
+            unsupported(args)
+        self.emit({"nameWithOwner": self.state["repo"]}, opts, {"nameWithOwner"})
+
+    def cmd_label(self, args, opts, positional):
+        self.repo(opts)
+        if positional == ["list"]:
+            labels = sorted(self.state["labels"], key=lambda label: label["name"].lower())
+            self.emit(labels[: int(one(opts, "--limit", "30"))], opts, {"name", "color", "description"})
+        elif len(positional) == 2 and positional[0] == "create":
+            name = positional[1]
+            label = self.label(name)
+            if label is not None and "--force" not in opts:
+                fail("label with name \"%s\" already exists; use `--force` to update its color and description" % name)
+            if label is None:
+                label = {"name": name}
+                self.state["labels"].append(label)
+            label["color"] = one(opts, "--color", label.get("color", "ededed")).lower()
+            label["description"] = one(opts, "--description", label.get("description", ""))
+            self.save()
+        else:
+            unsupported(args)
+
+    def cmd_issue(self, args, opts, positional):
+        if not positional:
+            unsupported(args)
+        verb, rest = positional[0], positional[1:]
+        if verb == "list" and not rest:
+            self.repo(opts)
+            state = one(opts, "--state", "open").upper()
+            wanted = many(opts, "--label")
+            found = [
+                issue for issue in self.state["issues"]
+                if (state == "ALL" or issue["state"] == state) and all(name in issue["labels"] for name in wanted)
+            ]
+            found.sort(key=lambda issue: -issue["number"])
+            found = found[: int(one(opts, "--limit", "30"))]
+            self.emit([self.issue_json(issue) for issue in found], opts, ISSUE_FIELDS)
+        elif verb == "view" and len(rest) == 1:
+            self.emit(self.issue_json(self.issue(rest[0], opts)), opts, ISSUE_FIELDS)
+        elif verb == "create" and not rest:
+            repo = self.repo(opts)
+            title = one(opts, "--title")
+            if not title:
+                fail("title required when not running interactively")
+            labels = many(opts, "--label")
+            self.require_labels(labels)
+            number = max([issue["number"] for issue in self.state["issues"]] + [0]) + 1
+            self.state["issues"].append({
+                "number": number, "title": title, "body": one(opts, "--body", ""), "state": "OPEN",
+                "labels": labels, "comments": [], "pinned": False,
+            })
+            self.save()
+            print("https://github.com/%s/issues/%d" % (repo, number))
+        elif verb == "edit" and len(rest) == 1:
+            issue = self.issue(rest[0], opts)
+            if "--title" in opts:
+                issue["title"] = one(opts, "--title")
+            if "--body" in opts:
+                issue["body"] = one(opts, "--body")
+            added = many(opts, "--add-label")
+            self.require_labels(added)
+            for name in added:
+                if name not in issue["labels"]:
+                    issue["labels"].append(name)
+            for name in many(opts, "--remove-label"):
+                if name in issue["labels"]:
+                    issue["labels"].remove(name)
+            self.save()
+            print("https://github.com/%s/issues/%d" % (self.state["repo"], issue["number"]))
+        elif verb == "close" and len(rest) == 1:
+            issue = self.issue(rest[0], opts)
+            if issue["state"] == "CLOSED":
+                sys.stderr.write("! Issue #%d is already closed\n" % issue["number"])
+                return
+            if "--comment" in opts:
+                issue["comments"].append(one(opts, "--comment"))
+            reason = one(opts, "--reason", "completed")
+            if reason not in ("completed", "not planned"):
+                fail("invalid reason: " + reason)
+            issue["state"] = "CLOSED"
+            self.save()
+        elif verb == "reopen" and len(rest) == 1:
+            issue = self.issue(rest[0], opts)
+            issue["state"] = "OPEN"
+            self.save()
+        elif verb == "comment" and len(rest) == 1:
+            issue = self.issue(rest[0], opts)
+            body = one(opts, "--body")
+            if body is None:
+                fail("body required when not running interactively")
+            issue["comments"].append(body)
+            self.save()
+            print("https://github.com/%s/issues/%d#issuecomment-%d" % (self.state["repo"], issue["number"], len(issue["comments"])))
+        elif verb == "pin" and len(rest) == 1:
+            issue = self.issue(rest[0], opts)
+            if not issue.get("pinned") and sum(1 for other in self.state["issues"] if other.get("pinned")) >= 3:
+                fail("GraphQL: Pinned issues limit reached (pinIssue)")
+            issue["pinned"] = True
+            self.save()
+        else:
+            unsupported(args)
+
+    def cmd_run(self, args, opts, positional):
+        if len(positional) != 2 or positional[0] != "view":
+            unsupported(args)
+        self.repo(opts)
+        run = self.state.get("runs", {}).get(positional[1])
+        if run is None:
+            fail("could not find any workflow run with ID " + positional[1])
+        attempt = one(opts, "--attempt", "1")
+        jobs = run.get("attempts", {}).get(attempt, run.get("jobs", []))
+        self.emit({"jobs": jobs}, opts, {"jobs"})
+
+    # --- projects -------------------------------------------------------------------------------------------------
+
+    def project(self, number, opts):
+        project = self.state["project"]
+        owner = one(opts, "--owner")
+        if owner not in ("@me", self.state["user"]):
+            fail("unknown owner type")
+        if owner != "@me" and self.state.get("owner_needs_me"):
+            fail("unknown owner type")
+        if number is None or int(number) != project["number"]:
+            fail("Could not resolve to a ProjectV2 with the number %s." % number)
+        if one(opts, "--format") not in (None, "json"):
+            fail("invalid format")
+        return project
+
+    def field_json(self, field):
+        data = {"id": field["id"], "name": field["name"], "type": field["type"]}
+        if field["type"] == "ProjectV2SingleSelectField":
+            data["options"] = [{"id": option["id"], "name": option["name"]} for option in field["options"]]
+        return data
+
+    def item_json(self, project, item):
+        issue = self.issue(item["url"], {})
+        data = {
+            "id": item["id"],
+            "content": {
+                "type": "Issue", "number": issue["number"], "title": issue["title"], "body": issue["body"],
+                "url": item["url"], "repository": self.state["repo"],
+            },
+            "title": issue["title"],
+            "repository": "https://github.com/" + self.state["repo"],
+            "labels": list(issue["labels"]),
+        }
+        fields = {field["id"]: field for field in project["fields"]}
+        for field_id, value in item["values"].items():
+            field = fields[field_id]
+            name = field["name"]
+            key = name[0].lower() + name[1:]
+            if field["type"] == "ProjectV2SingleSelectField":
+                value = next(option["name"] for option in field["options"] if option["id"] == value)
+            elif isinstance(value, float) and value.is_integer():
+                value = int(value)
+            data[key] = value
+        return data
+
+    def cmd_project(self, args, opts, positional):
+        if not positional:
+            unsupported(args)
+        verb, rest = positional[0], positional[1:]
+        if verb == "view" and len(rest) == 1:
+            project = self.project(rest[0], opts)
+            self.emit({"id": project["id"], "number": project["number"], "title": project["title"],
+                       "url": "https://github.com/users/%s/projects/%d" % (self.state["user"], project["number"])}, opts)
+        elif verb == "field-list" and len(rest) == 1:
+            project = self.project(rest[0], opts)
+            fields = [self.field_json(field) for field in project["fields"]]
+            self.emit({"fields": fields[: int(one(opts, "--limit", "30"))], "totalCount": len(fields)}, opts)
+        elif verb == "field-create" and len(rest) == 1:
+            project = self.project(rest[0], opts)
+            name, data_type = one(opts, "--name"), one(opts, "--data-type")
+            if not name or data_type not in ("TEXT", "SINGLE_SELECT", "DATE", "NUMBER"):
+                fail("invalid field: %s %s" % (name, data_type))
+            if any(field["name"] == name for field in project["fields"]):
+                fail("GraphQL: Name has already been taken (createProjectV2Field)")
+            project["serial"] = project.get("serial", 0) + 1
+            if data_type == "SINGLE_SELECT":
+                options = [option for option in one(opts, "--single-select-options", "").split(",") if option]
+                if not options:
+                    fail("passing `--single-select-options` is required for SINGLE_SELECT data type")
+                field = {
+                    "id": "PVTSSF_%d" % project["serial"], "name": name, "type": "ProjectV2SingleSelectField",
+                    "options": [{"id": "opt%d_%d" % (project["serial"], k), "name": option} for k, option in enumerate(options, 1)],
+                }
+            else:
+                field = {"id": "PVTF_%d" % project["serial"], "name": name, "type": "ProjectV2Field", "dataType": data_type}
+            project["fields"].append(field)
+            self.save()
+            self.emit(self.field_json(field), opts)
+        elif verb == "item-list" and len(rest) == 1:
+            project = self.project(rest[0], opts)
+            items = [self.item_json(project, item) for item in project["items"]]
+            self.emit({"items": items[: int(one(opts, "--limit", "30"))], "totalCount": len(items)}, opts)
+        elif verb == "item-add" and len(rest) == 1:
+            project = self.project(rest[0], opts)
+            url = one(opts, "--url")
+            self.issue(url or "", {})
+            item = next((item for item in project["items"] if item["url"] == url), None)
+            if item is None:
+                project["serial"] = project.get("serial", 0) + 1
+                item = {"id": "PVTI_%d" % project["serial"], "url": url, "values": {}}
+                project["items"].append(item)
+                self.save()
+            self.emit(self.item_json(project, item), opts)
+        elif verb == "item-edit" and not rest:
+            project = self.state["project"]
+            if one(opts, "--project-id") != project["id"]:
+                fail("project id mismatch: %s" % one(opts, "--project-id"))
+            item = next((item for item in project["items"] if item["id"] == one(opts, "--id")), None)
+            field = next((field for field in project["fields"] if field["id"] == one(opts, "--field-id")), None)
+            if item is None or field is None:
+                fail("unknown item or field")
+            given = [flag for flag in ("--single-select-option-id", "--number", "--date", "--text", "--clear") if flag in opts]
+            if len(given) != 1:
+                fail("only one of `--text`, `--number`, `--date`, `--single-select-option-id`, `--iteration-id` or `--clear` may be used")
+            flag = given[0]
+            if flag == "--clear":
+                item["values"].pop(field["id"], None)
+            elif flag == "--single-select-option-id":
+                option = one(opts, flag)
+                if field["type"] != "ProjectV2SingleSelectField" or option not in [o["id"] for o in field["options"]]:
+                    fail("invalid option %s for field %s" % (option, field["name"]))
+                item["values"][field["id"]] = option
+            elif flag == "--number":
+                if field.get("dataType") != "NUMBER":
+                    fail("field %s is not a number" % field["name"])
+                number = float(one(opts, flag))
+                item["values"][field["id"]] = int(number) if number.is_integer() else number
+            elif flag == "--date":
+                if field.get("dataType") != "DATE" or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", one(opts, flag)):
+                    fail("invalid date for field %s" % field["name"])
+                item["values"][field["id"]] = one(opts, flag)
+            else:
+                item["values"][field["id"]] = one(opts, flag)
+            self.save()
+        else:
+            unsupported(args)
+
+
+def main(args):
+    log = os.environ.get("GH_STUB_LOG")
+    if log:
+        with open(log, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(args, ensure_ascii=False) + "\n")
+    failing = os.environ.get("GH_STUB_FAIL", "").split()
+    if failing and args[: len(failing)] == failing:
+        fail("gh stub: injected failure for: gh " + " ".join(args))
+    if not args:
+        unsupported(args)
+    stub = Stub(os.environ["GH_STUB_STATE"])
+    opts, positional = parse(args[1:])
+    handler = getattr(stub, "cmd_" + args[0], None)
+    if handler is None:
+        unsupported(args)
+    handler(args, opts, positional)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

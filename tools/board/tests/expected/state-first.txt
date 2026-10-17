@@ -1,0 +1,37 @@
+label blocked #e99695 Todo task waiting for dependencies (listed in a comment)
+label bug #d73a4a Something isn't working
+label in progress #fbca04 Task status: in progress
+label needs owner #d93f0b Task status: needs owner (waits for an answer of the owner)
+label phase: 0 #c5def5 Phase 0 of planning/TASKS.md
+label phase: B #c5def5 Phase B of planning/TASKS.md
+label phase: C #c5def5 Phase C of planning/TASKS.md
+label ready #c2e0c6 Todo task whose dependencies are all done
+label task #0e8a16 Mirrors a task of planning/TASKS.md
+label testing #1d76db Task status: testing
+issue #1 CLOSED [T00] Bootstrap [task, phase: 0]
+issue #2 CLOSED [T01] Shared contracts [task, phase: 0]
+  comment: **QA:** 2026-10-03 21:00 UTC: round 1 approved by the spec and adversarial testers\n\n<!-- qa:65c7f0bc2755 -->
+issue #3 OPEN [T02] Exposition [task, phase: B, in progress]
+  comment: **QA:** 2026-10-10 09:00 UTC: round 1 rejected by the adversarial tester: the cache key ignores the scope\n\n<!-- qa:8cde9f6fc8e8 -->
+issue #4 OPEN [T03] Attempts [task, phase: B, testing]
+issue #5 OPEN [T04] Queue state [task, phase: B, needs owner]
+  comment: **Owner question** for @m0nclous: 2026-10-11 08:30 UTC: Keep the 1 s server cache for the live endpoint?\n\n<!-- owner-question:675c4cc25f6b -->
+issue #6 OPEN [T05] Grafana port [task, phase: B, ready]
+issue #7 OPEN [T06] Live backend [task, phase: C, blocked]
+  comment: **Blocked** by T02, T03, T04, T05: this task becomes ready when they are done.\n\n<!-- blocked:T02,T03,T04,T05 -->
+issue #8 OPEN [T07] Release [task, phase: C, blocked]
+  comment: **Blocked** by T02, T03, T04, T05, T06: this task becomes ready when they are done.\n\n<!-- blocked:T02,T03,T04,T05,T06 -->
+field Status: Todo, In Progress, Testing, Done
+field Phase: 0, B, C
+field Area: exporter, attempts, queues, http, batches, discovery, horizon-ui, grafana, live, ci, docs, process
+field QA rounds: NUMBER
+field Started: DATE
+field Finished: DATE
+card #1 Status=Done; Phase=0; Area=process; QA rounds=0
+card #2 Status=Done; Phase=0; Area=exporter; QA rounds=1; Started=2026-10-01; Finished=2026-10-03
+card #3 Status=In Progress; Phase=B; Area=exporter; QA rounds=1; Started=2026-10-09
+card #4 Status=Testing; Phase=B; Area=attempts; QA rounds=0; Started=2026-10-09
+card #5 Phase=B; Area=queues; QA rounds=0; Started=2026-10-10
+card #6 Status=Todo; Phase=B; Area=grafana; QA rounds=0
+card #7 Status=Todo; Phase=C; Area=live; QA rounds=0
+card #8 Status=Todo; Phase=C; QA rounds=0
