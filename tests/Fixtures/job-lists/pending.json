@@ -1,0 +1,18 @@
+{
+    "data": [
+        {
+            "id": "4f1d2e3c-5b6a-4789-9a0b-1c2d3e4f5a60",
+            "name": "App\\Jobs\\Отчёт",
+            "queue": "mail",
+            "queued_at": 1700000200500,
+            "horizon_path": "jobs/pending/4f1d2e3c-5b6a-4789-9a0b-1c2d3e4f5a60"
+        },
+        {
+            "id": "9a3c6f8e-1f2a-4c55-8f0e-0d1c2b3a4f50",
+            "name": "App\\Jobs\\SendInvoice",
+            "queue": "default",
+            "queued_at": 1700000100123,
+            "horizon_path": "jobs/pending/9a3c6f8e-1f2a-4c55-8f0e-0d1c2b3a4f50"
+        }
+    ]
+}
