@@ -207,13 +207,16 @@ final readonly class JobClassCache
 
     /**
      * Whether a scan marker blocks this discovery: another request is scanning, or a scan died. A marker the store
-     * did not keep (the `null` store) blocks nothing. An old one is reported.
+     * did not keep (the `null` store) blocks nothing. An old one is reported. The Redis store stores a number without
+     * serialising it, so the marker comes back as a numeric string there.
      */
     private function scanBlocked(mixed $startedAt): bool
     {
         if ($startedAt === null) {
             return false;
         }
+
+        $startedAt = is_string($startedAt) && preg_match('/^\d{1,19}$/', $startedAt) === 1 ? (int) $startedAt : $startedAt;
 
         if (! is_int($startedAt) || now()->getTimestamp() - $startedAt >= self::STALE_SCAN_SECONDS) {
             $this->reporter->warnOnce('discovery.scan', sprintf(

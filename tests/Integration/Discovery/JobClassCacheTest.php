@@ -154,6 +154,24 @@ it('leaves a discovery that is running to its request without a warning', functi
         ->and($this->log->messages('warning'))->toBe([]);
 });
 
+it('leaves a running discovery to its request without a warning on the redis cache store', function (): void {
+    // The Redis store keeps a number unserialised, so the marker another request added reads back as a string.
+    config()->set('cache.default', 'redis');
+    $this->classes->job('Alpha');
+    $marker = jobClassScanMarker($this->classes->directory());
+    Cache::add($marker, now()->getTimestamp(), JobClassCache::TTL_SECONDS);
+
+    expect(Cache::get($marker))->toBeString()
+        ->and(freshJobClassCache()->classes())->toBe([])
+        ->and($this->log->messages('warning'))->toBe([]);
+
+    $this->travel(JobClassCache::STALE_SCAN_SECONDS)->seconds();
+
+    expect(freshJobClassCache()->classes())->toBe([])
+        ->and($this->log->messages('warning'))->toHaveCount(1)
+        ->and($this->log->messages('warning')[0])->toStartWith('horizon-observability: Job class discovery did not finish');
+})->group('redis');
+
 it('scans every time with a store that keeps nothing', function (): void {
     $a = $this->classes->job('Alpha');
     config()->set('cache.stores.none', ['driver' => 'null']);
