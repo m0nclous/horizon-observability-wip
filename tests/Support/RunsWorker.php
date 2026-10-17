@@ -13,7 +13,9 @@ trait RunsWorker
 {
     /**
      * Work the queue until it is empty (or one job with `$once`); the command's exit code. The timeout defaults to 0
-     * (no SIGALRM handler in the test process).
+     * (no SIGALRM handler in the test process). The memory limit defaults to 4096 MB: `queue:work` stops with exit
+     * code 12 (`Worker::EXIT_MEMORY_LIMIT`) before the first job once the test process uses more than its default
+     * 128 MB, which a long suite does.
      *
      * @param  array<string, mixed>  $options  extra `queue:work` options, e.g. `['--tries' => 3]`
      */
@@ -27,6 +29,7 @@ trait RunsWorker
             '--sleep' => 0,
             '--tries' => 1,
             '--timeout' => 0,
+            '--memory' => 4096,
             ...$options,
         ]);
     }
