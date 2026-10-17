@@ -10,6 +10,7 @@
     }
   },
   "exclude": [
-    "legacy"
+    "legacy",
+    "planning"
   ]
 }
