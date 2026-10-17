@@ -8,6 +8,7 @@ use DF\HorizonObservability\Http\JobList;
 use DF\HorizonObservability\Http\JobListQuery;
 use DF\HorizonObservability\Http\JobListService;
 use DF\HorizonObservability\Queues\DelayedJobStore;
+use DF\HorizonObservability\Redis\Keys;
 use DF\HorizonObservability\Redis\RedisClients;
 use DF\HorizonObservability\Tests\Integration\JobStore\Support\HorizonJobs;
 use DF\HorizonObservability\Tests\Support\HorizonState;
@@ -37,9 +38,9 @@ function emptyFilterTestQuery(JobList $list, ?array $supervisors = null, ?array 
 }
 
 /**
- * Commands that read jobs: anything on the package's reader clients, and any job-set scan or script on any
- * connection. (Horizon's own supervisor repository reads the `supervisors` set with ZREVRANGEBYSCORE and a
- * pipeline of HMGETs on the app's `horizon` connection.)
+ * Commands that read jobs: anything on the package's reader clients except the batch-link read (a package key, not a
+ * job), and any job-set scan or script on any connection. (Horizon's own supervisor repository reads the
+ * `supervisors` set with ZREVRANGEBYSCORE and a pipeline of HMGETs on the app's `horizon` connection.)
  *
  * @return list<string>
  */
@@ -49,7 +50,8 @@ function emptyFilterTestJobReads(RedisCommands $commands): array
         static fn (array $command): string => $command['connection'].' '.$command['command'],
         array_filter(
             $commands->commands(),
-            static fn (array $command): bool => str_starts_with($command['connection'], RedisClients::READER)
+            static fn (array $command): bool => (str_starts_with($command['connection'], RedisClients::READER)
+                && ($command['parameters'][0] ?? null) !== (new Keys)->batchLinks())
                 || in_array($command['command'], ['ZRANGEBYSCORE', 'EVAL'], true),
         ),
     ));
@@ -92,7 +94,10 @@ it('reads no job for a batch kind without links (C13)', function (JobList $list)
     $commands = RedisCommands::start($this->app);
 
     expect(app(JobListService::class)->rows(emptyFilterTestQuery($list, batchKinds: ['campaign_launch'])))->toBe([])
-        ->and(emptyFilterTestJobReads($commands))->toBe([]);
+        ->and(emptyFilterTestJobReads($commands))->toBe([])
+        // Only the batch links were read, once, on the storage reader.
+        ->and($commands->names())->toBe(['ZRANGE'])
+        ->and($commands->names(RedisClients::READER.'horizon'))->toBe(['ZRANGE']);
 })->with([JobList::Pending, JobList::Completed, JobList::Failed, JobList::Delayed]);
 
 it('reads no job and no batch link for disjoint filters (C13)', function (JobList $list): void {
