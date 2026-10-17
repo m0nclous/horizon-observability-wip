@@ -1,6 +1,10 @@
 # CI (Arch 8.5, ADDENDUM Q9' WP9). Jobs: tests (PHP x Laravel x lowest/stable x phpredis/predis x Redis/Valkey),
 # cluster, static, coverage, grafana (Grafana 12.4.13 and 13.2.4), dist, and the weekly e2e (screenshots, the replica
 # dedupe gate and the performance report on both Grafana versions; non-blocking until T15).
+# Pull requests (one per task, planning/README.md decision 14) run a fast subset: static, tests-pr (the stable leg
+# PHP 8.3 / L13 / phpredis and the lowest leg PHP 8.2 / L11 / predis) and grafana on 13.2.4 only. Pushes to master
+# and claude/** (the merge into the integration branch), the schedule and manual runs keep the full matrix; a red push
+# run of the integration branch stops the line (.github/workflows/board.yml).
 name: tests
 
 on:
@@ -24,7 +28,8 @@ env:
 
 jobs:
   tests:
-    name: PHP ${{ matrix.php }} / L${{ matrix.laravel }} / ${{ matrix.stability }} / ${{ matrix.client }} / ${{ matrix.redis }}
+    name: &leg-name PHP ${{ matrix.php }} / L${{ matrix.laravel }} / ${{ matrix.stability }} / ${{ matrix.client }} / ${{ matrix.redis }}
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     strategy:
@@ -49,16 +54,16 @@ jobs:
           - {php: '8.4', laravel: '12.*', testbench: '^10.0', stability: prefer-stable, client: predis, predis: '^3.0', redis: 'redis:7.4-alpine'}
           - {php: '8.5', laravel: '13.*', testbench: '^11.0', stability: prefer-stable, client: predis, predis: '^3.0', redis: 'valkey/valkey:8-alpine'}
           - {php: '8.4', laravel: '13.*', testbench: '^11.0', stability: prefer-stable, client: phpredis, redis: 'redis:8-alpine'}
-    services:
+    services: &leg-services
       redis:
         image: ${{ matrix.redis }}
         ports: ['6379:6379']
         options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
-    env:
+    env: &leg-env
       REDIS_CLIENT: ${{ matrix.client }}
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
-    steps:
+    steps: &leg-steps
       - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
@@ -75,8 +80,25 @@ jobs:
       - run: composer show laravel/framework laravel/horizon orchestra/testbench pestphp/pest predis/predis
       - run: vendor/bin/pest --ci --exclude-group=cluster --exclude-group=e2e
 
+  # The pull request subset of the matrix above: the same steps (YAML anchors) on two legs.
+  tests-pr:
+    name: *leg-name
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {php: '8.3', laravel: '13.*', testbench: '^11.0', stability: prefer-stable, client: phpredis, redis: 'redis:7.4-alpine'}
+          - {php: '8.2', laravel: '^11.23', testbench: '^9.5', stability: prefer-lowest, client: predis, predis: '^2.0.2', redis: 'redis:6.2-alpine'}
+    services: *leg-services
+    env: *leg-env
+    steps: *leg-steps
+
   cluster:
     name: Redis Cluster / phpredis and predis
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -128,6 +150,11 @@ jobs:
           php-version: '8.4'
           extensions: redis, pcntl, posix, pdo_sqlite, mbstring
           coverage: none
+      # The board tooling (bash, offline: a stub gh, no GitHub API).
+      - name: Board tooling (shellcheck, tools/board/tests/run.sh)
+        run: |
+          shellcheck -x tools/board/*.sh tools/board/tests/run.sh
+          tools/board/tests/run.sh
       - run: composer validate --strict
       - run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress
       - run: composer normalize --dry-run
@@ -137,6 +164,7 @@ jobs:
 
   coverage:
     name: Coverage (pcov, minimum 85 %)
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
@@ -168,7 +196,8 @@ jobs:
       fail-fast: false
       matrix:
         # Both supported majors; Infinity 4.1.1 needs Grafana >= 12.2.5, Business Text 6.3.0 needs >= 12.3.0.
-        grafana: ['grafana/grafana:12.4.13', 'grafana/grafana:13.2.4']
+        # Pull requests check 13.2.4 only; the push run after the merge checks both.
+        grafana: ${{ fromJSON(github.event_name == 'pull_request' && '["grafana/grafana:13.2.4"]' || '["grafana/grafana:12.4.13", "grafana/grafana:13.2.4"]') }}
     env:
       GRAFANA_IMAGE: ${{ matrix.grafana }}
       PROMETHEUS_IMAGE: quay.io/prometheus/prometheus:v3.15.0
@@ -224,6 +253,7 @@ jobs:
 
   dist:
     name: Dist archive contents
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

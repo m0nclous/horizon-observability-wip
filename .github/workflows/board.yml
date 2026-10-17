@@ -1,8 +1,11 @@
 name: board
 
-# Mirrors planning/TASKS.md onto issues and the GitHub Projects board (tools/board/board.sh).
-# Setup: repository secret PROJECT_TOKEN (Issues + Projects read/write) and repository variable BOARD_NUMBER
-# (the number in the board URL). Optional variable BOARD_OWNER (default: the repository owner).
+# Mirrors planning/TASKS.md onto issues and the GitHub Projects board, stops the line while the tests workflow is red
+# on the integration branch, and rewrites the flow report (tools/board/board.sh, tools/board/README.md).
+# Setup: repository secret PROJECT_TOKEN (classic PAT: repo, project, read:org, read:discussion) and repository
+# variable BOARD_NUMBER (the number in the board URL). Optional variables: BOARD_OWNER (default: the repository owner),
+# INTEGRATION_BRANCH (default: claude/hopeful-hawking-njeu3v), BOARD_WIP_IN_PROGRESS (2), BOARD_WIP_TESTING (3).
+# workflow_run only fires from the copy of this file on the default branch.
 
 on:
   push:
@@ -11,27 +14,87 @@ on:
       - planning/TASKS.md
       - tools/board/**
       - .github/workflows/board.yml
+  workflow_run:
+    workflows: [tests]
+    types: [completed]
   workflow_dispatch: {}
 
 permissions:
   contents: read
 
-concurrency:
-  group: board
-  cancel-in-progress: false
+env:
+  GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+  BOARD_REPO: ${{ github.repository }}
+  BOARD_OWNER: ${{ vars.BOARD_OWNER || github.repository_owner }}
+  BOARD_NUMBER: ${{ vars.BOARD_NUMBER }}
+  BOARD_WIP_IN_PROGRESS: ${{ vars.BOARD_WIP_IN_PROGRESS || '2' }}
+  BOARD_WIP_TESTING: ${{ vars.BOARD_WIP_TESTING || '3' }}
 
 jobs:
   sync:
-    if: ${{ vars.BOARD_NUMBER != '' }}
+    name: Sync issues and board
+    # Only the integration branch's TASKS.md is the truth: another branch's copy must not move the cards.
+    if: >-
+      ${{ vars.BOARD_NUMBER != '' && (github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'push' && github.ref_name == (vars.INTEGRATION_BRANCH || 'claude/hopeful-hawking-njeu3v'))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # A pending sync is replaced by a newer one, which reads the newer TASKS.md: nothing is lost.
+    concurrency:
+      group: board-sync
+      cancel-in-progress: false
     steps:
+      # The full history: Started and Finished come from the "board: Txx -> ..." commits.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - name: Sync issues and board
         run: tools/board/board.sh sync
         env:
-          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
-          BOARD_REPO: ${{ github.repository }}
-          BOARD_OWNER: ${{ vars.BOARD_OWNER || github.repository_owner }}
-          BOARD_NUMBER: ${{ vars.BOARD_NUMBER }}
           BOARD_BRANCH: ${{ github.ref_name }}
+
+  ci:
+    name: Stop the line
+    # Only push runs of the integration branch decide; pull request runs have their own checks.
+    if: >-
+      ${{ vars.BOARD_NUMBER != '' && github.event_name == 'workflow_run'
+      && github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_branch == (vars.INTEGRATION_BRANCH || 'claude/hopeful-hawking-njeu3v') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: board-ci
+      cancel-in-progress: false
+    steps:
+      # The branch head, so that board.sh can ignore a run of an older commit.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+      - name: Open, comment on or close the stop-the-line issue
+        run: tools/board/board.sh ci
+        env:
+          BOARD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          CI_RUN_ID: ${{ github.event.workflow_run.id }}
+          CI_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          CI_RUN_URL: ${{ github.event.workflow_run.html_url }}
+          CI_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+
+  report:
+    name: Flow report
+    needs: [sync, ci]
+    if: ${{ always() && (needs.sync.result == 'success' || needs.ci.result == 'success') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: board-report
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_branch || github.sha }}
+          fetch-depth: 0
+      - name: Rewrite the flow report
+        run: tools/board/board.sh report
+        env:
+          BOARD_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
