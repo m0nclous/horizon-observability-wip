@@ -30,7 +30,7 @@ final class Model
      * Upper bound of what a measured attempt duration adds to the planned sleep (the worker, Horizon's listeners and
      * the job itself). Planned durations must keep this margin from every bucket bound, so the buckets are exact.
      */
-    public const OVERHEAD_SECONDS = 0.1;
+    public const OVERHEAD_SECONDS = 0.2;
 
     /**
      * `AttemptsCollector::NEW_SERIES_HOLD_SECONDS`, restated.

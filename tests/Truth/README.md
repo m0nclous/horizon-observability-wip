@@ -25,7 +25,7 @@ REDIS_CLIENT=predis vendor/bin/pest --group=truth
   set, logs every attempt with its outcome, planned duration, start and wait (`max(pushedAt, dispatch + delay)` from
   the stored payload), and computes the expected samples of a scrape at any time, including the 75 s hold of new
   series. Durations are the only real-time values: buckets are exact because planned durations keep
-  `Model::OVERHEAD_SECONDS` (0.1 s) away from every bound, and sums lie within the planned total plus 0.1 s per
+  `Model::OVERHEAD_SECONDS` (0.2 s) away from every bound, and sums lie within the planned total plus 0.2 s per
   attempt.
 - **Independent sources**: `Support/RedisState.php` reads the queues with plain `LLEN`/`ZCARD`/`ZCOUNT` and
   `json_decode`; `Support/HorizonTruth.php` restates the horizon families from Horizon's `MasterSupervisorRepository`
