@@ -66,13 +66,20 @@ jobs:
           extensions: redis, pcntl, posix, pdo_sqlite, mbstring
           coverage: none
       # The static tooling is dropped: it keeps the resolution fast and honest (Arch 8.5).
+      # Composer >= 2.9 refuses versions with security advisories: every Laravel 11 release (past its security support)
+      # and the oldest 12.x/13.x points. The matrix tests the supported range, so this step resolves without the policy
+      # (COMPOSER_NO_BLOCKING on Composer >= 2.10, COMPOSER_NO_SECURITY_BLOCKING on 2.9).
       - name: Resolve the leg
+        env:
+          COMPOSER_NO_BLOCKING: '1'
+          COMPOSER_NO_SECURITY_BLOCKING: '1'
         run: |
           composer remove --dev --no-update larastan/larastan rector/rector driftingly/rector-laravel laravel/pint ergebnis/composer-normalize phpstan/extension-installer phpstan/phpstan-deprecation-rules
           composer require --no-update "laravel/framework:${{ matrix.laravel }}"
           composer require --dev --no-update "orchestra/testbench:${{ matrix.testbench }}" ${{ matrix.predis && format('"predis/predis:{0}"', matrix.predis) || '' }}
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
-      - run: composer show laravel/framework laravel/horizon orchestra/testbench pestphp/pest predis/predis
+      - name: Resolved versions
+        run: composer show | grep -E '^(laravel/framework|laravel/horizon|orchestra/testbench|pestphp/pest|predis/predis) '
       - run: vendor/bin/pest --ci --exclude-group=cluster --exclude-group=e2e
 
   cluster:
