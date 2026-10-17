@@ -283,6 +283,20 @@ it('selects Grafana 12 and the app URL, and rejects an unknown Grafana', functio
         ->and(install(['--docker' => true, '--app-url' => 'ftp://nope'])[0])->toBe(1);
 });
 
+it('follows a custom Horizon path in the snippets and the scrape job', function (): void {
+    config()->set('horizon.path', 'admin/horizon');
+
+    // The routes were registered at boot under the old path, so the check reports them; only the files count here.
+    [, $output] = install(['--docker' => true]);
+    $prometheus = Yaml::parseFile($this->base.'/docker/observability/prometheus/prometheus.yml');
+    $datasources = (string) file_get_contents($this->base.'/docker/observability/grafana/provisioning/datasources/horizon-observability.yaml');
+
+    expect($prometheus['scrape_configs'][0]['metrics_path'])->toBe('/admin/horizon/observability/metrics')
+        ->and($datasources)->toContain('${HORIZON_OBSERVABILITY_APP_URL}/admin/horizon/observability/jobs/pending?limit=1')
+        ->and($output)->toContain('metrics_path: /admin/horizon/observability/metrics')
+        ->and($output)->toContain('http://localhost/admin/horizon');
+});
+
 it('keeps the port of APP_URL for Docker', function (): void {
     config()->set('app.url', 'http://127.0.0.1:8080');
 
