@@ -50,6 +50,38 @@ function discoverInSeparateProcess(bool $preloadHelpers): array
     ];
 }
 
+/**
+ * Run the finder over temporary class files in a fresh PHP process, with a Composer loader for their namespace, so a
+ * fatal error while loading a class ends that process only.
+ *
+ * @return array{exit: int, error: string, classes: list<string>}
+ */
+function discoverTemporaryInSeparateProcess(TemporaryClasses $classes): array
+{
+    $root = dirname(__DIR__, 3);
+    $script = sprintf(<<<'PHP'
+        require %s;
+        $loader = new Composer\Autoload\ClassLoader(%s);
+        $loader->addPsr4(%s, %s);
+        $loader->register();
+        echo json_encode((new DF\HorizonObservability\Discovery\JobClassFinder)->find([%s]));
+        PHP,
+        var_export($root.'/vendor/autoload.php', true),
+        var_export($classes->root.'/vendor', true),
+        var_export($classes->namespace.'\\', true),
+        var_export($classes->directory(), true),
+        var_export($classes->directory(), true),
+    );
+
+    $process = new Process([PHP_BINARY, '-d', 'display_errors=stderr', '-r', $script], $root);
+    $process->run();
+
+    /** @var list<string>|null $found */
+    $found = json_decode($process->getOutput(), true);
+
+    return ['exit' => (int) $process->getExitCode(), 'error' => $process->getErrorOutput(), 'classes' => $found ?? []];
+}
+
 it('finds the queueable fixtures and nothing else', function (): void {
     expect((new JobClassFinder)->find([DiscoveryFixtures::directory()]))->toBe(DiscoveryFixtures::FOUND);
 });
@@ -105,6 +137,28 @@ describe('temporary class files', function (): void {
 
         expect((new JobClassFinder)->find([$this->classes->directory()]))->toBe([$good])
             ->and($this->classes->included('Broken'))->toBeFalse();
+    });
+
+    it('never loads a class that neither extends nor implements anything (no fatal error from code the app never loads)', function (): void {
+        $good = $this->classes->job('Good');
+        // Loading this class is an uncatchable "Trait not found" fatal error; it cannot be a ShouldQueue anyway.
+        $this->classes->write('Standalone', "final class Standalone\n{\n    use \\Missing\\DevOnlyTrait;\n\n    public function handle(): void {}\n}");
+
+        $run = discoverTemporaryInSeparateProcess($this->classes);
+
+        expect($run['exit'])->toBe(0, $run['error'])
+            ->and($run['error'])->not->toContain('not found')
+            ->and($run['classes'])->toBe([$good]);
+    });
+
+    it('skips a file over the size limit without reading it', function (): void {
+        $good = $this->classes->job('Good');
+        $padding = str_repeat("// A generated file: no queueable class is this large.\n", intdiv(JobClassFinder::MAX_FILE_BYTES, 50));
+        $this->classes->write('Huge', $padding."final class Huge implements \\Illuminate\\Contracts\\Queue\\ShouldQueue\n{\n    public function handle(): void {}\n}");
+
+        expect(filesize($this->classes->directory().'/Huge.php'))->toBeGreaterThan(JobClassFinder::MAX_FILE_BYTES)
+            ->and((new JobClassFinder)->find([$this->classes->directory()]))->toBe([$good])
+            ->and($this->classes->included('Huge'))->toBeFalse();
     });
 
     it('skips a class whose parent is missing and keeps the others', function (): void {

@@ -17,11 +17,15 @@ use Throwable;
  * Queueable classes in the given directories: token prefilter plus reflection, never including files (Arch Q6.9, C22).
  *
  * 1. Every `*.php` file below the directories is a candidate (dot directories and VCS folders are skipped, symlinked
- *    directories are not followed).
+ *    directories are not followed). Files over {@see self::MAX_FILE_BYTES} are skipped unread: tokenizing costs
+ *    about 25 to 75 bytes of memory per source byte, and no queueable class is that large.
  * 2. **Token prefilter** ({@see self::declaredClass()}): the file must parse, declare exactly one class-like (and that
  *    one a class) named like the file (PSR-4), at most one namespace, and no file-level function, constant,
  *    `include` or `require`: any other file (a helpers file loaded through Composer's `files`, for one) is never
- *    handed to the autoloader, so it can never be included a second time ("Cannot redeclare").
+ *    handed to the autoloader, so it can never be included a second time ("Cannot redeclare"). A class that neither
+ *    extends nor implements anything cannot be a `ShouldQueue` (traits add no interfaces), so it is not loaded
+ *    either: loading application code the application itself may never load (a class using a trait of a dev-only
+ *    package, say) can end the process with an uncatchable fatal error, so discovery loads as little as it can.
  * 3. **Autoload**: when a registered Composer loader maps the class name to another file, the class is skipped
  *    without loading anything; otherwise `class_exists()` loads it (the package never `include`s a file itself), and
  *    the class must come from the scanned file.
@@ -46,6 +50,11 @@ final class JobClassFinder
     private const SCOPE_FUNCTION = 'function';
 
     private const SCOPE_OTHER = 'other';
+
+    /**
+     * Larger files are not read: the token prefilter needs memory proportional to the file size.
+     */
+    public const MAX_FILE_BYTES = 524288;
 
     /**
      * @param  list<string>  $paths
@@ -76,6 +85,20 @@ final class JobClassFinder
      */
     public static function declaredClass(string $source, string $basename): ?string
     {
+        return self::declaration($source, $basename)['class'] ?? null;
+    }
+
+    /**
+     * {@see self::declaredClass()}, plus whether the class extends or implements anything.
+     *
+     * @return array{class: string, inherits: bool}|null
+     */
+    private static function declaration(string $source, string $basename): ?array
+    {
+        if ($basename === '' || ! str_contains($source, $basename) || stripos($source, 'class') === false) {
+            return null; // it cannot declare a class named like the file: not worth tokenizing
+        }
+
         try {
             $tokens = PhpToken::tokenize($source, TOKEN_PARSE);
         } catch (Throwable) {
@@ -84,7 +107,7 @@ final class JobClassFinder
 
         $namespace = '';
         $namespaces = 0;
-        /** @var list<array{0: int, 1: string}> $declarations kind token id, name */
+        /** @var list<array{0: int, 1: string, 2: bool}> $declarations kind token id, name, extends or implements */
         $declarations = [];
         /** @var list<string> $scopes */
         $scopes = [];
@@ -119,7 +142,7 @@ final class JobClassFinder
                 $next = self::next($tokens, $i);
 
                 if ($next !== null && $tokens[$next]->is(T_STRING)) {
-                    $declarations[] = [$token->id, $tokens[$next]->text];
+                    $declarations[] = [$token->id, $tokens[$next]->text, self::inherits($tokens, $next)];
                 }
 
                 $pending = self::SCOPE_CLASS; // named or anonymous: the next brace opens its body
@@ -153,7 +176,26 @@ final class JobClassFinder
             return null;
         }
 
-        return $namespace === '' ? $declarations[0][1] : $namespace.'\\'.$declarations[0][1];
+        return [
+            'class' => $namespace === '' ? $declarations[0][1] : $namespace.'\\'.$declarations[0][1],
+            'inherits' => $declarations[0][2],
+        ];
+    }
+
+    /**
+     * Whether the declaration whose name is at position $i has an `extends` or `implements` clause before its body.
+     *
+     * @param  array<int, PhpToken>  $tokens  as {@see PhpToken::tokenize()} returns them (a list)
+     */
+    private static function inherits(array $tokens, int $i): bool
+    {
+        for ($j = $i + 1, $count = count($tokens); $j < $count && $tokens[$j]->text !== '{'; $j++) {
+            if ($tokens[$j]->is([T_EXTENDS, T_IMPLEMENTS])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -207,17 +249,20 @@ final class JobClassFinder
     }
 
     /**
-     * The class the file declares, if it passes the token prefilter.
+     * The class the file declares, if it passes the token prefilter and could implement `ShouldQueue`.
      */
     private function candidate(string $file): ?string
     {
         try {
-            $source = is_file($file) && is_readable($file) ? @file_get_contents($file) : false;
+            $size = is_file($file) && is_readable($file) ? @filesize($file) : false;
+            $source = is_int($size) && $size <= self::MAX_FILE_BYTES ? @file_get_contents($file) : false;
         } catch (Throwable) {
             return null;
         }
 
-        return is_string($source) ? self::declaredClass($source, basename($file, '.php')) : null;
+        $declaration = is_string($source) ? self::declaration($source, basename($file, '.php')) : null;
+
+        return $declaration !== null && $declaration['inherits'] ? $declaration['class'] : null;
     }
 
     private function isQueueable(string $class, string $file): bool
