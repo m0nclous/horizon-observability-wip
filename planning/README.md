@@ -41,7 +41,7 @@ that the next task points to. Everything here is export-ignored and will be dele
    render time (`--live=off|poll|stream`), row renamed "Live Overview" when live is on:
    `poll` = JSON endpoint `{base}/live` polled by Infinity (1 s server-side cache);
    `stream` = long-running command pushing to Grafana Live (`/api/live/push/...`) with a Redis leader lock.
-   Provisional defaults until the owner confirms otherwise (T01 writes them into the addendum):
+   Defaults (confirmed by the owner on 2026-10-17):
    - the committed `resources/grafana` render and `composer test:grafana` use `--live=poll`;
    - Grafana refreshes a whole dashboard at one interval (no per-panel refresh), so `poll` refreshes at the dashboard
      refresh (default 5 s, Grafana's `min_refresh_interval`); the 1 s server cache only protects against stampedes;
