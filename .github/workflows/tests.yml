@@ -43,7 +43,7 @@ jobs:
           - {laravel: '12.*', testbench: '^10.0'}
           - {laravel: '13.*', testbench: '^11.0'}
           # The oldest supported point of every shim, the second client and the other servers.
-          - {php: '8.2', laravel: '^11.23', testbench: '^9.5', stability: prefer-lowest, client: predis, predis: '^2.0', redis: 'redis:6.2-alpine'}
+          - {php: '8.2', laravel: '^11.23', testbench: '^9.5', stability: prefer-lowest, client: predis, predis: '^2.0.2', redis: 'redis:6.2-alpine'}
           - {php: '8.2', laravel: '^12.0', testbench: '^10.0', stability: prefer-lowest, client: phpredis, redis: 'redis:6.2-alpine'}
           - {php: '8.3', laravel: '^13.0', testbench: '^11.0', stability: prefer-lowest, client: phpredis, redis: 'valkey/valkey:7.2-alpine'}
           - {php: '8.4', laravel: '12.*', testbench: '^10.0', stability: prefer-stable, client: predis, predis: '^3.0', redis: 'redis:7.4-alpine'}
@@ -148,6 +148,8 @@ jobs:
       REDIS_CLIENT: phpredis
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
+      # MetricsEndpointTest "keeps the golden exposition promtool-clean" runs only with a promtool (skipped otherwise).
+      PROMTOOL: docker run --rm -i --entrypoint promtool quay.io/prometheus/prometheus:v3.15.0
     steps:
       - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2

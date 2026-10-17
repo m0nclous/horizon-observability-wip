@@ -46,7 +46,7 @@ Words used with a fixed meaning:
 | Q5 | Port the Python generator to PHP (`src/Grafana`, `@internal`) behind `php artisan horizon-observability:grafana [--check]`. The port must first reproduce today's `queues.json` and `horizon.yml` exactly (legacy golden profile). Intentional changes then land as reviewed steps. Install facts are baked in at render time: prefix, uid, title `Queues`, tags, rule uids and thresholds. Runtime facts are hidden variables: datasources, `prometheus_job` scope, `api_path`, `horizon_url`, `tts_url`, `busy_window` and `scrape_interval` (Addendum R3.3). Alert rules are rendered to a Grafana provisioning **JSON** file. `datasourceUid` uses Grafana's env interpolation (`${HORIZON_OBSERVABILITY_PROMETHEUS_UID}`), because the PromQL in `model` is never interpolated. |
 | Q6 | Every confirmed bug gets a mechanical fix (table in Q6). Worker path: no Redis call at `JobProcessing`; one `EVAL` per attempt on a private short-timeout client behind a per-process circuit breaker; a `WeakMap` state machine; only `RedisJob` attempts that passed `JobProcessing` are recorded. Event shims cover Laravel 11.23, 12 and 13. Storage keys are hash-tagged, with no pipelines and `INFO` read inside Lua. Redis Cluster is supported wherever Horizon supports it. Batch SQL is bounded. Job-class discovery is cached at deploy time. |
 | Q7 | Plain `ServiceProvider`. Everything is `final` and `@internal` except a small public surface: the config, metrics, HTTP, commands and dashboard contracts, plus two static hooks. There are no public interfaces in v0.x. The Horizon menu link is appended to `horizon.middleware` from the booting callback, which works on Horizon 5.22 through 5.50. The load generator lives in the workbench only. Seven commands ship: `install`, `check`, `grafana`, `cache`, `clear`, `flush`, `stream` (Addendum R4.6). |
-| Q8 | `php ^8.2`, `laravel/framework ^11.23\|^12.0\|^13.0`, `laravel/horizon ^5.22`, and nothing else at runtime. Testbench `^9.5\|^10.0\|^11.0` with workbench; Pest `^3.8\|^4.1`; Larastan level 9; Pint; Rector. The CI matrix covers PHP × Laravel, prefer-lowest at each floor, phpredis and predis, and Redis 6.2, 7.4, 8, Valkey and a single-node cluster leg. Static, grafana, dist and coverage run as separate jobs; e2e screenshots run weekly. A docker stack provides Redis, Prometheus, Grafana with plugins and provisioning, and an optional containerised app. |
+| Q8 | `php ^8.2`, `laravel/framework ^11.23\|^12.0\|^13.0`, `laravel/horizon ^5.29.1` (raised from `^5.22` in the phase B integration, see the Horizon floor row), and nothing else at runtime. Testbench `^9.5\|^10.0\|^11.0` with workbench; Pest `^3.8\|^4.1`; Larastan level 9; Pint; Rector. The CI matrix covers PHP × Laravel, prefer-lowest at each floor, phpredis and predis, and Redis 6.2, 7.4, 8, Valkey and a single-node cluster leg. Static, grafana, dist and coverage run as separate jobs; e2e screenshots run weekly. A docker stack provides Redis, Prometheus, Grafana with plugins and provisioning, and an optional containerised app. |
 | Q9 | WP0 (foundation and frozen contracts; one agent who stays the integrator) lands first. WP8A (Grafana golden port) starts right after WP0a. WP1 to WP7 and WP9 then run in parallel with disjoint file ownership. WP8B and WP10 follow, and WP11 integrates, documents and tags `v0.1.0`. The addendum adds WP-L1 and WP-L2 (Live) and WP8C and WP8D after WP8B (Addendum Q9′). |
 
 ### 0.3 How the three designs were merged
@@ -59,7 +59,7 @@ Words used with a fixed meaning:
 | Generator | keep Python | PHP port | PHP port | **PHP port with legacy golden** | One toolchain; renders from the app's own config; Python 3.11 cannot even run today's script. |
 | Alert file | YAML stub | JSON | own YAML emitter | **JSON** | Grafana parses `.json` provisioning files with the same YAML decoder and env interpolation (verified, `config_reader.go`), so no emitter and no quoting traps. |
 | Dashboard title | `Queues` | `Queues` | `Horizon Queues` | **`Queues`** | Keep the look. |
-| Horizon floor | `^5.22` | `^5.45` | `^5.22` | **`^5.22`** | The real minimum for Laravel 11. `horizon.middleware` works on every version; `pushMiddlewareToGroup('horizon')` would need 5.45. |
+| Horizon floor | `^5.22` | `^5.45` | `^5.22` | **`^5.29.1`** (was `^5.22`) | `horizon.middleware` works on every version; `pushMiddlewareToGroup('horizon')` would need 5.45. Raised in the phase B integration (2026-10-17) as the Q8 risk row allows: 5.22.0–5.29.0 declare `RedisQueue::pop($queue = null)`, a fatal error with Laravel ≥ 11.27.0, whose `pop($queue = null, $index = 0)` they extend; 5.29.1 is the first compatible release and still supports Laravel 11.23. |
 | Config size | ~15 flat keys | ~70 keys | ~80 keys | **~25 keys; dashboard parameters are command options** | Documentation and SemVer surface. |
 | Invalid config | 503 for the endpoint | 500 | normalise and report | **Normalise and report; fail closed for security values** | A typo must never silence all monitoring. |
 | Default throttle | none | 240/min | 120/min | **None (opt-in recipe)** | Infinity runs in the Grafana backend, so all viewers share one key. A 429 means empty tables during an incident. |
@@ -110,6 +110,7 @@ Words used with a fixed meaning:
 | Fact | Evidence |
 |---|---|
 | Horizon supports Laravel 11 from 5.22.0, Laravel 12 from 5.30.3 and Laravel 13 from 5.44.0. 5.22.0 requires `illuminate/* ^8.17\|…\|^11.0`. | Packagist; verified here |
+| Laravel 11.27.0 adds `$index` to `Illuminate\Queue\RedisQueue::pop($queue = null, $index = 0)` (11.26.0 has `pop($queue = null)`). Horizon's `RedisQueue::pop($queue = null)` up to 5.29.0 is therefore a fatal declaration error on Laravel ≥ 11.27.0; 5.29.1 declares `pop($queue = null, $index = 0)` and requires `illuminate/* ^9.21\|^10.0\|^11.0`. Hence the floor `^5.29.1`. | upstream tags v11.26.0/v11.27.0 and Horizon v5.29.0/v5.29.1 `src/RedisQueue.php`, checked 2026-10-17; reproduced on the L11 prefer-lowest leg by T04 and T09 |
 | 5.22 registers its routes in `boot()` with `'middleware' => config('horizon.middleware', 'web')` and skips them when routes are cached. | v5.22.0 `HorizonServiceProvider.php:52-62`, verified here |
 | From 5.45 the `horizon` group is defined in `boot()` as `[SentinelMiddleware::class.':horizon', ...config('horizon.middleware', ['web'])]`. The spread means the config value must be an array. | v5.50.1 `HorizonServiceProvider.php:22-26`, verified here |
 | The SPA owns `/metrics`: `routes.js:55-56`, `layout.blade.php:70`, history mode. The catch-all is `Route::get('/{view?}')->where('view', '(.*)')`. | v5.50.1 |
@@ -1447,8 +1448,8 @@ They read their queues from the workbench Horizon config, use `Random\Randomizer
   },
   "require": {
     "php": "^8.2",
-    "laravel/framework": "^11.23|^12.0|^13.0",
-    "laravel/horizon": "^5.22"
+    "laravel/framework": "^11.23 || ^12.0 || ^13.0",
+    "laravel/horizon": "^5.29.1"
   },
   "require-dev": {
     "driftingly/rector-laravel": "^2.1",
@@ -1512,7 +1513,7 @@ They read their queues from the workbench Horizon config, use `Random\Randomizer
 
 | Laravel | PHP | Horizon (lowest) | Testbench | Pest / PHPUnit | Larastan (static job only) |
 |---|---|---|---|---|---|
-| 11.23+ | 8.2–8.4 | 5.22.0 | 9.5.x (lowest leg) … 9.18 | Pest 3.8+ / PHPUnit 11.5; Pest 4 on PHP ≥ 8.3 | 3.1+ |
+| 11.23+ | 8.2–8.4 | 5.29.1 (5.22.0 before the phase B floor raise) | 9.5.x (lowest leg; testbench-core 9.6.3) … 9.18 | Pest 3.8+ / PHPUnit 11.5; Pest 4 on PHP ≥ 8.3 | 3.1+ |
 | 12.x | 8.2–8.5 | 5.30.3 | 10.0.0 (needs 12.0.1, so the lowest leg resolves 12.0.1) … 10.12 | Pest 3.8+ on 8.2; Pest 4 on ≥ 8.3 | 3.1+ |
 | 13.x | 8.3–8.5 | 5.44.0 | 11.0.0 … 11.3 | Pest 4.1+ / PHPUnit 12 | 3.9.3+ |
 
@@ -1523,7 +1524,7 @@ Pest 5 (PHP ≥ 8.4) is excluded until every leg can run it.
 `testbench.yaml` is owned by WP0 and final:
 
 ```yaml
-laravel: '@testbench'
+# No `laravel: '@testbench'`: testbench-core 9.x has no such alias (phase B integration); the default skeleton is the same.
 providers:
   - Workbench\App\Providers\WorkbenchServiceProvider
 env:
@@ -1751,7 +1752,7 @@ tests:
 ```
 
 The matrix gives 10 base legs plus 6 targeted legs. The prefer-lowest legs resolve:
-- Laravel 11.23.0 with Horizon 5.22.0, testbench 9.5.0 and Pest 3.8;
+- Laravel 11.39.1 with Horizon 5.29.1, testbench 9.5.0 (core 9.6.3) and Pest 3.8 (Pest 3.8 needs collision 8.7, which conflicts with Laravel < 11.39.1, so 11.23–11.39.0 are covered by the shims' tests and upstream checks only; measured in phase B);
 - Laravel 12.0.1 with Horizon 5.30.3;
 - Laravel 13.0.0 with Horizon 5.44.0.
 
@@ -1799,7 +1800,7 @@ The weekly cron runs the matrix at prefer-stable, which picks up new Laravel, Ho
 - **`.gitignore`:** `/vendor /composer.lock /build /coverage /.phpunit.cache /node_modules /screenshots /.idea /.vscode .DS_Store .env .phpunit.result.cache`.
 - **`LICENSE`** (MIT).
 - **`README.md`** (English):
-  - badges, screenshot, compatibility table (PHP 8.2–8.5; Laravel 11.23+/12/13; Horizon 5.22+; Grafana ≥ 12.3; Prometheus with the remote-write receiver for the Alerts tile);
+  - badges, screenshot, compatibility table (PHP 8.2–8.5; Laravel 11.23+/12/13; Horizon 5.29.1+; Grafana ≥ 12.3; Prometheus with the remote-write receiver for the Alerts tile);
   - a two-minute install; the secure-by-default note; endpoints;
   - Prometheus setup (one target); Grafana setup (Infinity bearer, state history, `grafana` command);
   - the configuration table; the metric reference generated from `Metric`;
@@ -1818,7 +1819,7 @@ The weekly cron runs the matrix at prefer-stable, which picks up new Laravel, Ho
 
 ### Rationale
 
-- The matrix tests every shim at its oldest point (11.23 with Horizon 5.22; 12.0.1; 13.0), every branching client and server combination (phpredis/predis; Redis 6.2/7.4/8; Valkey 7.2/8; cluster) and every supported PHP × Laravel pair, without a full cartesian product. That is about 17 test jobs.
+- The matrix tests every shim at its oldest point (11.23, in practice 11.39.1 with Horizon 5.29.1, see 8.5; 12.0.1; 13.0), every branching client and server combination (phpredis/predis; Redis 6.2/7.4/8; Valkey 7.2/8; cluster) and every supported PHP × Laravel pair, without a full cartesian product. That is about 17 test jobs.
 - Golden and contract tests turn "keep the look and behaviour" into executable checks. The docker stack makes screenshots reproducible against the workbench.
 
 ### Rejected alternatives
@@ -1834,7 +1835,7 @@ The weekly cron runs the matrix at prefer-stable, which picks up new Laravel, Ho
 
 | Risk | Mitigation |
 |---|---|
-| The prefer-lowest legs (L11.23 + Horizon 5.22 + Pest 3.8) expose an incompatibility | Raise a *test-only* floor (e.g. testbench `^9.5.2`), or a patch-level runtime floor (e.g. `^5.24`) recorded in the CHANGELOG; no design change. |
+| The prefer-lowest legs (L11.23 + Horizon 5.22 + Pest 3.8) expose an incompatibility | Raise a *test-only* floor (e.g. testbench `^9.5.2`), or a patch-level runtime floor (e.g. `^5.24`) recorded in the CHANGELOG; no design change. Happened in phase B: Horizon `^5.29.1` (fatal `pop()` signature on Laravel ≥ 11.27) and the dev floor predis `^2.0.2` (Laravel 11's own; 2.0.0 raises PHP 8.2 deprecations). |
 | Docker Hub rate limits | quay.io for Prometheus; `mirror.gcr.io` for Redis and Valkey. |
 | Pest 3 and 4 API differences | Use only the common API. |
 | Testbench 9.x workbench gaps | `discovers.config` is verified on 9.5.0. Fallback: `config()` calls in `WorkbenchServiceProvider::register()`. |

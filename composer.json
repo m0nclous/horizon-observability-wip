@@ -22,7 +22,7 @@
     "require": {
         "php": "^8.2",
         "laravel/framework": "^11.23 || ^12.0 || ^13.0",
-        "laravel/horizon": "^5.22"
+        "laravel/horizon": "^5.29.1"
     },
     "require-dev": {
         "driftingly/rector-laravel": "^2.1",
@@ -33,13 +33,13 @@
         "pestphp/pest": "^3.8 || ^4.1",
         "phpstan/extension-installer": "^1.4",
         "phpstan/phpstan-deprecation-rules": "^2.0",
-        "predis/predis": "^2.0 || ^3.0",
+        "predis/predis": "^2.0.2 || ^3.0",
         "rector/rector": "^2.0",
         "symfony/yaml": "^7.0 || ^8.0"
     },
     "suggest": {
         "ext-redis": "Recommended Redis client (phpredis).",
-        "predis/predis": "Pure-PHP Redis client, supported as an alternative (^2.0|^3.0)."
+        "predis/predis": "Pure-PHP Redis client, supported as an alternative (^2.0.2 || ^3.0)."
     },
     "minimum-stability": "stable",
     "prefer-stable": true,

@@ -18,8 +18,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 /*
 | WP7 (Arch Q7): InjectGrafanaLink inserts the "Grafana" sidebar item right after "Dashboard" in Horizon's page and
 | leaves every other response untouched, including when a marker is missing (C16 rendering side). The fixtures are
-| the verbatim horizon::layout sources of the floor (5.22.0) and the latest release (5.50.1); the sidebar markup is
-| the same in every release in between.
+| the verbatim horizon::layout sources of 5.22.0 (the original floor; the floor is 5.29.1 since the phase B
+| integration) and the latest release (5.50.1); the sidebar markup is the same in every release in between.
 */
 
 const MENU_LINK_URL = 'http://localhost:3000/d/horizon-observability';

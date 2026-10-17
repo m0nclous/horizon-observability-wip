@@ -136,6 +136,13 @@ it('backfills the perf data with the metric names of the mounted dashboard', fun
         ->and($mounted)->toContain('office_queue_jobs_total');
 });
 
+it('lints the golden exposition with promtool in the coverage job', function (): void {
+    $coverage = workflow('tests.yml')['jobs']['coverage'];
+
+    expect($coverage['env']['PROMTOOL'] ?? null)->toBe('docker run --rm -i --entrypoint promtool quay.io/prometheus/prometheus:v3.15.0')
+        ->and(end($coverage['steps'])['run'] ?? null)->toContain('--exclude-group=cluster,e2e');
+});
+
 it('gates style, types and composer.json in the static job', function (): void {
     $runs = array_column(workflow('tests.yml')['jobs']['static']['steps'], 'run');
 

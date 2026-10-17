@@ -22,7 +22,8 @@ that the next task points to. Everything here is export-ignored and will be dele
 1. Composer package `sushi-market/horizon-observability`, root namespace `DF\HorizonObservability`, license MIT.
 2. Everything public is **English only**: code, comments, HELP texts, label values, logs, README, docs.
 3. Supported versions: PHP `^8.2`; Laravel `^11.23|^12.0|^13.0` (11.23 is the first with `JobAttempted`);
-   Horizon `^5.22`. No other runtime dependencies (no spatie/laravel-prometheus, no spatie/laravel-data, no promphp).
+   Horizon `^5.22`, raised to `^5.29.1` in the phase B integration (2026-10-17, Arch Q8 risk row: 5.22.0–5.29.0 are a
+   fatal error on Laravel ≥ 11.27.0, see the Horizon facts in Arch 0.4). No other runtime dependencies (no spatie/laravel-prometheus, no spatie/laravel-data, no promphp).
 4. **Grafana 12 and 13 are both supported** (minimum 12.3 because the Business Text plugin 6.3.0 needs it).
    Verify dashboard, alert provisioning, live modes and screenshots on `grafana/grafana:12.4.13` and `grafana/grafana:13.2.4`.
 5. Architecture in `ARCHITECTURE.md` approved as is, including:
