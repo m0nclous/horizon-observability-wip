@@ -214,13 +214,15 @@ final class BatchLinks
         $entries = [];
 
         foreach (is_array($reply) ? $reply : [] as $member => $score) {
-            $parts = Keys::splitField((string) $member);
+            // Label values as the writer stores them; sanitised again so a foreign member cannot break a family.
+            $parts = array_map(Labels::sanitize(...), Keys::splitField((string) $member));
 
-            if (count($parts) !== 4 || ! is_numeric($score) || (int) $score < $since) {
+            if (count($parts) !== 4 || in_array('', $parts, true) || ! is_numeric($score) || (int) $score < $since) {
                 continue;
             }
 
-            $entries[(string) $member] = ['link' => new BatchLink(...$parts), 'seenAt' => (int) $score];
+            $field = Keys::field(...$parts);
+            $entries[$field] = ['link' => new BatchLink(...$parts), 'seenAt' => max((int) $score, $entries[$field]['seenAt'] ?? PHP_INT_MIN)];
         }
 
         ksort($entries, SORT_STRING);

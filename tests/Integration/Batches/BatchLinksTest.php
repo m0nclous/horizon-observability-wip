@@ -256,6 +256,9 @@ describe('reading', function (): void {
         batchLinksTestSeed(Keys::field('export', 'redis', 'slow', 'App\\Jobs\\C'), $now - 10);
         batchLinksTestSeed(Keys::field('stale', 'redis', 'default', 'App\\Jobs\\D'), $now - BatchLinks::TTL_SECONDS - 1);
         batchLinksTestSeed('not-a-link', $now);
+        batchLinksTestSeed(Keys::field('import', '', 'default', 'App\\Jobs\\E'), $now);
+        // A foreign member with a control character: read as the sanitised link, the later time wins.
+        batchLinksTestSeed(Keys::field("exp\x01ort", 'redis', 'slow', 'App\\Jobs\\C'), $now - 5);
 
         $links = app(BatchLinks::class);
 
@@ -263,7 +266,7 @@ describe('reading', function (): void {
             new BatchLink('export', 'redis', 'slow', 'App\\Jobs\\C'),
             new BatchLink('import', 'redis', 'default', 'App\\Jobs\\A'),
             new BatchLink('import', 'redis', 'default', 'App\\Jobs\\B'),
-        ])->and(array_column($links->recent(CarbonImmutable::createFromTimestamp($now)), 'seenAt'))->toBe([$now - 10, $now - BatchLinks::TTL_SECONDS, $now - 60]);
+        ])->and(array_column($links->recent(CarbonImmutable::createFromTimestamp($now)), 'seenAt'))->toBe([$now - 5, $now - BatchLinks::TTL_SECONDS, $now - 60]);
     });
 
     it('gives the queues and job classes of batch kinds', function (): void {
