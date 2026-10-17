@@ -378,7 +378,7 @@ jobs read the uid from the mounted file); write `build/grafana-rules.yml` and us
 T13's rules replace; TextFormat omits empty label values (`horizon_info{tts_url}` is absent without TTS); the batch kind
 `(other)` matches no links as a filter.
 
-### T18 Make CI green on the integration branch — `in progress` (depends on T11)
+### T18 Make CI green on the integration branch — `testing` (depends on T11)
 QA: 2026-10-17 13:53 UTC: round 1 rejected: 7 findings. round 1 rejected by the adversarial tester: COMPOSER_NO_BLOCKING/NO_SECURITY_BLOCKING also turn off Composer 2.10's malware blocking on all 16 legs (use COMPOSER_POLICY_ADVISORIES_BLOCK=0, verified); PHP 8.5 makes the pending/completed job lists answer 503 for a stored time >= ~9.2e15 s (JobRows::milliseconds int cast; wrapped value on 8.2-8.4); failing tests in 2a34d1b; L11.23.0 suite green with Pest ^3.0 after a test fix (27f659d)
 Stop-the-line task (owner decision 14). The first runs of `.github/workflows/tests.yml` on
 `claude/hopeful-hawking-njeu3v` fail: most legs at the `composer show ...` step, the Laravel 11 legs at "Resolve the
