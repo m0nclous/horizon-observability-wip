@@ -91,7 +91,16 @@ find_issue() {
         --jq ".[] | select(.title | startswith(\"[$id] \")) | [.number, .state, .url, .title] | @tsv" | head -n 1
 }
 
+# gh cannot tell the owner type of a user-owned board without the read:org scope ("unknown owner type"); "@me"
+# addresses the token owner's boards directly.
+normalize_owner() {
+    if [[ "$BOARD_OWNER" != "@me" && "$(gh api user --jq .login 2>/dev/null || true)" == "$BOARD_OWNER" ]]; then
+        BOARD_OWNER="@me"
+    fi
+}
+
 load_board() {
+    normalize_owner
     PROJECT_ID="$(gh project view "$BOARD_NUMBER" --owner "$BOARD_OWNER" --format json --jq .id)"
     local fields
     fields="$(gh project field-list "$BOARD_NUMBER" --owner "$BOARD_OWNER" --format json)"
