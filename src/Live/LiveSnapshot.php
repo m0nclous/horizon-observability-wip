@@ -259,6 +259,35 @@ final readonly class LiveSnapshot
     }
 
     /**
+     * The same snapshot with the queue part unknown: no queue in scope could be read, so Pending, Delayed and
+     * Reserved are null with caption `Live unavailable` and colour `text` (Addendum R4.10), and the supervisors keep
+     * their processes but lose the utilisation colour (busy workers are unknown; `text`, level 0) unless Horizon is
+     * not running. The Horizon state and the throughput stay as read.
+     */
+    public function withQueuesUnavailable(): self
+    {
+        $running = $this->horizon['status'] === 1;
+        $supervisors = array_map(static fn (array $row): array => $running
+            ? [...$row, 'busy' => 0, 'utilization' => 0.0, 'level' => 0, 'color' => Captions::TEXT]
+            : $row, $this->supervisors);
+
+        return new self(
+            $this->generatedAt,
+            $this->ageMs,
+            $this->ttlMs,
+            $this->scope,
+            $this->horizon,
+            ['value' => null, 'oldest_seconds' => 0, 'oldest_queue' => null, 'wait_ratio' => null, 'level' => 0, 'color' => Captions::TEXT, 'caption' => Captions::UNAVAILABLE],
+            ['value' => null, 'due' => null],
+            ['value' => null],
+            $this->throughput,
+            $supervisors,
+            [],
+            $this->errors,
+        );
+    }
+
+    /**
      * The same snapshot with the cache age at response time.
      */
     public function withAge(int $ageMs): self
@@ -318,7 +347,19 @@ final readonly class LiveSnapshot
     }
 
     /**
-     * The tile rows in push order (Addendum R4.7): pending, delayed, supervisors by display name, throughput.
+     * Whether the snapshot carries live data: false for {@see self::unavailable()} and for any snapshot whose
+     * Horizon state and queue state are both unknown (caption `Live unavailable` on the Horizon and Pending parts).
+     * The snapshot cache stores only available snapshots, so the next request after a failed build tries again.
+     */
+    public function isAvailable(): bool
+    {
+        return $this->horizon['status'] !== null || $this->pending['caption'] !== Captions::UNAVAILABLE;
+    }
+
+    /**
+     * The tile rows in push order (Addendum R4.7): pending, delayed, supervisors by display name, throughput. A
+     * supervisor tile shows the running processes, or with a Job or Batch filter the busy workers of the selected
+     * classes.
      *
      * @return list<array{tile: string, key: string, caption: string, value: float|null, color: string, level: int}>
      */
@@ -330,7 +371,10 @@ final readonly class LiveSnapshot
         ];
 
         foreach ($this->supervisors as $supervisor) {
-            $tiles[] = $this->tile('supervisor', $supervisor['name'], $supervisor['caption'], $supervisor['processes'], $supervisor['color'], $supervisor['level']);
+            // With a Job or Batch filter the tile counts the workers busy with the selected classes, as the off-mode
+            // tile does (Addendum R4.1); like the processes, they read 0 while Horizon is not running.
+            $value = $this->scope['job_filter'] ? ($this->horizon['status'] === 1 ? $supervisor['busy'] : 0) : $supervisor['processes'];
+            $tiles[] = $this->tile('supervisor', $supervisor['name'], $supervisor['caption'], $value, $supervisor['color'], $supervisor['level']);
         }
 
         $tiles[] = $this->tile('throughput', '', $this->throughput['caption'], $this->throughput['completed_per_minute'], Captions::TEXT, 0);

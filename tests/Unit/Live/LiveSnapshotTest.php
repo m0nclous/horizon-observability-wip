@@ -232,3 +232,53 @@ it('derives the throughput rates over the 60 s window', function (): void {
 it('never reports a negative age', function (): void {
     expect(exampleSnapshot()->withAge(-5)->ageMs)->toBe(0);
 });
+
+it('shows the busy workers of the selected classes on the supervisor tiles under a job filter (T12)', function (?int $status, array $expected): void {
+    [$supervisors, $queues] = exampleInputs();
+    $snapshot = LiveSnapshot::compose(exampleScope(jobFilter: true), 0, 1000, $status, $supervisors, $queues, null);
+    $values = array_column(array_filter($snapshot->tiles(), static fn (array $row): bool => $row['tile'] === 'supervisor'), 'value', 'key');
+
+    expect($values)->toBe($expected)
+        ->and($snapshot->supervisors[0]['processes'])->toBe($status === 1 ? 3 : 0);
+})->with([
+    'running: busy' => [1, ['supervisor-default' => 2.0]],
+    'paused: 0' => [0, ['supervisor-default' => 0.0]],
+    'state unknown: 0' => [null, ['supervisor-default' => 0.0]],
+]);
+
+it('tells snapshots with live data from failed builds (T12)', function (): void {
+    [$supervisors, $queues] = exampleInputs();
+    $scope = exampleScope();
+
+    expect(exampleSnapshot()->isAvailable())->toBeTrue()
+        ->and(LiveSnapshot::empty($scope, 0, 1000)->isAvailable())->toBeTrue()
+        ->and(LiveSnapshot::compose($scope, 0, 1000, null, $supervisors, $queues, null)->isAvailable())->toBeTrue()
+        ->and(LiveSnapshot::compose($scope, 0, 1000, 1, $supervisors, [], null)->withQueuesUnavailable()->isAvailable())->toBeTrue()
+        ->and(LiveSnapshot::compose($scope, 0, 1000, null, $supervisors, [], null)->withQueuesUnavailable()->isAvailable())->toBeFalse()
+        ->and(LiveSnapshot::unavailable($scope, 0, 1000, [])->isAvailable())->toBeFalse();
+});
+
+it('keeps Horizon, the supervisors and the throughput when the queues are unknown (T12)', function (): void {
+    [$supervisors] = exampleInputs();
+    $errors = [['source' => 'queue:redis:default', 'message' => 'RedisException: Connection refused']];
+    $snapshot = LiveSnapshot::compose(exampleScope(), 7, 1000, 1, $supervisors, [], ['completed' => 6, 'failed' => 0, 'retried' => 0], $errors)
+        ->withQueuesUnavailable();
+
+    expect($snapshot->pending)->toBe(['value' => null, 'oldest_seconds' => 0, 'oldest_queue' => null, 'wait_ratio' => null, 'level' => 0, 'color' => 'text', 'caption' => 'Live unavailable'])
+        ->and($snapshot->delayed)->toBe(['value' => null, 'due' => null])
+        ->and($snapshot->reserved)->toBe(['value' => null])
+        ->and($snapshot->queues)->toBe([])
+        ->and($snapshot->horizon['caption'])->toBe('Running')
+        ->and($snapshot->throughput['caption'])->toBe('RPM: 6')
+        ->and($snapshot->errors)->toBe($errors)
+        ->and($snapshot->supervisors[0])->toMatchArray(['processes' => 3, 'busy' => 0, 'utilization' => 0.0, 'level' => 0, 'color' => 'text'])
+        ->and(LiveSnapshot::fromArray(json_decode($snapshot->toJson(), true))->toArray())->toBe($snapshot->toArray());
+});
+
+it('keeps the red supervisors of a stopped Horizon when the queues are unknown (T12)', function (): void {
+    [$supervisors] = exampleInputs();
+
+    $snapshot = LiveSnapshot::compose(exampleScope(), 0, 1000, -1, $supervisors, [], null)->withQueuesUnavailable();
+
+    expect($snapshot->supervisors[0])->toMatchArray(['processes' => 0, 'level' => 2, 'color' => 'red']);
+});
