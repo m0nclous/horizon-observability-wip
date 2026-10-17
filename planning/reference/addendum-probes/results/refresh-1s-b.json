@@ -1,0 +1,406 @@
+{
+ "url": "http://localhost:3301/d/probe-refresh/x?orgId=1",
+ "summary": [
+  {
+   "start": 2272,
+   "duration": 8726,
+   "requests": 28,
+   "variableRequests": 0,
+   "panels": 3
+  }
+ ],
+ "errors": [],
+ "rows": [
+  {
+   "start": 2272,
+   "end": 2313,
+   "ms": 41,
+   "panel": "501",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 4646,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR100",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(office_queue_pending_jobs)\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"501A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":495}],\"from\":\"1792198188159\",\"to\":\"1792201788159\"}"
+  },
+  {
+   "start": 2272,
+   "end": 2389,
+   "ms": 117,
+   "panel": "503",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 4481,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR102",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"503A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":30000,\"maxDataPoints\":495}],\"from\":\"1792198188159\",\"to\":\"1792201788159\"}"
+  },
+  {
+   "start": 2272,
+   "end": 2464,
+   "ms": 192,
+   "panel": "502",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 12331,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR101",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"502A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":10000,\"maxDataPoints\":495}],\"from\":\"1792198188159\",\"to\":\"1792201788159\"}"
+  },
+  {
+   "start": 2938,
+   "end": 2962,
+   "ms": 24,
+   "panel": "501",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1220,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR103",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(office_queue_pending_jobs)\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"501A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":495}],\"from\":\"1792201185000\",\"to\":\"1792201789222\"}"
+  },
+  {
+   "start": 2944,
+   "end": 2979,
+   "ms": 35,
+   "panel": "502",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 2532,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR104",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"502A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":10000,\"maxDataPoints\":495}],\"from\":\"1792201180000\",\"to\":\"1792201789222\"}"
+  },
+  {
+   "start": 2945,
+   "end": 2975,
+   "ms": 30,
+   "panel": "503",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1225,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR105",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"503A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":30000,\"maxDataPoints\":495}],\"from\":\"1792201170000\",\"to\":\"1792201789222\"}"
+  },
+  {
+   "start": 3939,
+   "end": 3967,
+   "ms": 28,
+   "panel": "501",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1220,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR106",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(office_queue_pending_jobs)\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"501A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":495}],\"from\":\"1792201185000\",\"to\":\"1792201790222\"}"
+  },
+  {
+   "start": 3941,
+   "end": 3994,
+   "ms": 53,
+   "panel": "502",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 2564,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR107",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"502A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":10000,\"maxDataPoints\":495}],\"from\":\"1792201180000\",\"to\":\"1792201790222\"}"
+  },
+  {
+   "start": 3942,
+   "end": 3979,
+   "ms": 37,
+   "panel": "503",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1225,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR108",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"503A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":30000,\"maxDataPoints\":495}],\"from\":\"1792201170000\",\"to\":\"1792201790222\"}"
+  },
+  {
+   "start": 4936,
+   "end": 4964,
+   "ms": 28,
+   "panel": "501",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1220,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR109",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(office_queue_pending_jobs)\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"501A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":495}],\"from\":\"1792201185000\",\"to\":\"1792201791222\"}"
+  },
+  {
+   "start": 4937,
+   "end": 4979,
+   "ms": 42,
+   "panel": "502",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 2531,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR110",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"502A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":10000,\"maxDataPoints\":495}],\"from\":\"1792201190000\",\"to\":\"1792201791222\"}"
+  },
+  {
+   "start": 4944,
+   "end": 4977,
+   "ms": 33,
+   "panel": "503",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1225,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR111",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"503A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":30000,\"maxDataPoints\":495}],\"from\":\"1792201170000\",\"to\":\"1792201791222\"}"
+  },
+  {
+   "start": 5937,
+   "end": 5979,
+   "ms": 42,
+   "panel": "501",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1220,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR112",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(office_queue_pending_jobs)\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"501A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":495}],\"from\":\"1792201185000\",\"to\":\"1792201792222\"}"
+  },
+  {
+   "start": 5943,
+   "end": 5986,
+   "ms": 43,
+   "panel": "503",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1225,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR114",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"503A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":30000,\"maxDataPoints\":495}],\"from\":\"1792201170000\",\"to\":\"1792201792222\"}"
+  },
+  {
+   "start": 5943,
+   "end": 6004,
+   "ms": 61,
+   "panel": "502",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 2531,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR113",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"502A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":10000,\"maxDataPoints\":495}],\"from\":\"1792201190000\",\"to\":\"1792201792222\"}"
+  },
+  {
+   "start": 6936,
+   "end": 6966,
+   "ms": 30,
+   "panel": "501",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1220,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR115",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(office_queue_pending_jobs)\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"501A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":495}],\"from\":\"1792201185000\",\"to\":\"1792201793222\"}"
+  },
+  {
+   "start": 6938,
+   "end": 6976,
+   "ms": 38,
+   "panel": "502",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 2531,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR116",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"502A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":10000,\"maxDataPoints\":495}],\"from\":\"1792201190000\",\"to\":\"1792201793222\"}"
+  },
+  {
+   "start": 6942,
+   "end": 6977,
+   "ms": 35,
+   "panel": "503",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1225,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR117",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"503A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":30000,\"maxDataPoints\":495}],\"from\":\"1792201170000\",\"to\":\"1792201793222\"}"
+  },
+  {
+   "start": 7948,
+   "end": 7985,
+   "ms": 37,
+   "panel": "501",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1220,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR118",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(office_queue_pending_jobs)\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"501A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":495}],\"from\":\"1792201185000\",\"to\":\"1792201794222\"}"
+  },
+  {
+   "start": 7949,
+   "end": 8029,
+   "ms": 80,
+   "panel": "502",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 2531,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR119",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"502A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":10000,\"maxDataPoints\":495}],\"from\":\"1792201190000\",\"to\":\"1792201794222\"}"
+  },
+  {
+   "start": 7955,
+   "end": 8024,
+   "ms": 69,
+   "panel": "503",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1225,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR120",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"503A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":30000,\"maxDataPoints\":495}],\"from\":\"1792201170000\",\"to\":\"1792201794222\"}"
+  },
+  {
+   "start": 8946,
+   "end": 9011,
+   "ms": 65,
+   "panel": "501",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1220,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR121",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(office_queue_pending_jobs)\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"501A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":495}],\"from\":\"1792201185000\",\"to\":\"1792201795222\"}"
+  },
+  {
+   "start": 8951,
+   "end": 9050,
+   "ms": 99,
+   "panel": "502",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 2531,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR122",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"502A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":10000,\"maxDataPoints\":495}],\"from\":\"1792201190000\",\"to\":\"1792201795222\"}"
+  },
+  {
+   "start": 8955,
+   "end": 9046,
+   "ms": 91,
+   "panel": "503",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1225,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR123",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"503A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":30000,\"maxDataPoints\":495}],\"from\":\"1792201170000\",\"to\":\"1792201795222\"}"
+  },
+  {
+   "start": 9941,
+   "end": 9996,
+   "ms": 55,
+   "panel": "501",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1220,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR124",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(office_queue_pending_jobs)\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"501A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":495}],\"from\":\"1792201185000\",\"to\":\"1792201796222\"}"
+  },
+  {
+   "start": 9943,
+   "end": 10049,
+   "ms": 106,
+   "panel": "502",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 2531,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR125",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"502A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":10000,\"maxDataPoints\":495}],\"from\":\"1792201190000\",\"to\":\"1792201796222\"}"
+  },
+  {
+   "start": 9944,
+   "end": 10032,
+   "ms": 88,
+   "panel": "503",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 1225,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR126",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(rate(office_queue_jobs_total[$__rate_interval]))\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"503A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":30000,\"maxDataPoints\":495}],\"from\":\"1792201170000\",\"to\":\"1792201796222\"}"
+  },
+  {
+   "start": 10942,
+   "end": 10998,
+   "ms": 56,
+   "panel": "501",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR127",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum(office_queue_pending_jobs)\",\"instant\":false,\"range\":true,\"exemplar\":false,\"requestId\":\"501A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":495}],\"from\":\"1792201185000\",\"to\":\"1792201797222\"}"
+  }
+ ]
+}

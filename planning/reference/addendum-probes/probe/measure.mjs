@@ -7,7 +7,7 @@ import { writeFileSync } from 'node:fs';
 
 const [url, out, observe = '70', w = '1920', h = '1080'] = process.argv.slice(2);
 const browser = await chromium.launch();
-const page = await browser.newPage({ locale: 'en-US', timezoneId: 'UTC', viewport: { width: +w, height: +h } });
+const page = await browser.newPage({ locale: 'en-US', timezoneId: 'UTC', viewport: { width: +w, height: +h }, ignoreHTTPSErrors: true });
 const t0 = Date.now();
 const reqs = new Map();
 const done = [];

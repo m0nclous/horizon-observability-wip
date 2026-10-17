@@ -1,0 +1,195 @@
+{
+ "url": "http://localhost:3301/d/probe-share/x?orgId=1&kiosk",
+ "summary": [
+  {
+   "start": 2011,
+   "duration": 35,
+   "requests": 3,
+   "variableRequests": 1,
+   "panels": 1
+  },
+  {
+   "start": 6665,
+   "duration": 17,
+   "requests": 2,
+   "variableRequests": 0,
+   "panels": 1
+  },
+  {
+   "start": 11666,
+   "duration": 17,
+   "requests": 2,
+   "variableRequests": 0,
+   "panels": 1
+  },
+  {
+   "start": 16669,
+   "duration": 26,
+   "requests": 2,
+   "variableRequests": 0,
+   "panels": 1
+  },
+  {
+   "start": 21663,
+   "duration": 22,
+   "requests": 2,
+   "variableRequests": 0,
+   "panels": 1
+  }
+ ],
+ "errors": [],
+ "rows": [
+  {
+   "start": 2011,
+   "end": 2030,
+   "ms": 19,
+   "panel": null,
+   "kind": "variable",
+   "refIds": [],
+   "status": 200,
+   "size": 104,
+   "url": "/api/datasources/uid/prometheus/resources/api/v1/label/supervisor/values?limit=40000&start=1792198440&end=1792202100&mat",
+   "body": null
+  },
+  {
+   "start": 2011,
+   "end": 2046,
+   "ms": 35,
+   "panel": "601",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 5816,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR101",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum by (supervisor, queue) (group by (supervisor, queue) (office_horizon_supervisor_processes) * on (queue) group_left () sum by (queue) (office_queue_pending_jobs))\",\"format\":\"table\",\"instant\":true,\"range\":false,\"exemplar\":false,\"requestId\":\"601A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":500}],\"from\":\"1792198440208\",\"to\":\"1792202040208\"}"
+  },
+  {
+   "start": 2011,
+   "end": 2046,
+   "ms": 35,
+   "panel": "601",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 5816,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR102",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum by (supervisor, queue) (group by (supervisor, queue) (office_horizon_supervisor_processes) * on (queue) group_left () sum by (queue) (office_queue_pending_jobs))\",\"format\":\"table\",\"instant\":true,\"range\":false,\"exemplar\":false,\"requestId\":\"601A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":500}],\"from\":\"1792198440208\",\"to\":\"1792202040208\"}"
+  },
+  {
+   "start": 6665,
+   "end": 6680,
+   "ms": 15,
+   "panel": "601",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": null,
+   "size": 0,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR105",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum by (supervisor, queue) (group by (supervisor, queue) (office_horizon_supervisor_processes) * on (queue) group_left () sum by (queue) (office_queue_pending_jobs))\",\"format\":\"table\",\"instant\":true,\"range\":false,\"exemplar\":false,\"requestId\":\"601A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":500}],\"from\":\"1792198445275\",\"to\":\"1792202045275\"}"
+  },
+  {
+   "start": 6671,
+   "end": 6682,
+   "ms": 11,
+   "panel": "601",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 5816,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR109",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum by (supervisor, queue) (group by (supervisor, queue) (office_horizon_supervisor_processes) * on (queue) group_left () sum by (queue) (office_queue_pending_jobs))\",\"format\":\"table\",\"instant\":true,\"range\":false,\"exemplar\":false,\"requestId\":\"601A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":500}],\"from\":\"1792198445275\",\"to\":\"1792202045275\"}"
+  },
+  {
+   "start": 11666,
+   "end": 11680,
+   "ms": 14,
+   "panel": "601",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": null,
+   "size": 0,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR111",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum by (supervisor, queue) (group by (supervisor, queue) (office_horizon_supervisor_processes) * on (queue) group_left () sum by (queue) (office_queue_pending_jobs))\",\"format\":\"table\",\"instant\":true,\"range\":false,\"exemplar\":false,\"requestId\":\"601A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":500}],\"from\":\"1792198450275\",\"to\":\"1792202050275\"}"
+  },
+  {
+   "start": 11668,
+   "end": 11683,
+   "ms": 15,
+   "panel": "601",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 5817,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR115",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum by (supervisor, queue) (group by (supervisor, queue) (office_horizon_supervisor_processes) * on (queue) group_left () sum by (queue) (office_queue_pending_jobs))\",\"format\":\"table\",\"instant\":true,\"range\":false,\"exemplar\":false,\"requestId\":\"601A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":500}],\"from\":\"1792198450275\",\"to\":\"1792202050275\"}"
+  },
+  {
+   "start": 16669,
+   "end": 16691,
+   "ms": 22,
+   "panel": "601",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": null,
+   "size": 0,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR117",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum by (supervisor, queue) (group by (supervisor, queue) (office_horizon_supervisor_processes) * on (queue) group_left () sum by (queue) (office_queue_pending_jobs))\",\"format\":\"table\",\"instant\":true,\"range\":false,\"exemplar\":false,\"requestId\":\"601A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":500}],\"from\":\"1792198455275\",\"to\":\"1792202055275\"}"
+  },
+  {
+   "start": 16673,
+   "end": 16695,
+   "ms": 22,
+   "panel": "601",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 5817,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR121",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum by (supervisor, queue) (group by (supervisor, queue) (office_horizon_supervisor_processes) * on (queue) group_left () sum by (queue) (office_queue_pending_jobs))\",\"format\":\"table\",\"instant\":true,\"range\":false,\"exemplar\":false,\"requestId\":\"601A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":500}],\"from\":\"1792198455275\",\"to\":\"1792202055275\"}"
+  },
+  {
+   "start": 21663,
+   "end": 21681,
+   "ms": 18,
+   "panel": "601",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": null,
+   "size": 0,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR123",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum by (supervisor, queue) (group by (supervisor, queue) (office_horizon_supervisor_processes) * on (queue) group_left () sum by (queue) (office_queue_pending_jobs))\",\"format\":\"table\",\"instant\":true,\"range\":false,\"exemplar\":false,\"requestId\":\"601A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":500}],\"from\":\"1792198460275\",\"to\":\"1792202060275\"}"
+  },
+  {
+   "start": 21670,
+   "end": 21685,
+   "ms": 15,
+   "panel": "601",
+   "kind": "panel",
+   "refIds": [
+    "A"
+   ],
+   "status": 200,
+   "size": 5817,
+   "url": "/api/ds/query?ds_type=prometheus&requestId=SQR127",
+   "body": "{\"queries\":[{\"refId\":\"A\",\"hide\":false,\"datasource\":{\"type\":\"prometheus\",\"uid\":\"prometheus\"},\"editorMode\":\"code\",\"expr\":\"sum by (supervisor, queue) (group by (supervisor, queue) (office_horizon_supervisor_processes) * on (queue) group_left () sum by (queue) (office_queue_pending_jobs))\",\"format\":\"table\",\"instant\":true,\"range\":false,\"exemplar\":false,\"requestId\":\"601A\",\"utcOffsetSec\":0,\"interval\":\"\",\"legendFormat\":\"\",\"datasourceId\":1,\"intervalMs\":15000,\"maxDataPoints\":500}],\"from\":\"1792198460275\",\"to\":\"1792202060275\"}"
+  }
+ ]
+}

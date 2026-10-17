@@ -72,7 +72,10 @@ class H(BaseHTTPRequestHandler):
             ctype = "text/plain; version=0.0.4"
         elif self.path.startswith("/live"):
             CALLS["live"] += 1
-            body = json.dumps(snapshot(t)).encode()
+            snap = snapshot(t)
+            if "color=red" in self.path:
+                snap["pending"]["color"] = "red"
+            body = json.dumps(snap).encode()
             ctype = "application/json"
         elif self.path.startswith("/calls"):
             body = json.dumps(CALLS).encode()

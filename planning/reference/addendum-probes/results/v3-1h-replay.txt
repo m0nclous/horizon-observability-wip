@@ -1,0 +1,88 @@
+{'panel': '23', 'refId': 'A', 'kind': 'query', 'kb': 0.1, 'wall_ms': 1, 'eval_ms': 0, 'samples': 0, 'peak': 0, 'series': 0, 'error': None}
+{'panel': '1', 'refId': 'A', 'kind': 'query_range', 'kb': 0.1, 'wall_ms': 2, 'eval_ms': 0, 'samples': 422, 'peak': 545, 'series': 1, 'error': None}
+{'panel': '1', 'refId': 'B', 'kind': 'query', 'kb': 1.8, 'wall_ms': 3, 'eval_ms': 2, 'samples': 1440, 'peak': 546, 'series': 4, 'error': None}
+{'panel': '3', 'refId': 'A', 'kind': 'query_range', 'kb': 2.7, 'wall_ms': 15, 'eval_ms': 13, 'samples': 23026, 'peak': 14832, 'series': 4, 'error': None}
+{'panel': '3', 'refId': 'B', 'kind': 'query_range', 'kb': 2.7, 'wall_ms': 11, 'eval_ms': 8, 'samples': 22062, 'peak': 14832, 'series': 27, 'error': None}
+{'panel': '2', 'refId': 'A', 'kind': 'query_range', 'kb': 0.8, 'wall_ms': 3, 'eval_ms': 2, 'samples': 5795, 'peak': 2903, 'series': 1, 'error': None}
+{'panel': '2', 'refId': 'B', 'kind': 'query', 'kb': 1.5, 'wall_ms': 3, 'eval_ms': 1, 'samples': 72, 'peak': 73, 'series': 1, 'error': None}
+{'panel': '2', 'refId': 'C', 'kind': 'query', 'kb': 1.5, 'wall_ms': 3, 'eval_ms': 1, 'samples': 96, 'peak': 74, 'series': 1, 'error': None}
+{'panel': '8', 'refId': 'A', 'kind': 'query_range', 'kb': 9.5, 'wall_ms': 672, 'eval_ms': 666, 'samples': 11973121, 'peak': 304020, 'series': 1, 'error': None}
+{'panel': '8', 'refId': 'B', 'kind': 'query', 'kb': 1.4, 'wall_ms': 17, 'eval_ms': 15, 'samples': 21961, 'peak': 1260, 'series': 1, 'error': None}
+{'panel': '9', 'refId': 'A', 'kind': 'query_range', 'kb': 0.5, 'wall_ms': 3, 'eval_ms': 1, 'samples': 5784, 'peak': 3133, 'series': 1, 'error': None}
+{'panel': '4', 'refId': 'A', 'kind': 'query_range', 'kb': 9.8, 'wall_ms': 1553, 'eval_ms': 1545, 'samples': 23946001, 'peak': 608040, 'series': 1, 'error': None}
+{'panel': '4', 'refId': 'B', 'kind': 'query', 'kb': 2.8, 'wall_ms': 82, 'eval_ms': 98, 'samples': 404640, 'peak': 3781, 'series': 1, 'error': None}
+{'panel': '4', 'refId': 'C', 'kind': 'query', 'kb': 1.4, 'wall_ms': 65, 'eval_ms': 71, 'samples': 303480, 'peak': 3780, 'series': 1, 'error': None}
+{'panel': '21', 'refId': 'A', 'kind': 'query_range', 'kb': 0.1, 'wall_ms': 1, 'eval_ms': 0, 'samples': 0, 'peak': 363, 'series': 1, 'error': None}
+{'panel': '21', 'refId': 'C', 'kind': 'query', 'kb': 0.7, 'wall_ms': 1, 'eval_ms': 0, 'samples': 0, 'peak': 7, 'series': 1, 'error': None}
+{'panel': '21', 'refId': 'B', 'kind': 'query', 'kb': 0.6, 'wall_ms': 1, 'eval_ms': 0, 'samples': 0, 'peak': 3, 'series': 1, 'error': None}
+{'panel': '5', 'refId': 'A', 'kind': 'query', 'kb': 1.1, 'wall_ms': 5, 'eval_ms': 4, 'samples': 17320, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '5', 'refId': 'B', 'kind': 'query', 'kb': 1.2, 'wall_ms': 5, 'eval_ms': 3, 'samples': 17331, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '5', 'refId': 'C', 'kind': 'query', 'kb': 1.8, 'wall_ms': 41, 'eval_ms': 43, 'samples': 118464, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '5', 'refId': 'D', 'kind': 'query', 'kb': 1.6, 'wall_ms': 7, 'eval_ms': 4, 'samples': 17389, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '5', 'refId': 'E', 'kind': 'query', 'kb': 1.8, 'wall_ms': 56, 'eval_ms': 53, 'samples': 219624, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '5', 'refId': 'F', 'kind': 'query', 'kb': 4.7, 'wall_ms': 12, 'eval_ms': 8, 'samples': 17544, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '5', 'refId': 'G', 'kind': 'query', 'kb': 1.0, 'wall_ms': 4, 'eval_ms': 3, 'samples': 17328, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '5', 'refId': 'H', 'kind': 'query', 'kb': 1.7, 'wall_ms': 32, 'eval_ms': 35, 'samples': 118464, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '5', 'refId': 'I', 'kind': 'query', 'kb': 1.8, 'wall_ms': 31, 'eval_ms': 27, 'samples': 118464, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '5', 'refId': 'J', 'kind': 'query', 'kb': 2.9, 'wall_ms': 116, 'eval_ms': 115, 'samples': 421920, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '5', 'refId': 'K', 'kind': 'query', 'kb': 2.5, 'wall_ms': 48, 'eval_ms': 45, 'samples': 293784, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '5', 'refId': 'Z', 'kind': 'query', 'kb': 1.2, 'wall_ms': 6, 'eval_ms': 4, 'samples': 17320, 'peak': 5776, 'series': 0, 'error': None}
+{'panel': '17', 'refId': 'A', 'kind': 'query', 'kb': 0.9, 'wall_ms': 24, 'eval_ms': 21, 'samples': 96824, 'peak': 478, 'series': 8, 'error': None}
+{'panel': '17', 'refId': 'B', 'kind': 'query', 'kb': 1.1, 'wall_ms': 24, 'eval_ms': 22, 'samples': 96840, 'peak': 473, 'series': 8, 'error': None}
+{'panel': '17', 'refId': 'C', 'kind': 'query', 'kb': 1.0, 'wall_ms': 20, 'eval_ms': 18, 'samples': 96832, 'peak': 478, 'series': 8, 'error': None}
+{'panel': '17', 'refId': 'D', 'kind': 'query', 'kb': 2.4, 'wall_ms': 57, 'eval_ms': 58, 'samples': 299160, 'peak': 2544, 'series': 8, 'error': None}
+{'panel': '17', 'refId': 'E', 'kind': 'query', 'kb': 1.2, 'wall_ms': 14, 'eval_ms': 13, 'samples': 96888, 'peak': 473, 'series': 8, 'error': None}
+{'panel': '17', 'refId': 'F', 'kind': 'query', 'kb': 0.9, 'wall_ms': 14, 'eval_ms': 18, 'samples': 96824, 'peak': 479, 'series': 8, 'error': None}
+{'panel': '17', 'refId': 'G', 'kind': 'query', 'kb': 2.3, 'wall_ms': 36, 'eval_ms': 34, 'samples': 198000, 'peak': 1284, 'series': 8, 'error': None}
+{'panel': '17', 'refId': 'H', 'kind': 'query', 'kb': 2.3, 'wall_ms': 30, 'eval_ms': 28, 'samples': 118800, 'peak': 1284, 'series': 8, 'error': None}
+{'panel': '17', 'refId': 'Z', 'kind': 'query', 'kb': 0.5, 'wall_ms': 7, 'eval_ms': 6, 'samples': 48408, 'peak': 470, 'series': 0, 'error': None}
+{'panel': '4064653180', 'refId': 'A', 'kind': 'query', 'kb': 1.1, 'wall_ms': 5, 'eval_ms': 3, 'samples': 11560, 'peak': 5774, 'series': 2, 'error': None}
+{'panel': '4064653180', 'refId': 'B', 'kind': 'query', 'kb': 1.2, 'wall_ms': 4, 'eval_ms': 6, 'samples': 11571, 'peak': 5774, 'series': 2, 'error': None}
+{'panel': '4064653180', 'refId': 'C', 'kind': 'query', 'kb': 1.8, 'wall_ms': 39, 'eval_ms': 71, 'samples': 112704, 'peak': 5774, 'series': 2, 'error': None}
+{'panel': '4064653180', 'refId': 'D', 'kind': 'query', 'kb': 1.6, 'wall_ms': 7, 'eval_ms': 7, 'samples': 11629, 'peak': 5774, 'series': 2, 'error': None}
+{'panel': '4064653180', 'refId': 'E', 'kind': 'query', 'kb': 1.8, 'wall_ms': 72, 'eval_ms': 79, 'samples': 213864, 'peak': 5774, 'series': 2, 'error': None}
+{'panel': '4064653180', 'refId': 'F', 'kind': 'query', 'kb': 4.7, 'wall_ms': 20, 'eval_ms': 14, 'samples': 11784, 'peak': 5774, 'series': 2, 'error': None}
+{'panel': '4064653180', 'refId': 'G', 'kind': 'query', 'kb': 1.0, 'wall_ms': 4, 'eval_ms': 5, 'samples': 11568, 'peak': 5774, 'series': 2, 'error': None}
+{'panel': '4064653180', 'refId': 'H', 'kind': 'query', 'kb': 1.7, 'wall_ms': 33, 'eval_ms': 30, 'samples': 112704, 'peak': 5774, 'series': 2, 'error': None}
+{'panel': '4064653180', 'refId': 'I', 'kind': 'query', 'kb': 1.8, 'wall_ms': 33, 'eval_ms': 29, 'samples': 112704, 'peak': 5774, 'series': 2, 'error': None}
+{'panel': '4064653180', 'refId': 'J', 'kind': 'query', 'kb': 2.9, 'wall_ms': 120, 'eval_ms': 113, 'samples': 416160, 'peak': 5774, 'series': 2, 'error': None}
+{'panel': '4064653180', 'refId': 'K', 'kind': 'query', 'kb': 2.5, 'wall_ms': 65, 'eval_ms': 60, 'samples': 288024, 'peak': 5774, 'series': 2, 'error': None}
+{'panel': '4064653180', 'refId': 'Z', 'kind': 'query', 'kb': 1.2, 'wall_ms': 5, 'eval_ms': 3, 'samples': 11560, 'peak': 5775, 'series': 0, 'error': None}
+{'panel': '3001830101', 'refId': 'A', 'kind': 'query', 'kb': 1.1, 'wall_ms': 6, 'eval_ms': 4, 'samples': 17320, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '3001830101', 'refId': 'B', 'kind': 'query', 'kb': 1.2, 'wall_ms': 5, 'eval_ms': 3, 'samples': 17331, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '3001830101', 'refId': 'C', 'kind': 'query', 'kb': 1.8, 'wall_ms': 35, 'eval_ms': 69, 'samples': 118464, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '3001830101', 'refId': 'D', 'kind': 'query', 'kb': 1.6, 'wall_ms': 6, 'eval_ms': 4, 'samples': 17389, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '3001830101', 'refId': 'E', 'kind': 'query', 'kb': 1.8, 'wall_ms': 71, 'eval_ms': 56, 'samples': 219624, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '3001830101', 'refId': 'F', 'kind': 'query', 'kb': 4.7, 'wall_ms': 10, 'eval_ms': 7, 'samples': 17544, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '3001830101', 'refId': 'G', 'kind': 'query', 'kb': 1.0, 'wall_ms': 4, 'eval_ms': 3, 'samples': 17328, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '3001830101', 'refId': 'H', 'kind': 'query', 'kb': 1.7, 'wall_ms': 35, 'eval_ms': 33, 'samples': 118464, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '3001830101', 'refId': 'I', 'kind': 'query', 'kb': 1.8, 'wall_ms': 31, 'eval_ms': 28, 'samples': 118464, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '3001830101', 'refId': 'J', 'kind': 'query', 'kb': 2.9, 'wall_ms': 113, 'eval_ms': 117, 'samples': 421920, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '3001830101', 'refId': 'K', 'kind': 'query', 'kb': 2.5, 'wall_ms': 56, 'eval_ms': 80, 'samples': 293784, 'peak': 5775, 'series': 3, 'error': None}
+{'panel': '3001830101', 'refId': 'Z', 'kind': 'query', 'kb': 1.2, 'wall_ms': 8, 'eval_ms': 4, 'samples': 17320, 'peak': 5776, 'series': 0, 'error': None}
+{'panel': '1221550389', 'refId': 'A', 'kind': 'query', 'kb': 1.1, 'wall_ms': 6, 'eval_ms': 4, 'samples': 23080, 'peak': 5776, 'series': 4, 'error': None}
+{'panel': '1221550389', 'refId': 'B', 'kind': 'query', 'kb': 1.2, 'wall_ms': 8, 'eval_ms': 6, 'samples': 23091, 'peak': 5776, 'series': 4, 'error': None}
+{'panel': '1221550389', 'refId': 'C', 'kind': 'query', 'kb': 1.8, 'wall_ms': 40, 'eval_ms': 37, 'samples': 124224, 'peak': 5776, 'series': 4, 'error': None}
+{'panel': '1221550389', 'refId': 'D', 'kind': 'query', 'kb': 1.6, 'wall_ms': 6, 'eval_ms': 4, 'samples': 23149, 'peak': 5776, 'series': 4, 'error': None}
+{'panel': '1221550389', 'refId': 'E', 'kind': 'query', 'kb': 1.8, 'wall_ms': 81, 'eval_ms': 64, 'samples': 225384, 'peak': 5776, 'series': 4, 'error': None}
+{'panel': '1221550389', 'refId': 'F', 'kind': 'query', 'kb': 4.7, 'wall_ms': 13, 'eval_ms': 7, 'samples': 23304, 'peak': 5776, 'series': 4, 'error': None}
+{'panel': '1221550389', 'refId': 'G', 'kind': 'query', 'kb': 1.0, 'wall_ms': 7, 'eval_ms': 4, 'samples': 23088, 'peak': 5776, 'series': 4, 'error': None}
+{'panel': '1221550389', 'refId': 'H', 'kind': 'query', 'kb': 1.7, 'wall_ms': 54, 'eval_ms': 39, 'samples': 124224, 'peak': 5776, 'series': 4, 'error': None}
+{'panel': '1221550389', 'refId': 'I', 'kind': 'query', 'kb': 1.8, 'wall_ms': 36, 'eval_ms': 33, 'samples': 124224, 'peak': 5776, 'series': 4, 'error': None}
+{'panel': '1221550389', 'refId': 'J', 'kind': 'query', 'kb': 2.9, 'wall_ms': 127, 'eval_ms': 109, 'samples': 427680, 'peak': 5776, 'series': 4, 'error': None}
+{'panel': '1221550389', 'refId': 'K', 'kind': 'query', 'kb': 2.5, 'wall_ms': 47, 'eval_ms': 46, 'samples': 299544, 'peak': 5776, 'series': 4, 'error': None}
+{'panel': '1221550389', 'refId': 'Z', 'kind': 'query', 'kb': 1.2, 'wall_ms': 6, 'eval_ms': 6, 'samples': 23080, 'peak': 5777, 'series': 0, 'error': None}
+per panel (sum of target wall ms, samples, targets):
+  4: 1700 ms, 24654121 samples, 3 targets
+  8: 689 ms, 11995082 samples, 2 targets
+  1221550389: 431 ms, 1464072 samples, 12 targets
+  4064653180: 407 ms, 1325832 samples, 12 targets
+  3001830101: 380 ms, 1394952 samples, 12 targets
+  5: 363 ms, 1394952 samples, 12 targets
+  17: 226 ms, 1148576 samples, 9 targets
+  3: 26 ms, 45088 samples, 2 targets
+  2: 9 ms, 5963 samples, 3 targets
+  1: 5 ms, 1862 samples, 2 targets
+  9: 3 ms, 5784 samples, 1 targets
+  21: 3 ms, 0 samples, 3 targets
+  23: 1 ms, 0 samples, 1 targets

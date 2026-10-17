@@ -1,0 +1,166 @@
+{
+  "uid": "probe-share",
+  "title": "Share probe",
+  "tags": [
+    "probe"
+  ],
+  "schemaVersion": 42,
+  "refresh": "5s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "sup",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(office_horizon_supervisor_processes, supervisor)",
+        "definition": "label_values(office_horizon_supervisor_processes, supervisor)",
+        "includeAll": true,
+        "multi": true,
+        "hide": 2,
+        "refresh": 1,
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "allValue": ".*",
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 602,
+      "type": "table",
+      "title": "Queues of ${sup}",
+      "repeat": "sup",
+      "repeatDirection": "v",
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Dashboard --"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Dashboard --"
+          },
+          "refId": "A",
+          "panelId": 601,
+          "withTransforms": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "any",
+            "filters": [
+              {
+                "fieldName": "supervisor",
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "${sup}"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 610,
+      "type": "row",
+      "title": "Details (collapsed, holds the source)",
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "panels": [
+        {
+          "id": 601,
+          "type": "table",
+          "title": "All queues (source)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 31
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "refId": "A",
+              "expr": "sum by (supervisor, queue) (group by (supervisor, queue) (office_horizon_supervisor_processes) * on (queue) group_left () sum by (queue) (office_queue_pending_jobs))",
+              "instant": true,
+              "range": false,
+              "format": "table",
+              "editorMode": "code"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true
+          }
+        }
+      ]
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s"
+    ]
+  }
+}
