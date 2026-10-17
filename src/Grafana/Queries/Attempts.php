@@ -40,19 +40,25 @@ final readonly class Attempts
     /**
      * Attempts in the window, exactly: the counter difference without increase()'s extrapolation (legacy
      * `attempts_delta`). The start is the last value within the lookback before the window, so a scrape gap at
-     * the boundary does not break the count; a series that did not exist before starts at its first value. After a
-     * counter reset (negative difference) the value after the reset counts.
+     * the boundary does not break the count; a series that did not exist before starts at its first value (also
+     * after an outage longer than the lookback over the start of the window). After a counter reset (negative
+     * difference) the value after the reset counts.
      */
     public function delta(string $statuses, string $window): string
     {
         $status = [Promql::re('status', $statuses)];
         $now = $this->sum($this->promql->selector(Metric::JobsTotal, ...$status));
+        // The full-range fallback stays (ADDENDUM R2.4 O7): bounding it to the first LOOKBACK of the window would
+        // count a series' whole value after a Prometheus outage longer than LOOKBACK over the start of the window
         $start = Promql::paren(Promql::either(
             $this->sum($this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status, offset: $window)),
             $this->sum($this->promql->over('min_over_time', Metric::JobsTotal, $window, $status)),
         ));
 
-        return $this->clampedDifference($now, $start);
+        // The value after a reset where the difference is negative. Every series with a value now has a start (the
+        // lookback covers Prometheus' 5 minutes), so `or now` adds exactly those, and the start, whose fallback reads
+        // every sample of the window, is evaluated once (the legacy `or (now < start)` evaluated it twice)
+        return Promql::paren(Promql::either(Promql::paren($now.' - '.$start).' >= 0', $now));
     }
 
     /**
