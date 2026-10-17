@@ -11,10 +11,13 @@ use DF\HorizonObservability\Redis\RedisClients;
 use DF\HorizonObservability\Tests\Integration\Live\Stream\Support\StreamClock;
 use DF\HorizonObservability\Tests\Integration\Live\Support\LiveState;
 use DF\HorizonObservability\Tests\Support\LogRecorder;
+use DF\HorizonObservability\Tests\Support\RedisCommands;
 use DF\HorizonObservability\Tests\Support\RedisKeys;
 use DF\HorizonObservability\Tests\TestCase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
+use Illuminate\Redis\Events\CommandExecuted;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 
 /*
@@ -130,6 +133,30 @@ it('backs off 60 s after a 401 or a 403', function (int $status): void {
     expect(liveStreamPushTimes())->toBe([0.0, 60.0, 120.0, 180.0, 240.0, 250.0])
         ->and(liveStreamMeta()['live_push_failures'] ?? null)->toBe('5');
 })->with([401, 403]);
+
+it('counts each backoff from the start of the failed tick, so a slow push still retries on time', function (int|string $answer, array $times): void {
+    // Each refused push costs 300 ms, as it does against a real Grafana (QA round 1: the retries came one tick late).
+    $this->answers = array_fill(0, 5, $answer);
+    $this->onPush = fn (): mixed => $this->time->advance(0.3);
+
+    liveStreamer()->run(static fn (): bool => false, 25, 4096, false);
+
+    expect(liveStreamPushTimes())->toBe($times)
+        ->and(liveStreamMeta()['live_push_failures'] ?? null)->toBe('5');
+})->with([
+    // 1, 2, 4, 8 s; released at the 5th failed tick (15 s) and leading again 10 s later
+    'HTTP 500' => [500, [0.0, 1.0, 3.0, 7.0, 15.0, 25.0]],
+    'timeout' => ['timeout', [0.0, 1.0, 3.0, 7.0, 15.0, 25.0]],
+]);
+
+it('retries a 401 after exactly 60 s, not 61 s, when the push takes time', function (): void {
+    $this->answers = [401];
+    $this->onPush = fn (): mixed => $this->time->advance(0.3);
+
+    liveStreamer()->run(static fn (): bool => false, 61, 4096, false);
+
+    expect(array_slice(liveStreamPushTimes(), 0, 2))->toBe([0.0, 60.0]);
+});
 
 it('releases the lease after the 5th failed tick so another replica can take over', function (): void {
     $this->answers = [500, 500, 500, 500, 500];
@@ -247,6 +274,26 @@ it('continues the delayed window every 5 s with a 1-hour TTL', function (): void
         ->and(RedisKeys::client()->pttl(($this->raw)($this->keys->liveDelayedWindow())))->toBeGreaterThan(3500000)
         // the points before the push, then the current value at the push time
         ->and($last)->toEndWith("\ndelayed value=2.0 1792201716123000000\ndelayed value=2.0 1792201721123000000\ndelayed value=2.0 1792201726123000000\ndelayed value=2.0 1792201728123000000\n");
+});
+
+it('stamps the delayed window points 5 s apart however long a build takes', function (): void {
+    // The first build takes 400 ms, the others none: points stamped after the build would come 5.6 s apart.
+    $slow = true;
+    RedisCommands::start($this->app);
+    Event::listen(CommandExecuted::class, function (CommandExecuted $event) use (&$slow): void {
+        if ($slow && strtoupper($event->command) === 'EVAL') {
+            $slow = false;
+            $this->time->advance(0.4);
+        }
+    });
+
+    liveStreamer()->run(static fn (): bool => false, 12, 4096, false);
+
+    expect($slow)->toBeFalse()
+        ->and(RedisKeys::client()->lrange(($this->raw)($this->keys->liveDelayedWindow()), 0, -1))->toBe(['1792201726123:2', '1792201721123:2', '1792201716123:2'])
+        ->and(liveStreamPushTimes())->toBe([0.4, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0])
+        // every push carries the tick start as its time (the snapshot of that tick)
+        ->and($this->pushes[0]['body'])->toStartWith('tiles tile="pending",key="",caption="Oldest: 17 s');
 });
 
 it('keeps at most 179 window points', function (): void {

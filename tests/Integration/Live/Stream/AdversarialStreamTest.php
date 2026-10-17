@@ -58,9 +58,12 @@ it('retries a refused push after 1, 2, 4 and 8 s when each push takes 50 ms', fu
 
     // Each retry is due `backoff` seconds after the failed push; the tick loop may round it up to the next tick,
     // which is at most one interval (1 s) late, but never a whole extra second per failure.
-    expect($this->pushes)->toHaveCount(5)
+    // (Round 2: the 6th push is the lease taken again 10 s after the release at the 5th failed tick, 15 + 10 = 25 s,
+    // inside --max-time=25; the late schedule released at 19 s and competed again at 29 s, after the run.)
+    expect($this->pushes)->toHaveCount(6)
+        ->and($this->pushes)->toBe([0.0, 1.0, 3.0, 7.0, 15.0, 25.0])
         ->and($this->pushes[1] - $this->pushes[0])->toBeLessThan(1.5)
         ->and($this->pushes[2] - $this->pushes[1])->toBeLessThan(2.5)
         ->and($this->pushes[3] - $this->pushes[2])->toBeLessThan(4.5)
         ->and($this->pushes[4] - $this->pushes[3])->toBeLessThan(8.5);
-})->skip('T12 QA round 1 finding 3: the pushes come at 0, 2, 5, 10 and 19 s (each backoff one tick late); unskip after the fix.');
+});

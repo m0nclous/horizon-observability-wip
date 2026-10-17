@@ -40,7 +40,9 @@ it('fails over within 7 s after the leader is killed and releases the lease on S
     $children = Processes::fork(2, static function (int $index) use ($exits): void {
         // Laravel traps no signal while running unit tests; these children stand in for `php artisan` processes.
         Signals::resolveAvailabilityUsing(static fn (): bool => extension_loaded('pcntl'));
-        $code = Artisan::call('horizon-observability:stream', ['--max-time' => 40]);
+        // A forked child inherits the memory of the test process (over 128 MB late in the full suite), which would
+        // end the stream on the default --memory=128 after its first tick.
+        $code = Artisan::call('horizon-observability:stream', ['--max-time' => 40, '--memory' => 4096]);
         RedisKeys::client()->hset($exits, (string) getmypid(), (string) $code);
 
     });

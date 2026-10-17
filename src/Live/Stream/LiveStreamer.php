@@ -28,7 +28,8 @@ use Throwable;
  * 2. **Snapshot** of the full scope, built anew through {@see LiveSnapshotCache::refresh()}, which also keeps the
  *    copy fresh for poll requests of the full scope.
  * 3. **Delayed window**: when its newest point is 5 s old, `LPUSH live:window:delayed "<unix_ms>:<value>"`,
- *    `LTRIM 0 178`, 1-hour TTL, so a new leader continues the window.
+ *    `LTRIM 0 178`, 1-hour TTL, so a new leader continues the window. Points and pushes are stamped with the wall
+ *    clock at the tick start, so the points are 5 s apart whatever the snapshot build took.
  * 4. **Push** of {@see LineProtocol::encode()} (or {@see LineProtocol::unavailable()} when the snapshot has no live
  *    data) to every configured Grafana URL that is not backing off.
  * 5. **Bookkeeping**: a successful push sets `meta.live_push_at`; every failed push increments
@@ -37,6 +38,12 @@ use Throwable;
  *    push. After {@see self::RELEASE_AFTER_FAILED_TICKS} consecutive ticks in which no push succeeded the leader
  *    releases the lease and waits {@see self::RELEASE_PAUSE_SECONDS} before competing again, so a replica with a
  *    working route to Grafana can take over.
+ *
+ * Every wait (a backoff, the follower retry, the pause after a release, the "unavailable" cadence) counts from the
+ * start of the tick that set it, not from the end of a push, and a tick that starts within
+ * {@see self::DUE_TOLERANCE_SECONDS} of a due time is on time: the ticks are aligned to their start, so a push that
+ * takes 50 ms still retries on the tick 1, 2, 4, 8 and 15 s later (pushes at 0, 1, 3, 7 and 15 s) instead of one tick
+ * late each time.
  * 6. **Storage Redis down**: the lease cannot be taken. The process that led when it lost Redis (or one that never
  *    reached it since it started) pushes the idempotent "unavailable" frame at most every
  *    {@see self::UNAVAILABLE_EVERY_SECONDS} during the first {@see self::UNAVAILABLE_WINDOW_SECONDS}; Grafana keeps the
@@ -65,6 +72,12 @@ final class LiveStreamer
     public const UNAVAILABLE_WINDOW_SECONDS = 7.0;
 
     public const WINDOW_STEP_MS = 5000;
+
+    /**
+     * A due time this close after a tick start counts as due at that tick: both are tick starts, so they differ only
+     * by clock jitter (a sleep that returned a little early), never by a push or a build.
+     */
+    public const DUE_TOLERANCE_SECONDS = 0.05;
 
     public const WINDOW_TTL_MS = 3600000;
 
@@ -247,9 +260,10 @@ final class LiveStreamer
     public function tick(): string
     {
         $now = ($this->clock)();
+        $wall = CarbonImmutable::now();
 
         if (! $this->leader) {
-            if ($now < $this->nextAttemptAt) {
+            if (! $this->isDue($this->nextAttemptAt, $now)) {
                 return self::FOLLOWER;
             }
 
@@ -259,7 +273,7 @@ final class LiveStreamer
                 $this->reporter->reportLocally('live.leader', $e);
                 $this->nextAttemptAt = $now + self::FOLLOWER_RETRY_SECONDS;
 
-                return $this->outage($now);
+                return $this->outage($now, $wall);
             }
 
             $this->redisReached();
@@ -273,13 +287,13 @@ final class LiveStreamer
             $this->urls = [];
             $this->failedTicks = 0;
             $this->emit('leader', sprintf('Became the stream leader: pushing to %d Grafana URL(s) as stream %s.', count($this->config->liveGrafanaUrls), $this->config->liveStreamId));
-        } elseif (! $this->renew()) {
+        } elseif (! $this->renew($now)) {
             return self::LOST;
         }
 
         $due = array_values(array_filter(
             $this->config->liveGrafanaUrls,
-            fn (string $url): bool => ($this->urls[$url]['until'] ?? 0.0) <= $now,
+            fn (string $url): bool => $this->isDue($this->urls[$url]['until'] ?? 0.0, $now),
         ));
 
         if ($due === []) {
@@ -287,7 +301,6 @@ final class LiveStreamer
         }
 
         $snapshot = $this->cache->refresh(LiveScope::full($this->topology));
-        $wall = CarbonImmutable::now();
         $nowMs = (int) floor((float) $wall->format('U.u') * 1000);
         $timeNs = $nowMs * LineProtocol::ROW_SPACING_NS;
         $body = $snapshot->isAvailable()
@@ -296,7 +309,7 @@ final class LiveStreamer
         $pushed = false;
 
         foreach ($due as $url) {
-            if (! $this->renew()) {
+            if (! $this->renew($now)) {
                 return self::LOST;
             }
 
@@ -313,7 +326,7 @@ final class LiveStreamer
                 continue;
             }
 
-            $this->failed($url, $result, strlen($body));
+            $this->failed($url, $result, strlen($body), $now);
         }
 
         if ($pushed) {
@@ -329,7 +342,7 @@ final class LiveStreamer
 
         if (++$this->failedTicks >= self::RELEASE_AFTER_FAILED_TICKS) {
             $this->releaseLease();
-            $this->nextAttemptAt = ($this->clock)() + self::RELEASE_PAUSE_SECONDS;
+            $this->nextAttemptAt = $now + self::RELEASE_PAUSE_SECONDS;
             $this->emit('released', sprintf(
                 'Released the leader lease after %d failed ticks; competing again in %.0f s.',
                 self::RELEASE_AFTER_FAILED_TICKS,
@@ -378,7 +391,10 @@ final class LiveStreamer
         }
     }
 
-    private function renew(): bool
+    /**
+     * @param  float  $tickStart  the monotonic start of the tick, from which a lost leader retries
+     */
+    private function renew(float $tickStart): bool
     {
         try {
             $renewed = $this->lock->renew();
@@ -397,9 +413,17 @@ final class LiveStreamer
         }
 
         $this->leader = false;
-        $this->nextAttemptAt = ($this->clock)() + self::FOLLOWER_RETRY_SECONDS;
+        $this->nextAttemptAt = $tickStart + self::FOLLOWER_RETRY_SECONDS;
 
         return false;
+    }
+
+    /**
+     * Whether a time set from an earlier tick start is due at the tick that starts at `$now`.
+     */
+    private function isDue(float $at, float $now): bool
+    {
+        return $at <= $now + self::DUE_TOLERANCE_SECONDS;
     }
 
     private function releaseLease(): void
@@ -416,11 +440,14 @@ final class LiveStreamer
         }
     }
 
-    private function failed(string $url, PushResult $result, int $bytes): void
+    /**
+     * @param  float  $tickStart  the monotonic start of the tick: the backoff counts from it, so the retry lands on a tick
+     */
+    private function failed(string $url, PushResult $result, int $bytes, float $tickStart): void
     {
         $failures = ($this->urls[$url]['failures'] ?? 0) + 1;
         $backoff = self::backoff($failures, $result->status);
-        $this->urls[$url] = ['failures' => $failures, 'until' => ($this->clock)() + $backoff];
+        $this->urls[$url] = ['failures' => $failures, 'until' => $tickStart + $backoff];
         $this->meta('hincrby', ['live_push_failures', 1]);
 
         $answer = $result->status === null ? 'no answer' : 'HTTP '.$result->status;
@@ -448,7 +475,7 @@ final class LiveStreamer
      * unavailable" until a leader pushes again; a follower cut off from Redis alone stays silent instead of
      * interleaving the frame with a healthy leader's pushes.
      */
-    private function outage(float $now): string
+    private function outage(float $now, CarbonImmutable $wall): string
     {
         if ($this->outageSince === null) {
             $this->outageSince = $now;
@@ -459,12 +486,12 @@ final class LiveStreamer
             return self::UNAVAILABLE;
         }
 
-        if ($this->lastUnavailableAt !== null && $now - $this->lastUnavailableAt < self::UNAVAILABLE_EVERY_SECONDS) {
+        if ($this->lastUnavailableAt !== null && ! $this->isDue($this->lastUnavailableAt + self::UNAVAILABLE_EVERY_SECONDS, $now)) {
             return self::UNAVAILABLE;
         }
 
         $this->lastUnavailableAt = $now;
-        $body = LineProtocol::unavailable((int) floor((float) CarbonImmutable::now()->format('U.u') * 1000) * LineProtocol::ROW_SPACING_NS, $this->lastRows);
+        $body = LineProtocol::unavailable((int) floor((float) $wall->format('U.u') * 1000) * LineProtocol::ROW_SPACING_NS, $this->lastRows);
 
         foreach ($this->config->liveGrafanaUrls as $url) {
             $this->pusher->push($url, $this->config->liveStreamId, (string) $this->config->liveToken, $body);
@@ -497,7 +524,8 @@ final class LiveStreamer
             $newest = $points === [] ? null : max(array_keys($points));
             $value = $snapshot->delayed['value'];
 
-            if ($value !== null && ($newest === null || $nowMs - $newest >= self::WINDOW_STEP_MS)) {
+            // Both stamps are tick starts, so jitter must not push the point to the next tick (5 s, not 6 s, apart).
+            if ($value !== null && ($newest === null || $nowMs - $newest >= self::WINDOW_STEP_MS - (int) (self::DUE_TOLERANCE_SECONDS * 1000))) {
                 LiveRedis::command($redis, 'lpush', [$key, $nowMs.':'.$value]);
                 LiveRedis::command($redis, 'ltrim', [$key, 0, LineProtocol::WINDOW_POINTS - 1]);
                 LiveRedis::command($redis, 'pexpire', [$key, self::WINDOW_TTL_MS]);
