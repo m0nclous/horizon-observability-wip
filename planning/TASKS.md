@@ -296,6 +296,18 @@ Addendum (Add §Q9′ WP10): `check` gains the live block (enabled; stream URL, 
 Editor) and the render commands for each live mode; `flush` also deletes `live:*`. `tests/Feature/Console/StreamCommandTest`
 belongs to T12.
 Acceptance: Arch Q9 WP10 row. Addendum: seeded live cases (missing token, 401 token, 403 token, invalid stream id).
+Onboarding (README decision 12, outranks other T14 wording where they conflict): `install` is interactive and
+idempotent with `--no-interaction` defaults: publishes the config, generates a token and writes
+`HORIZON_OBSERVABILITY_TOKEN` to `.env` (never overwriting an existing value), detects the app URL and Horizon path, prints
+the exact Prometheus scrape job and Grafana steps, and ends with the URL to open. `install --docker` writes
+`docker-compose.observability.yml` + `docker/observability/**` (Prometheus at 10 s with bearer auth, Grafana 13 with
+Infinity + Business Text, datasources, the rendered dashboard and alerts) so `docker compose -f docker-compose.observability.yml up -d`
+shows the dashboard with data; `--grafana=12` selects 12.4.13. A demo (`install --demo` or `horizon-observability:demo
+{--jobs=200}`) dispatches a short burst of sample jobs (completed, failed, retried, delayed, one batch) on the default
+Redis queue, refuses in production, and is safe to run twice. `check` prints one actionable fix line per problem.
+Acceptance additions: a scripted e2e (`tests/e2e/first-dashboard.sh`, weekly CI) starting from `composer create-project
+laravel/laravel` + Horizon reaches a dashboard with non-empty Overview tiles in <= 5 minutes using only the README quick
+start commands; `install` re-run is a no-op; `--docker` output passes `docker compose config`.
 
 ### T15 WP11 Integration, docs, release — `todo` (depends on everything)
 README (English: install, config, Prometheus scrape job at 10 s, Grafana 12/13 setup, live modes, security), UPGRADE.md
@@ -306,6 +318,10 @@ Addendum (Add §Q9′ WP11): README sections Live Overview (modes, requirements,
 settings) and Scrape interval; the weekly e2e adds the perf report and screenshots for `--live=poll` and `--live=stream`,
 and becomes blocking. Acceptance additions: the budget report is green on the weekly run; live screenshots show live
 values that change between two captures 2 s apart (stream).
+Onboarding (README decision 12): README opens with a 3-step quick start (`composer require`, `php artisan
+horizon-observability:install --docker --demo`, open Grafana) and one screenshot; configuration, security, live modes,
+performance and production setup follow below. Acceptance: a newcomer can follow the quick start without reading anything
+else (validated by the T14 e2e script and by a cold-read review of the README by a fresh agent).
 Stop and ask the owner before the office dry run, pushing any tag, Packagist registration and the repository transfer.
 When deleting `legacy/` and `planning/`, rewrite CLAUDE.md to contributor conventions only (no planning references) and
 remove `/legacy` and `/planning` from `.gitattributes`.

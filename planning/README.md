@@ -59,6 +59,19 @@ that the next task points to. Everything here is export-ignored and will be dele
    - poll mode refreshes the whole dashboard every 5 s instead of every scrape interval.
 10. Execution mode: full plan with parallel agents and independent reviews per phase.
 11. Releases: `0.x` until office runs the package in production, then `1.0.0`.
+12. **Zero-friction onboarding** (owner, 2026-10-17): a newcomer must get from `composer require` to a dashboard with
+    live data in minutes, without reading long docs. This drives adoption and outranks configurability in defaults:
+    - works with zero configuration in `local` (no token needed there, sensible defaults everywhere);
+    - one interactive `php artisan horizon-observability:install` that does everything it safely can (publish config,
+      generate and write the token to `.env`, print or write the Prometheus scrape job and Grafana provisioning) and
+      ends with "open http://localhost:3000";
+    - an optional one-command local stack (`install --docker` writes a small compose file with Prometheus + Grafana
+      preprovisioned with the dashboard, datasources and plugins, pointed at the app);
+    - an optional demo (`install --demo` or a `horizon-observability:demo` command dispatching a short burst of sample
+      jobs) so an empty app shows data at once;
+    - `check` explains every problem with one actionable fix line;
+    - README starts with a 3-step quick start and a screenshot; everything else lives further down;
+    - measured: time to first dashboard <= 5 minutes on a fresh Laravel app (scripted e2e).
 
 ## Git and environment
 
