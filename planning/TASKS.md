@@ -132,7 +132,7 @@ Acceptance: Arch Q9 WP6 row (C22; `optimize` hook iff Laravel >= 11.27.1).
 Arch Q7, Q9 table. `InjectGrafanaLink` middleware + `menu-link.blade.php`.
 Acceptance: link right after "Dashboard" on Horizon 5.22 … latest; absent without URL; JSON untouched (C16 rendering).
 
-### T10 WP8A Grafana golden port — `todo` (depends only on T00; start first, it is on the critical path)
+### T10 WP8A Grafana golden port — `in progress` (depends only on T00; start first, it is on the critical path)
 Arch Q5.1, 5.6 (M1, M2), Q9 table. Port `legacy/grafana/generate_queues_dashboard.py` to PHP under `src/Grafana/**`
 with a `LegacyProfile`. Acceptance: output decodes equal to (ideally byte-identical with) `tests/Fixtures/grafana/legacy/queues.json`;
 alert rules equal the parsed legacy `horizon.yml`; tests `tests/Grafana/{GoldenPortTest,LegacyAlertsTest,LayoutProjectionTest}`.
