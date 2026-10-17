@@ -3,8 +3,9 @@
 # Mirror planning/TASKS.md onto GitHub issues and a GitHub Projects (v2) board.
 #
 # planning/TASKS.md stays the source of truth: every "### Txx Title — `status`" heading becomes one issue titled
-# "[Txx] Title". The issue is labelled with its phase, labelled "in progress" while it is in progress, closed when it
-# is done, and placed in the matching Status column of the board (Todo, In Progress, Done).
+# "[Txx] Title" in the matching Status column of the board (Todo, In Progress, Testing, Done). The issue carries the
+# phase label and a status label while it is in progress or in testing, is closed when the task is done, and gets one
+# comment per "QA: ..." line of the task (the testers' verdicts).
 #
 # Usage:
 #   tools/board/board.sh sync [--dry-run]
@@ -16,19 +17,22 @@
 #   BOARD_NUMBER   project number from the board URL (.../projects/<number>); empty = issues only, no board
 #   BOARD_BRANCH   branch used for links to TASKS.md (default: the current git branch)
 #   TASKS_FILE     path of the task list (default: planning/TASKS.md)
-#   GH_TOKEN       token for gh (scopes: repo or Issues read/write, and project read/write for the board)
+#   GH_TOKEN       token for gh (classic: repo, project, read:org, read:discussion)
 
 set -euo pipefail
 
 TASKS_FILE="${TASKS_FILE:-planning/TASKS.md}"
 TASK_LABEL="task"
-PROGRESS_LABEL="in progress"
+STATUSES="todo|in progress|testing|done"
 
-# Status in TASKS.md => Status option on the board (the default options of the Board template).
-declare -A COLUMN=([todo]="Todo" [in progress]="In Progress" [done]="Done")
+# Status in TASKS.md => Status option on the board.
+declare -A COLUMN=([todo]="Todo" [in progress]="In Progress" [testing]="Testing" [done]="Done")
+# Status in TASKS.md => issue label (statuses without a label have none).
+declare -A STATUS_LABEL=([in progress]="in progress" [testing]="testing")
+declare -A LABEL_COLOR=([in progress]="fbca04" [testing]="1d76db")
 
 usage() {
-    sed -n '9,11p' "$0" | sed 's/^# \{0,3\}//'
+    sed -n '10,12p' "$0" | sed 's/^# \{0,3\}//'
     exit "${1:-0}"
 }
 
@@ -41,14 +45,14 @@ die() {
 parse_tasks() {
     [[ -f "$TASKS_FILE" ]] || die "task list not found: $TASKS_FILE"
 
-    awk '
+    awk -v statuses="$STATUSES" '
         /^## Phase / {
             phase = $3
             sub(/:$/, "", phase)
             next
         }
         /^### T[0-9]+ / {
-            if (match($0, /`(todo|in progress|done)`/) == 0) {
+            if (match($0, "`(" statuses ")`") == 0) {
                 next
             }
             status = substr($0, RSTART + 1, RLENGTH - 2)
@@ -60,6 +64,24 @@ parse_tasks() {
             printf "%s\t%s\t%s\t%s\n", id, title, status, phase
         }
     ' "$TASKS_FILE"
+}
+
+# Prints the "QA: ..." lines of one task (without the "QA: " prefix), oldest first.
+qa_notes() {
+    local id="$1"
+    awk -v id="$id" '
+        /^### T[0-9]+ / {
+            current = $2
+            next
+        }
+        /^##? / {
+            current = ""
+            next
+        }
+        current == id && /^QA: / {
+            print substr($0, 5)
+        }
+    ' "$TASKS_FILE" | tac
 }
 
 cmd_list() {
@@ -76,6 +98,10 @@ run() {
     else
         "$@"
     fi
+}
+
+offline() {
+    [[ "$DRY_RUN" == 1 && -z "${GH_TOKEN:-}" ]]
 }
 
 ensure_label() {
@@ -112,7 +138,9 @@ load_board() {
     for key in "${!COLUMN[@]}"; do
         name="${COLUMN[$key]}"
         OPTION_ID[$key]="$(jq -r --arg n "$name" '.fields[] | select(.name == "Status") | .options[] | select(.name == $n) | .id' <<<"$fields")"
-        [[ -n "${OPTION_ID[$key]}" ]] || die "the board's Status field has no option \"$name\""
+        if [[ -z "${OPTION_ID[$key]}" ]]; then
+            echo "board: warning: the board's Status field has no option \"$name\"; add it in the board settings" >&2
+        fi
     done
 }
 
@@ -124,20 +152,47 @@ place_on_board() {
         return
     fi
     item="$(gh project item-add "$BOARD_NUMBER" --owner "$BOARD_OWNER" --url "$url" --format json --jq .id)"
+    if [[ -z "${OPTION_ID[$status]}" ]]; then
+        echo "board: warning: $url stays in its current column (no \"${COLUMN[$status]}\" option)" >&2
+        return
+    fi
     gh project item-edit --id "$item" --project-id "$PROJECT_ID" \
         --field-id "$STATUS_FIELD_ID" --single-select-option-id "${OPTION_ID[$status]}" >/dev/null
+}
+
+# Posts every QA line of the task that the issue does not have yet. A hidden marker makes the comments idempotent.
+sync_qa_notes() {
+    local id="$1" url="$2" note marker existing=""
+    local notes
+    notes="$(qa_notes "$id")"
+    [[ -n "$notes" ]] || return 0
+
+    if ! offline && [[ "$url" != *"<new>" ]]; then
+        existing="$(gh issue view "$url" --repo "$REPO" --json comments --jq '.comments[].body' || true)"
+    fi
+
+    while IFS= read -r note; do
+        [[ -n "$note" ]] || continue
+        marker="<!-- qa:$(printf '%s' "$note" | sha1sum | cut -c1-12) -->"
+        if [[ "$existing" == *"$marker"* ]]; then
+            continue
+        fi
+        echo "comment $id: QA: $note"
+        run gh issue comment "$url" --repo "$REPO" --body "**QA:** $note
+
+$marker" >/dev/null
+    done <<<"$notes"
 }
 
 sync_task() {
     local id="$1" title="$2" status="$3" phase="$4"
     local full="[$id] $title"
-    local body="Mirrors task **$id** of [\`planning/TASKS.md\`]($TASKS_URL) (scope, dependencies and acceptance live there).
+    local body="Mirrors task **$id** of [\`planning/TASKS.md\`]($TASKS_URL) (scope, dependencies, acceptance and QA verdicts live there).
 
-Status, labels and the board column are synced from that file by \`tools/board/board.sh\`; edit the file, not this issue."
-    local found number state url current
+Status, labels, QA comments and the board column are synced from that file by \`tools/board/board.sh\`; change the file (\`tools/board/set-status.sh\`), not this issue."
+    local found="" number state url current key label
 
-    found=""
-    [[ "$DRY_RUN" == 1 && -z "${GH_TOKEN:-}" ]] || found="$(find_issue "$id")"
+    offline || found="$(find_issue "$id")"
 
     if [[ -z "$found" ]]; then
         echo "create  $full ($status)"
@@ -157,11 +212,14 @@ Status, labels and the board column are synced from that file by \`tools/board/b
         run gh issue edit "$number" --repo "$REPO" --add-label "phase: $phase" >/dev/null
     fi
 
-    if [[ "$status" == "in progress" ]]; then
-        run gh issue edit "$url" --repo "$REPO" --add-label "$PROGRESS_LABEL" >/dev/null
-    elif [[ -n "$found" ]]; then
-        run gh issue edit "$url" --repo "$REPO" --remove-label "$PROGRESS_LABEL" >/dev/null
-    fi
+    for key in "${!STATUS_LABEL[@]}"; do
+        label="${STATUS_LABEL[$key]}"
+        if [[ "$key" == "$status" ]]; then
+            run gh issue edit "$url" --repo "$REPO" --add-label "$label" >/dev/null
+        elif [[ -n "$found" ]]; then
+            run gh issue edit "$url" --repo "$REPO" --remove-label "$label" >/dev/null
+        fi
+    done
 
     if [[ "$status" == "done" && "$state" == "OPEN" ]]; then
         run gh issue close "$url" --repo "$REPO" --reason completed >/dev/null
@@ -169,13 +227,15 @@ Status, labels and the board column are synced from that file by \`tools/board/b
         run gh issue reopen "$url" --repo "$REPO" >/dev/null
     fi
 
+    sync_qa_notes "$id" "$url"
+
     if [[ -n "$BOARD_NUMBER" ]]; then
         place_on_board "$url" "$status"
     fi
 }
 
 cmd_sync() {
-    if [[ "$DRY_RUN" == 1 && -z "${GH_TOKEN:-}" ]]; then
+    if offline; then
         REPO="${BOARD_REPO:-owner/repo}"
     else
         command -v gh >/dev/null || die "gh is not installed"
@@ -193,8 +253,10 @@ cmd_sync() {
     [[ -n "$tasks" ]] || die "no tasks found in $TASKS_FILE"
 
     ensure_label "$TASK_LABEL" "0e8a16" "Mirrors a task of planning/TASKS.md"
-    ensure_label "$PROGRESS_LABEL" "fbca04" "Being worked on"
-    local phase
+    local key phase
+    for key in "${!STATUS_LABEL[@]}"; do
+        ensure_label "${STATUS_LABEL[$key]}" "${LABEL_COLOR[$key]}" "Task status: $key"
+    done
     for phase in $(cut -f4 <<<"$tasks" | sort -u); do
         ensure_label "phase: $phase" "c5def5" "Phase $phase of planning/TASKS.md"
     done

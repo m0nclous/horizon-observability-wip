@@ -73,6 +73,34 @@ that the next task points to. Everything here is export-ignored and will be dele
     - `check` explains every problem with one actionable fix line;
     - README starts with a 3-step quick start and a screenshot; everything else lives further down;
     - measured: time to first dashboard <= 5 minutes on a fresh Laravel app (scripted e2e).
+13. **Honest numbers, proven by tests** (owner, 2026-10-17): every exported metric and every number the dashboard shows
+    must equal the ground truth, and tests must prove it, so that refactors, optimisations and dependency updates cannot
+    silently make the dashboard lie.
+    - Exporter truth (T16): deterministic scenarios with known outcomes (completed, failed, retried, released, timed
+      out, delayed, batches, known durations and waits) run through real queue workers; exported values must equal the
+      expected ones exactly (counters, histogram buckets/sum/count, gauges against the real Redis/DB state), plus
+      invariants (count == +Inf bucket, monotonic buckets, per-class sums == totals incl. "(unscanned)", counters never
+      decrease except a documented reset) and a cross-check against Horizon's own repositories.
+    - Dashboard truth (T17): the same scenarios scraped by a real Prometheus; every panel query, exactly as rendered and
+      with variables interpolated as Grafana does, is evaluated through Grafana's `/api/ds/query` on 12.4.13 and 13.2.4
+      and must return the expected values (tiles, captions, colours, table cells, series), including filters, empty
+      state, counter resets, two replicas, scrape intervals 5/10/60 s and ranges 15 m/1 h/6 h; a DOM check reads tiles.
+    - Every change to collectors, Lua, `src/Grafana/**` or a dependency bump must keep both suites green (CI gate).
+14. **Kanban with a QA gate** (owner, 2026-10-17). Board columns: Todo → In Progress → Testing → Done
+    (`tools/board/README.md`). `planning/TASKS.md` stays the source of truth; change statuses only with
+    `tools/board/set-status.sh` (it commits and pushes `planning/TASKS.md`, the board workflow moves the card).
+    - The implementing agent sets `in progress` when it starts and `testing` when all its gates are green and committed.
+    - At least two independent tester agents (never the implementer) test every task in `testing`:
+      the **spec tester** (each acceptance item, Arch/ADDENDUM conformance, all gates on phpredis and predis, lowest
+      legs where possible) and the **adversarial tester** (bug hunt, version compatibility, security, failure
+      isolation, cost bounds, and honesty per decision 13: truth tests exist and pass for everything the task touches).
+      Testers may fix trivial issues themselves (typos, a missing assertion) and say so; anything else is a finding.
+    - Both approve → `set-status.sh Txx done --qa "round N approved by the spec and adversarial testers; <checks>"`.
+      Any finding → `set-status.sh Txx "in progress" --qa "round N rejected by <tester>: <findings, one line>"`; the
+      implementer fixes and moves it back to `testing`. The QA lines become issue comments.
+    - After 3 rejected rounds the task stays `in progress` with `--qa "escalated to the owner: ..."` and the integrator
+      asks the owner.
+    - The integrator merges a task branch only when the task is `done`.
 
 ## Git and environment
 
