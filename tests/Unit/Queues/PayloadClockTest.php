@@ -1,0 +1,46 @@
+<?php
+
+declare(strict_types=1);
+
+use DF\HorizonObservability\Queues\PayloadClock;
+
+/**
+ * @return array<string, array{payload: string, ready_at: float|null, first_attempt: bool, display_name: string}>
+ */
+function payloadFixtures(): array
+{
+    return require dirname(__DIR__, 2).'/Fixtures/payloads.php';
+}
+
+it('computes the readiness of every parity fixture', function (string $payload, ?float $readyAt, bool $firstAttempt, string $displayName): void {
+    $decoded = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
+
+    expect(PayloadClock::readyAt($decoded))->toBe($readyAt)
+        ->and(PayloadClock::isFirstAttempt($decoded))->toBe($firstAttempt)
+        ->and($decoded['displayName'])->toBe($displayName);
+})->with(array_map(array_values(...), payloadFixtures()));
+
+it('ignores a stale delay on a horizon retry (C19)', function (): void {
+    $retry = ['createdAt' => 1700000000, 'delay' => 600, 'pushedAt' => '1700005000.5', 'attempts' => 0, 'retry_of' => 'x'];
+
+    expect(PayloadClock::readyAt($retry))->toBe(1700005000.5)
+        ->and(PayloadClock::isFirstAttempt($retry))->toBeTrue();
+});
+
+it('takes the later of pushedAt and createdAt + delay', function (): void {
+    expect(PayloadClock::readyAt(['pushedAt' => '100.5', 'createdAt' => 100, 'delay' => 30]))->toBe(130.0)
+        ->and(PayloadClock::readyAt(['pushedAt' => '200.5', 'createdAt' => 100, 'delay' => 30]))->toBe(200.5)
+        ->and(PayloadClock::readyAt(['pushedAt' => '100.5', 'createdAt' => 100, 'delay' => null]))->toBe(100.5)
+        ->and(PayloadClock::readyAt(['pushedAt' => '100.5', 'delay' => 30]))->toBe(100.5)
+        ->and(PayloadClock::readyAt(['createdAt' => 100]))->toBe(100.0)
+        ->and(PayloadClock::readyAt(['pushedAt' => 'soon']))->toBeNull()
+        ->and(PayloadClock::readyAt([]))->toBeNull();
+});
+
+it('counts a payload as a first attempt when attempts is 0 or missing', function (): void {
+    expect(PayloadClock::isFirstAttempt(['attempts' => 0]))->toBeTrue()
+        ->and(PayloadClock::isFirstAttempt(['attempts' => '0']))->toBeTrue()
+        ->and(PayloadClock::isFirstAttempt([]))->toBeTrue()
+        ->and(PayloadClock::isFirstAttempt(['attempts' => 1]))->toBeFalse()
+        ->and(PayloadClock::isFirstAttempt(['attempts' => 3]))->toBeFalse();
+});
