@@ -150,7 +150,11 @@ final readonly class Workers
     {
         $selected = [Promql::re('supervisor', '$supervisor'), Promql::re('queue', '$queue')];
         $processes = $this->promql->selector(Metric::SupervisorProcesses, ...$selected);
-        $reserved = Promql::sum($this->promql->selector(Metric::QueueJobsReserved, Promql::re('job_class', '$job_class')), 'queue');
+        // The panel keeps the Job filter out of its other values, so the selected jobs and their batch scope are
+        // explicit here
+        $reserved = Promql::sum($this->promql->batchScoped(
+            $this->promql->selector(Metric::QueueJobsReserved, Promql::re('job_class', '$job_class')),
+        ), 'queue');
 
         $value = $this->selection->byJobSelection(
             Promql::sum($processes, 'supervisor'),

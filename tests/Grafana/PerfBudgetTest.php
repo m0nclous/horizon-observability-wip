@@ -73,6 +73,10 @@ it('looks back at most max(10m, 10 x S) from the start of a period on every coun
     expect(committedBudget()->counterLookbacks())->toBe([]);
 });
 
+it('evaluates no operand twice for the Batch switch: the scope sits in the selectors (O2)', function (): void {
+    expect(committedBudget()->duplicateBranches())->toBe([]);
+});
+
 it('finds a day-long counter lookback, also in collapsed rows and variables', function (): void {
     $budget = new StaticBudget(budgetDashboard([
         budgetPanel(1, ['sum(last_over_time(ho_queue_jobs_total{job=~".+"}[1d] offset 1h))']),

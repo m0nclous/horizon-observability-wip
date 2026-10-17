@@ -52,7 +52,6 @@ final readonly class Variables
 
     public function __construct(
         private Promql $promql,
-        private Selection $selection,
         private BatchState $batches,
         private DashboardOptions $options,
     ) {}
@@ -75,9 +74,10 @@ final readonly class Variables
             // "All" is the listed queues, not .*: so the Supervisor filter works on every panel (queue metrics
             // have no supervisor label)
             $this->filter('queue', 'Queue', $this->queueQuery(), '/queue="([^"]+)"/'),
-            // "All" is the listed jobs, not .*: so the Batch filter works on every panel. The text is the class
-            // without its namespace, the value the full class name.
-            $this->filter('job_class', 'Job', $this->jobQuery(), '/display="(?<text>[^"]+)".*job_class="(?<value>[^"]+)"/'),
+            // "All" is .+, not the listed jobs (ADDENDUM R2.4 O2: the list was inlined into every job-filtered
+            // selector); the Batch filter reaches the panels as the batch scope of those selectors instead. The
+            // text is the class without its namespace, the value the full class name.
+            $this->filter('job_class', 'Job', $this->jobQuery(), '/display="(?<text>[^"]+)".*job_class="(?<value>[^"]+)"/', '.+'),
             // Hidden: the queue table repeats by it, the text is the table title
             $this->hiddenFilter('supervisor_title', $this->supervisorTitleQuery(), '/display="(?<text>[^"]+)".*supervisor="(?<value>[^"]+)"/'),
             // Hidden: the batch tables repeat by it, the text is the table title
@@ -158,7 +158,7 @@ final readonly class Variables
             Promql::paren(Promql::andOn(Promql::unlessOn($queues, $supervised(), 'queue'), Selection::isAll('supervisor'))),
         );
 
-        return Promql::call('query_result', $this->selection->batchFiltered($rows, 'queue'));
+        return Promql::call('query_result', $this->promql->batchScoped(Promql::paren($rows), 'queue'));
     }
 
     /**
@@ -179,10 +179,7 @@ final readonly class Variables
             'queue',
             Glyph::DASH,
         );
-        $rows = $this->selection->batchFiltered(
-            Promql::either($seen, Promql::andOn($neverRan, Selection::unfiltered())),
-            'job_class',
-        );
+        $rows = $this->promql->batchScoped(Promql::paren(Promql::either($seen, Promql::andOn($neverRan, Selection::unfiltered()))));
 
         return Promql::call('query_result', Promql::group(
             Promql::labelReplace($rows, 'display', '$1', 'job_class', '(?:.*\\\\)?([^\\\\]*)'),

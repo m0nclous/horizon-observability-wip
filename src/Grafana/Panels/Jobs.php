@@ -148,10 +148,19 @@ final readonly class Jobs
         );
         $durationCount = $durationIncrease('count', ...$by);
         $max = Promql::max($this->promql->over('max_over_time', Metric::JobDurationMax, Promql::RANGE), ...$by);
+        // The buckets are the largest per-class vector (16 series per class and application), so their batch scope
+        // (ADDENDUM R2.4 O2) comes after the sum by class, which keeps job_class: the same rows, fewer series in
+        // the set operation when several applications share the Prometheus. The selector carries the Job filter
+        // itself, so filtered() adds neither the filter nor the scope again.
+        $buckets = $this->promql->batchScoped(Promql::sum(
+            $this->promql->over('increase', Metric::JobDuration, Promql::RANGE, [Promql::re('job_class', '$job_class')], series: 'bucket'),
+            'le',
+            ...$by,
+        ));
         // Bucket estimates interpolate inside a bucket and can exceed the exact maximum, so the table caps p95
         // at the maximum. Without a maximum (attempts before the metric existed) the estimate stays as is.
         $p95 = Promql::paren(Promql::andOn(
-            Promql::call('histogram_quantile', '0.95', $durationIncrease('bucket', 'le', ...$by)),
+            Promql::call('histogram_quantile', '0.95', $buckets),
             Promql::paren($durationCount.' > 0'),
             ...$by,
         ));

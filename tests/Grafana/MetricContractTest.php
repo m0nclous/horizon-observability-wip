@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+use DF\HorizonObservability\Grafana\Promql;
 use DF\HorizonObservability\Metrics\Metric;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
  * Arch Q5.7 item 2, the families: every <ns>_<name> in the committed dashboard and alert rules is a family of the
- * catalog (Metrics\Metric), after stripping the histogram suffixes _bucket, _sum and _count.
+ * catalog (Metrics\Metric), after stripping the histogram suffixes _bucket, _sum and _count. The only label outside
+ * the catalog is the batch-scope sentinel __batch_scope__ (ADDENDUM R2.4 O2).
  */
 
 pest()->group('grafana');
@@ -66,6 +68,43 @@ it('matches each package selector only on labels of its family', function (): vo
     }
 
     expect($wrong)->toBe([]);
+});
+
+it('matches the selectors by name only on labels of their families, job and the batch-scope sentinel', function (): void {
+    $wrong = [];
+    $sentinels = 0;
+
+    foreach (Rendered::expressions() as $where => $expr) {
+        preg_match_all('/\{__name__=~"([^"]+)"((?:, (?:[^}"]|"(?:[^"\\\\]|\\\\.)*")*)?)\}/', $expr, $selectors, PREG_SET_ORDER);
+
+        foreach ($selectors as [, $names, $matchers]) {
+            $allowed = ['job', Promql::BATCH_SCOPE];
+
+            foreach (explode('|', $names) as $name) {
+                array_push($allowed, ...Metric::from(substr($name, strlen('ho_')))->labels());
+            }
+
+            preg_match_all('/(\w+)\s*(=~|!~|!=|=)\s*"((?:[^"\\\\]|\\\\.)*)"/', $matchers, $labels, PREG_SET_ORDER);
+
+            foreach ($labels as [, $label, $operator, $value]) {
+                if (! in_array($label, $allowed, true)) {
+                    $wrong[] = $where.': {__name__=~"'.$names.'"} has no label '.$label;
+                }
+
+                // The sentinel no stored series carries (ADDENDUM R2.4 O2): only as the Batch switch
+                if ($label === Promql::BATCH_SCOPE) {
+                    $sentinels++;
+
+                    if ($operator !== '!~' || $value !== '$batch_kind') {
+                        $wrong[] = $where.': '.$label.$operator.'"'.$value.'"';
+                    }
+                }
+            }
+        }
+    }
+
+    expect($wrong)->toBe([])
+        ->and($sentinels)->toBeGreaterThan(300);
 });
 
 /**

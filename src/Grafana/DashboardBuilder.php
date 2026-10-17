@@ -224,7 +224,7 @@ final readonly class DashboardBuilder
     {
         $promql = $this->options->promql();
 
-        return (new Variables($promql, new Selection($promql), new BatchState($promql), $this->options))->all();
+        return (new Variables($promql, new BatchState($promql), $this->options))->all();
     }
 
     /**

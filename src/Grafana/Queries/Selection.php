@@ -47,20 +47,6 @@ final readonly class Selection
     }
 
     /**
-     * Narrows the rows of $expr to the queues or classes ($label) of the selected batch kinds; no narrowing while
-     * Batch is "All" (legacy `batch_filtered`).
-     */
-    public function batchFiltered(string $expr, string $label): string
-    {
-        $classes = $this->promql->selector(Metric::BatchJobClasses, Promql::re('batch', '$batch_kind'));
-
-        return Promql::paren(Promql::either(
-            Promql::andOn(Promql::paren($expr), Promql::group($classes, $label), $label),
-            Promql::andOn(Promql::paren($expr), self::isAll('batch_kind')),
-        ));
-    }
-
-    /**
      * Non-empty while Batch and Job are both "All": queue figures are then taken for the whole queue
      * (legacy `ALL_JOBS_SELECTED`).
      */

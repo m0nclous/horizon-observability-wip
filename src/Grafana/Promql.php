@@ -74,6 +74,13 @@ final readonly class Promql
     private const JOB_FILTER = 'job_class=~"$job_class"';
 
     /**
+     * The sentinel label of the Batch scope (ADDENDUM R2.4 O2): no stored series can carry it.
+     */
+    public const BATCH_SCOPE = '__batch_scope__';
+
+    private const BATCH_VARIABLE = '$batch_kind';
+
+    /**
      * @var array<string, true>
      */
     private array $queueMetrics;
@@ -244,23 +251,40 @@ final readonly class Promql
     /**
      * Adds the dashboard filters to every package selector of a finished expression (legacy `filtered`):
      * `queue=~"$queue"` where the family has a queue label and the selector has no queue matcher of its own
-     * (so a selector can opt out of the Queue filter), and `job_class=~"$job_class"` when $jobFilter is set
-     * and the family has a job_class label. The filters come first, then the selector's own matchers.
+     * (so a selector can opt out of the Queue filter), and `job_class=~"$job_class"` when $jobFilter is set,
+     * the family has a job_class label and the selector no job_class matcher of its own. The filters come first,
+     * then the selector's own matchers. Names inside PromQL strings are not selectors.
+     *
+     * A job-filtered selector also gets the Batch scope (ADDENDUM R2.4 O2): Job's "All" is `.+`, so the classes
+     * of the selected batch kinds are no longer in `$job_class`; the selector, with its range function and the
+     * replica dedupe around it, becomes `(<selector> unless on (job_class) <classes outside the kinds>)`, see
+     * {@see batchScoped()}.
      */
     public function filtered(string $expr, bool $jobFilter): string
     {
-        $pattern = '/\b('.preg_quote($this->prefix, '/').'[a-z_]+)(\{[^}]*\})?/';
+        $labels = '\{(?:[^}"]|"(?:[^"\\\\]|\\\\.)*")*\}';
+        $time = '(?: offset -?[$\w{}:]+)?(?: @ [$\w{}:]+)?';
+        // A string, or a package selector with the range function and the dedupe Promql::package() writes around it
+        $pattern = '/"(?:[^"\\\\]|\\\\.)*"|\b(?<dedupe>max by \([^()]*\) \()?(?<fn>[a-z_]+\()?'
+            .'(?<name>'.preg_quote($this->prefix, '/').'[a-z_]+)(?<labels>'.$labels.')?'
+            .'(?(<fn>)\[[^\]]+\])'.$time.'(?(<fn>)\))(?(<dedupe>)\))/';
 
         return (string) preg_replace_callback($pattern, function (array $match) use ($jobFilter): string {
-            $name = $match[1];
-            $labels = $match[2] ?? '';
+            if (! isset($match['name']) || $match['name'] === '') {
+                return $match[0];
+            }
+
+            $name = $match['name'];
+            $labels = $match['labels'] ?? '';
             $matchers = [];
 
             if (isset($this->queueMetrics[$name]) && preg_match('/\bqueue\s*=/', $labels) !== 1) {
                 $matchers[] = self::QUEUE_FILTER;
             }
 
-            if ($jobFilter && isset($this->jobMetrics[$name])) {
+            $scoped = $jobFilter && isset($this->jobMetrics[$name]) && preg_match('/\bjob_class\s*[=!]/', $labels) !== 1;
+
+            if ($scoped) {
                 $matchers[] = self::JOB_FILTER;
             }
 
@@ -277,8 +301,51 @@ final readonly class Promql
                 $own = ltrim(substr($own, strlen($scope)), ', ');
             }
 
-            return $name.'{'.implode(', ', $own === '' ? $matchers : [...$matchers, $own]).'}';
+            $selector = $name.'{'.implode(', ', $own === '' ? $matchers : [...$matchers, $own]).'}';
+            $start = strlen($match['dedupe']) + strlen($match['fn']);
+            $unit = substr($match[0], 0, $start).$selector.substr($match[0], $start + strlen($name) + strlen($labels));
+
+            return $scoped ? $this->batchScoped($unit) : $unit;
         }, $expr);
+    }
+
+    /**
+     * The Batch scope of a per-series vector (ADDENDUM R2.4 O2): `(<vector> unless on (<label>) <excluded>)`, where
+     * <excluded> is every class (or queue) of the package series outside the selected batch kinds. While Batch is
+     * "All" (`$batch_kind` is `.*`) the set is empty and almost free; with kinds selected it holds what the legacy
+     * "All" list of the Job (or Queue) filter left out. $vector must be one operand: a selector with its range
+     * function and dedupe, or a parenthesised expression.
+     *
+     * @param  'job_class'|'queue'  $label
+     */
+    public function batchScoped(string $vector, string $label = 'job_class'): string
+    {
+        return self::paren(self::unlessOn($vector, $this->batchExcluded($label), $label));
+    }
+
+    /**
+     * The classes (or queues) of the package series outside the selected batch kinds:
+     * `group by (job_class) ({__name__=~"<jobs_total|jobs_pending|jobs_reserved>", __batch_scope__!~"$batch_kind"})
+     * unless on (job_class) group by (job_class) ({__name__=~"<batch_job_classes>", batch=~"$batch_kind",
+     * __batch_scope__!~"$batch_kind"})`. No stored series has the label `__batch_scope__` (Prometheus drops
+     * `__`-prefixed labels after relabelling), and an absent label matches as "": with Batch "All" the matcher
+     * `!~".*"` selects nothing, so both operands are empty; with kinds selected it selects every series of the
+     * family. Group aggregations do not depend on the number of replicas, hence no dedupe.
+     *
+     * @param  'job_class'|'queue'  $label
+     */
+    public function batchExcluded(string $label = 'job_class'): string
+    {
+        $families = $label === 'job_class'
+            ? [Metric::JobsTotal, Metric::QueueJobsPending, Metric::QueueJobsReserved]
+            : [Metric::QueuePendingJobs];
+        $outside = self::nre(self::BATCH_SCOPE, self::BATCH_VARIABLE);
+
+        return self::paren(self::unlessOn(
+            self::group($this->anyOf($families, $outside), $label),
+            self::group($this->anyOf([Metric::BatchJobClasses], self::re('batch', self::BATCH_VARIABLE), $outside), $label),
+            $label,
+        ));
     }
 
     /**
@@ -302,6 +369,11 @@ final readonly class Promql
     public static function re(string $label, string $value): string
     {
         return $label.'=~'.self::quote($value);
+    }
+
+    public static function nre(string $label, string $value): string
+    {
+        return $label.'!~'.self::quote($value);
     }
 
     /**
