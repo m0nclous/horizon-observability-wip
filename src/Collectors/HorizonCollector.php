@@ -4,17 +4,55 @@ declare(strict_types=1);
 
 namespace DF\HorizonObservability\Collectors;
 
+use DF\HorizonObservability\Config\Config;
+use DF\HorizonObservability\Horizon\HorizonUrl;
+use DF\HorizonObservability\Horizon\Supervisors;
+use DF\HorizonObservability\Horizon\SupervisorSnapshot;
+use DF\HorizonObservability\Horizon\Topology;
+use DF\HorizonObservability\Metrics\Metric;
+use DF\HorizonObservability\Metrics\MetricFamily;
 use DF\HorizonObservability\Metrics\ScrapeContext;
+use Throwable;
 
 /**
- * Collector `horizon`: horizon_status, horizon_supervisor_*, horizon_wait_threshold_seconds, horizon_info.
+ * Collector `horizon`: horizon_status, horizon_supervisor_*, horizon_wait_threshold_seconds, horizon_info
+ * (Arch Q1.3, Q4, C5, C14, C17).
  *
- * Stub (T02): collects nothing. Owned by T05 (WP3).
+ * - **Sources.** Horizon's own master and supervisor repositories (container-bound, on the app's `horizon`
+ *   connection; `WorkloadRepository` is not used and `horizon_current_processes` is gone), the topology from
+ *   Horizon's config, and the links from the config. Each source is read in isolation: a failing one is reported
+ *   with {@see ScrapeContext::reportFailure()} (`exporter_collector_success` 0) and the others are still exported,
+ *   so a Redis outage leaves `horizon_info` and the wait thresholds (C5).
+ * - **Supervisors** are keyed by the name after the last `:` (the master prefix stripped). With several masters
+ *   running the same supervisor (a deploy, several hosts) the processes are summed per queue, the minimum and maximum
+ *   are the largest reported, and the settings come from the first master by name. The `queue` label is Horizon's
+ *   pool label, so a balance=false supervisor keeps its comma-joined queue list (C14).
+ * - **Wait thresholds** follow Horizon's `LongWaitDetected`: the `horizon.waits` entry or 60 s; a queue whose entry
+ *   is 0 has no series.
+ * - **horizon_info** carries the Horizon URL, the job-list API path and the TTS URL (`''`, i.e. absent, for tone
+ *   only).
  *
  * @internal
  */
-final class HorizonCollector implements Collector
+final readonly class HorizonCollector implements Collector
 {
+    /**
+     * {@see ScrapeContext::remember()} key of the topology's queue list, shared with the queues collector.
+     */
+    public const TOPOLOGY = 'horizon.topology.queues';
+
+    /**
+     * {@see ScrapeContext::remember()} key of the running supervisors.
+     */
+    public const SUPERVISORS = 'horizon.supervisors';
+
+    public function __construct(
+        private Supervisors $supervisors,
+        private Topology $topology,
+        private HorizonUrl $url,
+        private Config $config,
+    ) {}
+
     public function name(): string
     {
         return 'horizon';
@@ -22,6 +60,112 @@ final class HorizonCollector implements Collector
 
     public function collect(ScrapeContext $context): iterable
     {
-        return [];
+        $families = [];
+
+        try {
+            $status = $this->supervisors->status();
+        } catch (Throwable $e) {
+            $context->reportFailure('status', $e);
+            $status = null;
+        }
+
+        if ($status !== null) {
+            $families[] = MetricFamily::of(Metric::HorizonStatus)->set([], $status);
+        }
+
+        try {
+            /** @var list<SupervisorSnapshot> $supervisors */
+            $supervisors = $context->remember(self::SUPERVISORS, fn (): array => $this->supervisors->all());
+            array_push($families, ...$this->supervisorFamilies($supervisors));
+        } catch (Throwable $e) {
+            $context->reportFailure('supervisors', $e);
+        }
+
+        try {
+            /** @var list<array{connection: string, queue: string}> $queues */
+            $queues = $context->remember(self::TOPOLOGY, fn (): array => $this->topology->queues());
+            $families[] = $this->waitThresholds($queues);
+        } catch (Throwable $e) {
+            $context->reportFailure('topology', $e);
+        }
+
+        $families[] = MetricFamily::of(Metric::HorizonInfo)->set([
+            'url' => $this->url->url(),
+            'api_path' => $this->url->apiPath(),
+            'tts_url' => $this->ttsUrl($this->config->ttsUrl),
+        ], 1);
+
+        return array_values(array_filter($families, static fn (MetricFamily $family): bool => ! $family->isEmpty()));
+    }
+
+    /**
+     * @param  list<SupervisorSnapshot>  $snapshots
+     * @return list<MetricFamily>
+     */
+    private function supervisorFamilies(array $snapshots): array
+    {
+        /** @var array<string, array<string, int>> $processes */
+        $processes = [];
+        /** @var array<string, array{min: int, max: int, balance: string, connection: string}> $settings */
+        $settings = [];
+
+        foreach ($snapshots as $snapshot) {
+            foreach ($snapshot->processes as $queue => $count) {
+                $processes[$snapshot->name][(string) $queue] = ($processes[$snapshot->name][(string) $queue] ?? 0) + $count;
+            }
+
+            $previous = $settings[$snapshot->name] ?? null;
+            $settings[$snapshot->name] = [
+                'min' => max($previous['min'] ?? $snapshot->minProcesses, $snapshot->minProcesses),
+                'max' => max($previous['max'] ?? $snapshot->maxProcesses, $snapshot->maxProcesses),
+                'balance' => $previous['balance'] ?? $snapshot->balance,
+                'connection' => $previous['connection'] ?? $snapshot->connection,
+            ];
+        }
+
+        $processFamily = MetricFamily::of(Metric::SupervisorProcesses);
+        $minFamily = MetricFamily::of(Metric::SupervisorMinProcesses);
+        $maxFamily = MetricFamily::of(Metric::SupervisorMaxProcesses);
+        $infoFamily = MetricFamily::of(Metric::SupervisorInfo);
+
+        foreach ($settings as $name => $setting) {
+            $name = (string) $name;
+
+            foreach ($processes[$name] ?? [] as $queue => $count) {
+                $processFamily->set(['supervisor' => $name, 'queue' => (string) $queue], $count);
+            }
+
+            $minFamily->set(['supervisor' => $name], $setting['min']);
+            $maxFamily->set(['supervisor' => $name], $setting['max']);
+            $infoFamily->set(['supervisor' => $name, 'balance' => $setting['balance'], 'connection' => $setting['connection']], 1);
+        }
+
+        return [$processFamily, $minFamily, $maxFamily, $infoFamily];
+    }
+
+    /**
+     * @param  list<array{connection: string, queue: string}>  $queues
+     */
+    private function waitThresholds(array $queues): MetricFamily
+    {
+        $family = MetricFamily::of(Metric::WaitThreshold);
+
+        foreach ($queues as ['connection' => $connection, 'queue' => $queue]) {
+            $seconds = $this->topology->waitThreshold($connection, $queue);
+
+            if ($seconds !== null) {
+                $family->set(['connection' => $connection, 'queue' => $queue], $seconds);
+            }
+        }
+
+        return $family;
+    }
+
+    /**
+     * The `tts_url` label: `''` (absent) for tone only, `browser`, or the speech server URL without a trailing slash.
+     */
+    private function ttsUrl(?string $url): string
+    {
+        return $url === null ? '' : rtrim($url, '/');
     }
 }
