@@ -1,0 +1,35 @@
+laravel: '@testbench'
+
+providers:
+  - Workbench\App\Providers\WorkbenchServiceProvider
+
+env:
+  - APP_ENV=local
+  - APP_KEY=base64:ZIBKaaFjRAY84d2anlYbSY8TIYBWEm2aVHcbUHRTD3c=
+  - APP_URL=http://localhost:8000
+  - DB_CONNECTION=sqlite
+  - QUEUE_CONNECTION=redis
+  - REDIS_CLIENT=phpredis
+  - REDIS_HOST=127.0.0.1
+  - REDIS_PORT=6379
+  - CACHE_STORE=array
+  - SESSION_DRIVER=array
+  - HORIZON_OBSERVABILITY_TOKEN=workbench-token-0123456789abcdef
+  - HORIZON_OBSERVABILITY_GRAFANA_URL=http://localhost:3000/d/horizon-observability
+  - HORIZON_OBSERVABILITY_TTS_URL=browser
+
+workbench:
+  start: /horizon
+  install: true
+  health: false
+  discovers:
+    web: true
+    api: false
+    commands: true
+    components: false
+    views: false
+    config: true
+  build:
+    - create-sqlite-db
+    - db-wipe
+    - migrate-fresh
