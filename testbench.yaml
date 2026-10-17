@@ -1,5 +1,10 @@
+# Horizon and the package are listed although package discovery finds them: testbench adds the root package only to
+# a manifest its own CLI builds, and Larastan and the vendor refresh of defineCacheRoutes() rebuild it without (no view
+# namespace for PHPStan, no package routes in a cached route file). Registering a provider twice is a no-op.
 providers:
   - Workbench\App\Providers\WorkbenchServiceProvider
+  - Laravel\Horizon\HorizonServiceProvider
+  - DF\HorizonObservability\HorizonObservabilityServiceProvider
 
 env:
   - APP_ENV=local
