@@ -22,6 +22,8 @@ use Illuminate\Redis\Connections\Connection;
  * - The queues are resolved to their Redis connection by {@see Topology::redisConnection()} and read on the
  *   private reader of that connection; a queue whose connection does not use the `redis` driver is skipped, and
  *   one Redis key is read once even when two queue connections share it.
+ * - The key is the queue key Laravel's RedisQueue uses ({@see QueueInspector::queueKey()}) plus `:delayed`, so a
+ *   cluster connection with first-class cluster queues (Laravel 13) reads `queues:{<q>}:delayed`.
  * - `delayed_jobs.lua` extracts light rows in Redis, at most {@see self::CHUNK} entries and {@see self::MAX_BYTES}
  *   payload bytes per call, and at most {@see self::SCAN_LIMIT} entries in 20 calls per queue, all against the same
  *   `now`; the payloads never leave Redis.
@@ -64,6 +66,7 @@ final readonly class DelayedJobStore
         private Lua $lua,
         private Topology $topology,
         private FailureReporter $reporter,
+        private QueueInspector $inspector,
     ) {}
 
     /**
@@ -87,14 +90,20 @@ final readonly class DelayedJobStore
         foreach ($queues as ['connection' => $connection, 'queue' => $queue]) {
             $redisConnection = $this->topology->redisConnection($connection);
 
-            if ($redisConnection === null || isset($scanned[$key = Keys::field($redisConnection, $queue)])) {
+            if ($redisConnection === null) {
                 continue;
             }
 
-            $scanned[$key] = true;
+            $key = $this->inspector->queueKey($connection, $queue).':delayed';
+
+            if (isset($scanned[$field = Keys::field($redisConnection, $key)])) {
+                continue;
+            }
+
+            $scanned[$field] = true;
 
             try {
-                array_push($rows, ...$this->scan($this->clients->reader($redisConnection), $queue, $classSet, $limit, $seconds));
+                array_push($rows, ...$this->scan($this->clients->reader($redisConnection), $key, $queue, $classSet, $limit, $seconds));
             } catch (RedisScriptFailed $e) {
                 $this->reporter->report('jobs.delayed', $e, ['queue' => $queue]);
             }
@@ -113,7 +122,7 @@ final readonly class DelayedJobStore
      *
      * @throws RedisScriptFailed
      */
-    private function scan(Connection $redis, string $queue, ?array $classSet, int $limit, float $now): array
+    private function scan(Connection $redis, string $key, string $queue, ?array $classSet, int $limit, float $now): array
     {
         $rows = [];
         $offset = 0;
@@ -123,7 +132,7 @@ final readonly class DelayedJobStore
             // the page needs; later calls (after entries that are not JSON) read whole chunks, so a small page
             // still costs at most MAX_CALLS calls per queue.
             $count = min($calls === 0 && $classSet === null ? $limit : self::CHUNK, self::CHUNK, self::SCAN_LIMIT - $offset);
-            $reply = $this->lua->eval($redis, 'delayed_jobs', ['queues:'.$queue.':delayed'], [$now, $offset, $count, self::MAX_BYTES]);
+            $reply = $this->lua->eval($redis, 'delayed_jobs', [$key], [$now, $offset, $count, self::MAX_BYTES]);
             $reply = is_array($reply) ? array_values($reply) : [];
             $read = is_numeric($reply[0] ?? null) ? (int) $reply[0] : 0;
             $more = is_numeric($reply[1] ?? null) && (int) $reply[1] === 1;
