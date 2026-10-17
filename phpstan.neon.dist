@@ -2,6 +2,12 @@ parameters:
     level: 9
     paths:
         - src
+        - config
+        - routes
         - workbench/app
     tmpDir: build/phpstan
     treatPhpDocTypesAsCertain: false
+    checkMissingCallableSignature: true
+    # The package's own config file is a config directory for Larastan (env() is allowed there, Arch 8.4).
+    configDirectories:
+        - config
