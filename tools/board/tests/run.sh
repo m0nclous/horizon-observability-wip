@@ -179,7 +179,12 @@ build_template() {
     git -C "$template/repo" push -q origin HEAD
 
     REPO="$template/repo"
-    {
+    # A subshell with errexit, outside any || or if (which would switch errexit off inside it): a failed call stops
+    # the history, and its output is shown, not lost with $WORK.
+    local rc
+    set +e
+    (
+        set -e
         status "2026-10-01 09:00" T01 "in progress"
         status "2026-10-02 12:00" T01 testing
         status "2026-10-03 21:00" T01 "done" --qa "round 1 approved by the spec and adversarial testers"
@@ -190,7 +195,14 @@ build_template() {
         status "2026-10-10 09:00" T02 "in progress" --qa "round 1 rejected by the adversarial tester: the cache key ignores the scope"
         status "2026-10-10 10:00" T04 "in progress"
         status "2026-10-11 08:30" T04 "needs owner" --question "Keep the 1 s server cache for the live endpoint?"
-    } >"$WORK/template-history.out" 2>&1
+    ) >"$WORK/template-history.out" 2>&1
+    rc=$?
+    set -e
+    if [[ "$rc" != 0 ]]; then
+        echo "run.sh: the history of the template world failed (exit code $rc):" >&2
+        sed 's/^/    /' "$WORK/template-history.out" >&2
+        exit 1
+    fi
 }
 
 # A fresh copy of the template world with the fixture GitHub state.
@@ -2070,6 +2082,77 @@ case_66() {
     rc=0
     PATH="$nobin" status "2026-10-12 09:00" T05 "in progress" >"$OUT" 2>"$ERR" || rc=$?
     check "flock missing" "1 set-status: flock is required (set-status.sh needs git, python3, flock, od and cmp; on macOS: brew install flock)" "$rc $(cat "$ERR")"
+}
+
+# --- Fix round after the interrupted round 2 fixes: findings of the review of that work ---------------------------
+
+CASES+=("qa3 stop the line: a job renamed by the fix does not keep the line stopped for good")
+case_67() {
+    # The fix of a red leg raises its constraint, so the job's name changes: no later run runs the old name.
+    renamed_runs() {
+        state_edit '.runs += {
+            "920": {"jobs": [{"name": "PHP 8.2 / L^11.23 / prefer-lowest / predis / redis:6.2-alpine", "conclusion": "failure"},
+                             {"name": "Static analysis and style", "conclusion": "success"}]},
+            "921": {"jobs": [{"name": "PHP 8.2 / L^11.30 / prefer-lowest / predis / redis:6.2-alpine", "conclusion": "success"},
+                             {"name": "Static analysis and style", "conclusion": "success"}]},
+            "922": {"jobs": [{"name": "PHP 8.2 / L^11.30 / prefer-lowest / predis / redis:6.2-alpine", "conclusion": "success"},
+                             {"name": "Static analysis and style", "conclusion": "success"},
+                             {"name": "End to end / grafana/grafana:12.4.13", "conclusion": "success"},
+                             {"name": "End to end / grafana/grafana:13.2.4", "conclusion": "success"}]}}'
+    }
+    new_world
+    code_commit
+    renamed_runs
+    CI_EVENT=push ci failure 920 "$head" >/dev/null 2>&1
+    check "the red push run opens the issue" "issue #1 OPEN [CI] The integration branch is red [stop-the-line]" "$(summary | grep '^issue #1 ')"
+    CI_EVENT=push ci success 921 "$head" >"$OUT" 2>"$ERR"
+    check_contains "a green push run does not run the old name: open, and it says so" \
+        "ci      tests run 921 is green, but did not run PHP 8.2 / L^11.23 / prefer-lowest / predis / redis:6.2-alpine: #1 stays open" "$(cat "$OUT")"
+    # The run by hand that the comment asks for runs every job: green, it closes the issue.
+    reset_log
+    CI_EVENT=workflow_dispatch ci success 922 "$head" >"$OUT" 2>"$ERR"
+    check "a green manual run closes the issue" "issue #1 CLOSED [CI] The integration branch is red [stop-the-line]" "$(summary | grep '^issue #1 ')"
+    check_contains "it says why" "ci      tests run 922 (workflow_dispatch) ran every job of the workflow" "$(cat "$OUT")"
+    check "it needs no job list" "" "$(calls | grep '^gh run view' || true)"
+
+    # The weekly run is such a run too.
+    new_world
+    code_commit
+    renamed_runs
+    CI_EVENT=push ci failure 920 "$head" >/dev/null 2>&1
+    CI_EVENT=schedule ci success 922 "$head" >/dev/null 2>&1
+    check "a green weekly run closes the issue" "issue #1 CLOSED [CI] The integration branch is red [stop-the-line]" "$(summary | grep '^issue #1 ')"
+
+    # board.sh's events that run every job are the events of the e2e job, the only job that push runs skip (case 51
+    # pins the conditions of the other jobs).
+    if python3 -c 'import yaml' 2>/dev/null; then
+        check "FULL_RUN_EVENTS are the e2e job's events" \
+            "$(sed -n 's/^FULL_RUN_EVENTS="\(.*\)"$/\1/p' "$BOARD/board.sh")" \
+            "$(python3 -I - "$BOARD/../../.github/workflows/tests.yml" <<'PY'
+import re, sys, yaml
+wf = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
+print(" ".join(re.findall(r"github\.event_name == '([a-z_]+)'", wf["jobs"]["e2e"]["if"])))
+PY
+)"
+    fi
+}
+
+CASES+=("qa3 parser: no warning for a word that only contains \"depend\"")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_68() {
+    new_world
+    cat >"$WORK/world/parse.md" <<'EOF'
+## Phase D: extras, independent of phase B
+
+### T00 Zero — `done`
+### T01 Dependency report of T00 — `todo` (independent of the other tasks)
+### T02 Two — `todo` (depends on T01)
+EOF
+    (cd "$REPO" && TASKS_FILE="$WORK/world/parse.md" "$BOARD/board.sh" list) >"$OUT" 2>"$ERR"
+    check "list" "T00  done         phase:D  process     Zero
+T01  todo         phase:D  exporter    Dependency report of T00 [ready]
+T02  todo         phase:D  exporter    Two [blocked by T01]" "$(cat "$OUT")"
+    check "no warning" "" "$(cat "$ERR")"
 }
 
 run_cases

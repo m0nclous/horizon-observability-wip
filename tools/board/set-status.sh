@@ -587,7 +587,7 @@ commit_paths() {
 # A random pause after a lost push race (0.1 s up to 0.5 s per lost round, at most 3 s), so that sessions that keep
 # colliding drift apart.
 backoff() {
-    awk -v round="$1" -v r="$RANDOM" 'BEGIN { m = (round < 6 ? round : 6) * 0.5; printf "%.2f\n", 0.1 + m * r / 32767 }'
+    awk -v round="$1" -v r="$RANDOM" 'BEGIN { m = (round < 6 ? round : 6) * 0.5; printf "%.2f\n", 0.1 + (m - 0.1) * r / 32767 }'
 }
 
 for ((try = 1; try <= TRIES; try++)); do

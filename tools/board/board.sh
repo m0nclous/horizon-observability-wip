@@ -16,8 +16,9 @@
 #   per task status, area, QA rounds, start, finish and cycle time, plus the QA rejection rate.
 # - `ci` reads a completed run of the tests workflow (CI_* variables): red opens "[CI] The integration branch is red"
 #   (label stop-the-line) or comments on it once per run; green closes it once every job that failed has run green
-#   (a push run that skips a red e2e job leaves it open, with one comment). A run of an older commit decides only
-#   when the commits after it change nothing but the task list and the screenshots (which the tests workflow ignores).
+#   (a push run that skips a red e2e job leaves it open, with one comment; a green scheduled or manual run runs every
+#   job and closes it). A run of an older commit decides only when the commits after it change nothing but the task
+#   list and the screenshots (which the tests workflow ignores).
 #
 # Usage:
 #   tools/board/board.sh sync [--dry-run]
@@ -41,7 +42,8 @@
 #   TASKS_FILE              path of the task list (default: planning/TASKS.md)
 #   GH_TOKEN                token for gh (classic: repo, project, read:org, read:discussion)
 #   CI_CONCLUSION, CI_RUN_ID, CI_RUN_ATTEMPT, CI_RUN_URL, CI_HEAD_SHA, CI_EVENT
-#                           the completed tests run, for `ci` (set by .github/workflows/board.yml)
+#                           the completed tests run, for `ci` (set by .github/workflows/board.yml; an empty CI_EVENT
+#                           counts as a push run)
 
 set -euo pipefail
 
@@ -853,6 +855,9 @@ run_jobs() {
 }
 
 RED_CONCLUSIONS='["failure", "timed_out", "cancelled", "startup_failure"]'
+# The events whose runs of the tests workflow run every job (.github/workflows/tests.yml: the e2e job runs only on
+# these, every other job on every event but pull_request; tools/board/tests/run.sh pins both).
+FULL_RUN_EVENTS="schedule workflow_dispatch"
 
 ci_red() {
     load_labels
@@ -912,7 +917,9 @@ The \`tests\` workflow is red on the integration branch \`$BRANCH\` since $(ci_w
 # A green run closes the issue when every job is green by its latest record: the job records of the red runs on the
 # issue (oldest first), then this run's jobs. A job that failed before and that this run did not run (the e2e job of
 # a weekly or manual run, which push runs skip) keeps the line stopped, with one comment per such set of jobs: a run
-# by hand (or the next weekly run) that runs it green closes the issue.
+# by hand (or the next weekly run) that runs it green closes the issue. Such a run (FULL_RUN_EVENTS) runs every job,
+# so it closes the issue on its conclusion: a recorded job that it did not run is no longer in the workflow (renamed
+# or removed by the fix, a matrix leg with a new constraint) and must not keep the line stopped for good.
 ci_green() {
     local open number jobs="" comments outstanding marker
     open="$(open_ci_issues)"
@@ -920,7 +927,9 @@ ci_green() {
         echo "ci      the line is clear"
         return 0
     fi
-    if ! offline && ! jobs="$(run_jobs)"; then
+    if [[ -n "$CI_EVENT" && " $FULL_RUN_EVENTS " == *" $CI_EVENT "* ]]; then
+        echo "ci      tests run $CI_RUN_ID ($CI_EVENT) ran every job of the workflow"
+    elif ! offline && ! jobs="$(run_jobs)"; then
         warn "could not list the jobs of tests run $CI_RUN_ID; it closes the issue on its conclusion alone"
         jobs=""
     fi

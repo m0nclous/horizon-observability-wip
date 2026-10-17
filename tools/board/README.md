@@ -145,8 +145,10 @@ Each red comment records, hidden, the conclusion of every job of its run. A gree
 every job is green by its latest record, that is when it ran every job that is still red: a push run skips the e2e
 job, so after a red weekly e2e job a green push run leaves the issue open and says once (per set of waiting jobs)
 which jobs it did not run. Run the `tests` workflow by hand on the integration branch (Actions → tests → Run
-workflow, or MCP `actions_run_trigger`) after the fix, or wait for the next weekly run. A green run whose jobs
-cannot be listed closes the issue on its conclusion alone, with a warning.
+workflow, or MCP `actions_run_trigger`) after the fix, or wait for the next weekly run. A manual or weekly run runs
+every job, so when it is green it closes the issue on its conclusion: a job that failed before and that the fix
+renamed or removed (a matrix leg with a new constraint) cannot keep the line stopped. A green run whose jobs cannot
+be listed closes the issue on its conclusion alone, with a warning.
 
 Pushes that change only `planning/TASKS.md` and `planning/screenshots/**` (status changes) run no tests
 (`paths-ignore` in `tests.yml`), so they neither cost a matrix run nor cancel the run in progress. The verdict of the

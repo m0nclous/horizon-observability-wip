@@ -103,7 +103,7 @@ board_parse_tasks() {
                     if (leftover != "") {
                         warn("phase " phase ": unparsed text in \"" substr($0, RSTART, RLENGTH) "\": " leftover)
                     }
-                } else if (tolower($0) ~ /depend/) {
+                } else if (tolower($0) ~ /(^|[^a-z])depend/) {
                     warn("phase " phase ": a dependency clause that is not \"(all depend on ...)\" is not read: " $0)
                 }
             }
@@ -131,12 +131,12 @@ board_parse_tasks() {
                         warn(id ": unparsed text in \"" clause "\": " leftover)
                     }
                 }
-            } else if (tail ~ /[Tt][0-9]+/ || tolower(tail) ~ /depend/) {
+            } else if (tail ~ /[Tt][0-9]+/ || tolower(tail) ~ /(^|[^a-z])depend/) {
                 shown = tail
                 sub(/^[ \t]+/, "", shown)
                 warn(id ": \"" shown "\" names a dependency without a \"(depends on ...)\" clause, so it is not read (the task keeps its phase'"'"'s dependencies)")
             }
-            if (tolower(title) ~ /depend/ && title ~ /[Tt][0-9]+/) {
+            if (tolower(title) ~ /(^|[^a-z])depends? (only )?on / && title ~ /[Tt][0-9]+/) {
                 warn(id ": a dependency clause in the title is not read (put it after the status): " title)
             }
             n++
