@@ -96,13 +96,14 @@ test('functions file never included (C22)', function (): void {
     $fixture = static fn (string $path): string => (string) realpath(DiscoveryFixtures::directory().'/'.$path);
 
     expect($run['exit'])->toBe(0, $run['error'])
-        ->and($run['classes'])->toBe(DiscoveryFixtures::FOUND)
-        ->and($run['included'])->toContain($fixture('Jobs/ProcessPodcast.php'))
         ->and($run['included'])->not->toContain($fixture('Support/helpers.php'))
         ->and($run['included'])->not->toContain($fixture('Support/Misnamed.php'))
         ->and($run['included'])->not->toContain($fixture('Support/TwoClasses.php'))
         ->and($run['included'])->not->toContain($fixture('Support/WithFunction.php'))
-        ->and($run['included'])->not->toContain($fixture('Support/WithConstant.php'));
+        ->and($run['included'])->not->toContain($fixture('Support/WithConstant.php'))
+        ->and($run['included'])->not->toContain($fixture('Jobs/SyncReport.php')) // neither extends nor implements
+        ->and($run['included'])->toContain($fixture('Jobs/ProcessPodcast.php'))
+        ->and($run['classes'])->toBe(DiscoveryFixtures::FOUND);
 });
 
 it('survives a functions file the application already loaded (C22: no "Cannot redeclare")', function (): void {

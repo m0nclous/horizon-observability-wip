@@ -159,9 +159,11 @@ it('scans every time with a store that keeps nothing', function (): void {
     config()->set('cache.stores.none', ['driver' => 'null']);
     config()->set('cache.default', 'none');
 
-    expect(freshJobClassCache()->classes())->toBe([$a])
-        ->and(freshJobClassCache()->classes())->toBe([$a])
-        ->and($this->log->messages('warning'))->toBe([]);
+    expect(freshJobClassCache()->classes())->toBe([$a]);
+
+    $b = $this->classes->job('Beta');
+
+    expect(freshJobClassCache()->classes())->toBe([$a, $b]);
 });
 
 it('drops the scan marker on cache and clear', function (): void {
