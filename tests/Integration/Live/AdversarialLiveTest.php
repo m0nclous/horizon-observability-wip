@@ -86,7 +86,7 @@ it('levels an oldest wait just over the limit like the exporter and the off-mode
 })->with([
     'just over the limit' => [10.4, 1],
     'just over twice the limit' => [20.4, 2],
-])->skip('T12 QA round 1 finding 1: the wait ratio uses the rounded age; unskip after the fix.');
+]);
 
 it('caches the snapshot of a queue whose name is not valid UTF-8 (no rebuild per request)', function (): void {
     LiveState::horizon(app());
@@ -102,4 +102,4 @@ it('caches the snapshot of a queue whose name is not valid UTF-8 (no rebuild per
     expect($first->pending['value'])->toBe(1)
         ->and(RedisKeys::client()->exists($fresh))->toBe(1)
         ->and($cache->stats())->toMatchArray(['builds' => 1, 'hits' => 1]);
-})->skip('T12 QA round 1 finding 2: toJson() throws on invalid UTF-8, so nothing is cached; unskip after the fix.');
+});

@@ -91,6 +91,23 @@ it('escapes backslashes and quotes and never emits a line break inside a field',
         ->and(LineProtocol::string("one\ntwo\r\nthree\rfour"))->toBe('"one two three four"');
 });
 
+it('pushes invalid UTF-8 as U+FFFD, like the cached snapshot JSON', function (): void {
+    $snapshot = LiveSnapshot::compose(new LiveScope(null, [['connection' => 'redis', 'queue' => "caf\xE9"]], false, null), 1792201716123, 1000, 1, [
+        ['name' => "supervisor-caf\xE9", 'connection' => 'redis', 'balance' => 'auto', 'processes' => 1, 'min_processes' => 1, 'max_processes' => 1, 'busy' => 0, 'queues' => ["caf\xE9"]],
+    ], [
+        ['connection' => 'redis', 'queue' => "caf\xE9", 'pending' => 1, 'reserved' => 0, 'delayed' => 0, 'delayed_due' => 0, 'oldest_seconds' => 3.0, 'wait_threshold_seconds' => 60, 'completed_per_minute' => null, 'failed_per_minute' => null, 'supervisors' => []],
+    ], null);
+    $cached = LiveSnapshot::fromArray(json_decode($snapshot->toJson(), true, 64, JSON_THROW_ON_ERROR));
+    $lines = LineProtocol::encode($snapshot, LINE_PROTOCOL_T, []);
+
+    expect(LineProtocol::string("caf\xE9\xE9"))->toBe("\"caf\u{FFFD}\u{FFFD}\"")
+        ->and(LineProtocol::string("caf\u{00E9}"))->toBe("\"caf\u{00E9}\"")
+        ->and(preg_match('//u', $lines))->toBe(1)
+        ->and($lines)->toContain("key=\"supervisor-caf\u{FFFD}\"")
+        ->and($lines)->toContain("caption=\"Oldest: 3 s \u{00B7} caf\u{FFFD}\"")
+        ->and(LineProtocol::encode($cached, LINE_PROTOCOL_T, []))->toBe($lines);
+});
+
 it('encodes the unavailable frame for the rows of the last push, or the pending row only', function (): void {
     expect(LineProtocol::unavailable(LINE_PROTOCOL_T, []))->toBe(
         'tiles tile="pending",key="",caption="Live unavailable",value=-1.0,color="text",level=0.0 1792201716123000000'."\n",

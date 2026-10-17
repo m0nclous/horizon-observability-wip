@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use DF\HorizonObservability\Live\Captions;
 use DF\HorizonObservability\Live\LiveScope;
 use DF\HorizonObservability\Live\LiveSnapshot;
 
@@ -73,6 +74,18 @@ it('encodes JSON with zero fractions and unescaped glyphs', function () use ($do
         ->and($json)->toContain('"Oldest: 17 s '.$dot.' default"');
 });
 
+it('encodes names that are not valid UTF-8 with U+FFFD instead of throwing', function (): void {
+    $snapshot = LiveSnapshot::compose(new LiveScope(["supervisor-\xFF"], [['connection' => 'redis', 'queue' => "caf\xE9"]], false, null), 0, 1000, 1, [], [
+        ['connection' => 'redis', 'queue' => "caf\xE9", 'pending' => 1, 'reserved' => 0, 'delayed' => 0, 'delayed_due' => 0, 'oldest_seconds' => 3.0, 'wait_threshold_seconds' => 60, 'completed_per_minute' => null, 'failed_per_minute' => null, 'supervisors' => []],
+    ], null);
+    $decoded = json_decode($snapshot->toJson(), true, 512, JSON_THROW_ON_ERROR);
+
+    expect($decoded['scope']['supervisors'])->toBe(["supervisor-\u{FFFD}"])
+        ->and($decoded['scope']['queues'])->toBe(["caf\u{FFFD}"])
+        ->and($decoded['queues'][0]['queue'])->toBe("caf\u{FFFD}")
+        ->and(LiveSnapshot::fromArray($decoded)->pending['value'])->toBe(1);
+});
+
 it('reads its own JSON back', function (): void {
     $snapshot = exampleSnapshot();
     $decoded = json_decode($snapshot->toJson(), true, 512, JSON_THROW_ON_ERROR);
@@ -113,6 +126,34 @@ it('picks the worst queue by wait ratio, then age, then name', function () use (
         ->and($snapshot->queues[0]['wait_ratio'])->toBeNull()
         ->and($snapshot->queues[0]['level'])->toBe(0)
         ->and($snapshot->queues[2]['level'])->toBe(1);
+});
+
+it('levels the wait from the exact age and shows it rounded (Addendum R4.2 step 5)', function (float $age, int $seconds, int $level, float $ratio) use ($dot): void {
+    $snapshot = LiveSnapshot::compose(exampleScope(), 0, 1000, 1, [], [[
+        'connection' => 'redis', 'queue' => 'default', 'pending' => 1, 'reserved' => 0, 'delayed' => 0, 'delayed_due' => 0,
+        'oldest_seconds' => $age, 'wait_threshold_seconds' => 10, 'completed_per_minute' => null, 'failed_per_minute' => null, 'supervisors' => [],
+    ]], null);
+
+    expect($snapshot->queues[0])->toMatchArray(['oldest_seconds' => $seconds, 'wait_ratio' => $ratio, 'level' => $level, 'color' => Captions::color($level)])
+        ->and($snapshot->pending)->toMatchArray(['oldest_seconds' => $seconds, 'wait_ratio' => $ratio, 'level' => $level, 'color' => Captions::color($level)])
+        ->and($snapshot->pending['caption'])->toBe("Oldest: {$seconds} s {$dot} default");
+})->with([
+    'just under the limit' => [9.6, 10, 0, 0.96],
+    'at the limit' => [10.0, 10, 0, 1.0],
+    'just over the limit' => [10.4, 10, 1, 1.04],
+    'a millisecond over the limit' => [10.001, 10, 1, 1.0],
+    'just under twice the limit' => [19.6, 20, 1, 1.96],
+    'just over twice the limit' => [20.4, 20, 2, 2.04],
+]);
+
+it('ranks two queues of the same rounded age by the exact age', function (): void {
+    $queue = static fn (string $name, int|float $age): array => [
+        'connection' => 'redis', 'queue' => $name, 'pending' => 1, 'reserved' => 0, 'delayed' => 0, 'delayed_due' => 0,
+        'oldest_seconds' => $age, 'wait_threshold_seconds' => null, 'completed_per_minute' => null, 'failed_per_minute' => null, 'supervisors' => [],
+    ];
+
+    expect(LiveSnapshot::compose(exampleScope(), 0, 1000, 1, [], [$queue('a', 17.2), $queue('b', 17.4)], null)->pending['oldest_queue'])->toBe('b')
+        ->and(LiveSnapshot::compose(exampleScope(), 0, 1000, 1, [], [$queue('b', 17.0), $queue('a', 17)], null)->pending['oldest_queue'])->toBe('a');
 });
 
 it('falls back to the oldest queue without thresholds', function () use ($dot): void {

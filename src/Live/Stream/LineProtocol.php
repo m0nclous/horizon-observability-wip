@@ -19,7 +19,8 @@ use DF\HorizonObservability\Live\LiveSnapshot;
  *
  * Numbers are always floats without the `i` suffix, so the field types never change between pushes; `value` is never
  * omitted (a push without any `value` makes the stat show `level`), `null` is pushed as {@see self::NULL_VALUE}.
- * String field values escape `\` and `"`; line breaks become spaces. Timestamps are Unix nanoseconds.
+ * String field values escape `\` and `"`; line breaks become spaces; bytes that are not valid UTF-8 become U+FFFD,
+ * as in the snapshot JSON, so a cached snapshot and a fresh build push the same rows. Timestamps are Unix nanoseconds.
  *
  * @internal
  */
@@ -118,10 +119,16 @@ final class LineProtocol
     }
 
     /**
-     * A string field value: quoted, `\` and `"` escaped, line breaks as spaces.
+     * A string field value: quoted, `\` and `"` escaped, line breaks as spaces, invalid UTF-8 as U+FFFD.
      */
     public static function string(string $value): string
     {
+        if (preg_match('//u', $value) !== 1) {
+            // The substitution of the snapshot JSON (LiveSnapshot::toJson()), so cached and built snapshots agree.
+            $decoded = json_decode((string) json_encode($value, JSON_INVALID_UTF8_SUBSTITUTE));
+            $value = is_string($decoded) ? $decoded : '';
+        }
+
         return '"'.addcslashes(strtr($value, ["\r\n" => ' ', "\r" => ' ', "\n" => ' ']), '\\"').'"';
     }
 

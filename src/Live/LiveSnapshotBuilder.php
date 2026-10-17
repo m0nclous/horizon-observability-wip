@@ -292,7 +292,7 @@ final readonly class LiveSnapshotBuilder
      * @param  array<string, QueueSnapshot>  $snapshots
      * @param  list<array{name: string, connection: string, balance: string, processes: int, min_processes: int, max_processes: int, busy: int, queues: list<string>}>  $supervisors
      * @param  array<string, array<string, int>>|null  $window
-     * @return list<array{connection: string, queue: string, pending: int, reserved: int, delayed: int, delayed_due: int, oldest_seconds: int, wait_threshold_seconds: int|null, completed_per_minute: int|null, failed_per_minute: float|null, supervisors: list<string>}>
+     * @return list<array{connection: string, queue: string, pending: int, reserved: int, delayed: int, delayed_due: int, oldest_seconds: float, wait_threshold_seconds: int|null, completed_per_minute: int|null, failed_per_minute: float|null, supervisors: list<string>}>
      */
     private function queueInputs(array $snapshots, array $supervisors, ?array $window, float $now): array
     {
@@ -314,7 +314,9 @@ final readonly class LiveSnapshotBuilder
                 'reserved' => $snapshot->reserved,
                 'delayed' => $snapshot->delayedNotDue(),
                 'delayed_due' => $snapshot->delayedDue,
-                'oldest_seconds' => $age === null ? 0 : (int) round($age),
+                // The exact age at the exporter's precision (round(age, 3)): compose() takes the wait ratio and level
+                // from it and shows it rounded to seconds.
+                'oldest_seconds' => $age === null ? 0.0 : round($age, 3),
                 'wait_threshold_seconds' => $this->topology->waitThreshold($snapshot->connection, $snapshot->queue),
                 'completed_per_minute' => $window === null ? null : (int) round(($counts['completed'] ?? 0) * 60 / LiveSnapshot::WINDOW_SECONDS),
                 'failed_per_minute' => $window === null ? null : round((($counts['failed'] ?? 0) + ($counts['timed_out'] ?? 0)) * 60 / LiveSnapshot::WINDOW_SECONDS, 2),
