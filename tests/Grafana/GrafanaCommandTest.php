@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Grafana\DashboardOptions;
+use DF\HorizonObservability\Grafana\Live\LiveMode;
 use DF\HorizonObservability\Grafana\Render;
+use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 use Illuminate\Support\Facades\Artisan;
 
 /*
  * horizon-observability:grafana (Arch Q5.1): renders the dashboard and the alert rules, and --check compares the files
- * with the render (Arch Q5.7 item 1: the committed assets equal the --defaults render, and --check is idempotent).
+ * with the render (Arch Q5.7 item 1: the committed assets equal the --defaults render, and --check is idempotent). The
+ * package render polls the live snapshot (--live=poll, owner decision 9); the --live=off and --live=stream renders are
+ * committed as fixtures (ADDENDUM Q9' WP8D).
  */
 
 pest()->group('grafana');
@@ -62,6 +66,66 @@ it('keeps the committed assets equal to the --defaults render', function (): voi
     expect($status)->toBe(0, $output)
         ->and($output)->toContain('up to date');
 });
+
+it('keeps the committed off and stream fixtures equal to their --defaults render', function (LiveMode $mode): void {
+    [$status, $output] = runGrafana(['path' => Rendered::directory($mode), '--defaults' => true, '--live' => $mode->value, '--check' => true]);
+
+    expect($status)->toBe(0, $output)
+        ->and($output)->toContain('up to date');
+})->with([LiveMode::Off, LiveMode::Stream]);
+
+it('renders the live mode it is given, poll by default', function (): void {
+    foreach (['poll' => [], 'off' => ['--live' => 'off'], 'stream' => ['--live' => 'stream']] as $mode => $options) {
+        [$status] = runGrafana(['path' => $this->output.'/'.$mode, '--defaults' => true, ...$options]);
+
+        expect($status)->toBe(0);
+
+        foreach ((new Render(new DashboardOptions(live: LiveMode::from($mode))))->files() as $file => $contents) {
+            expect(file_get_contents($this->output.'/'.$mode.'/'.$file))->toBe($contents, $mode.' '.$file);
+        }
+    }
+});
+
+it('subscribes the stream tiles to the configured stream id, the package default with --defaults', function (): void {
+    config()->set('horizon-observability.live.stream.id', 'queues_prod');
+    app()->forgetInstance(Config::class);
+    $channels = function (array $parameters): array {
+        [$status] = runGrafana(['path' => $this->output, '--live' => 'stream', ...$parameters]);
+        $dashboard = (string) file_get_contents($this->output.'/'.Render::DASHBOARD);
+        preg_match_all('#"channel": "([^"]+)"#', $dashboard, $matches);
+
+        expect($status)->toBe(0);
+
+        return array_values(array_unique($matches[1]));
+    };
+
+    expect($channels([]))->toBe(['stream/queues_prod/tiles', 'stream/queues_prod/delayed'])
+        ->and($channels(['--live-stream-id' => 'other-1']))->toBe(['stream/other-1/tiles', 'stream/other-1/delayed'])
+        ->and($channels(['--defaults' => true]))->toBe(['stream/horizon_observability/tiles', 'stream/horizon_observability/delayed']);
+});
+
+it('refreshes a poll render at --live-poll-interval', function (string $value, string $refresh, array $intervals): void {
+    [$status] = runGrafana(['path' => $this->output, '--live-poll-interval' => $value]);
+    $dashboard = json_decode((string) file_get_contents($this->output.'/'.Render::DASHBOARD), true, flags: JSON_THROW_ON_ERROR);
+
+    expect($status)->toBe(0)
+        ->and($dashboard['refresh'])->toBe($refresh)
+        ->and($dashboard['timepicker']['refresh_intervals'])->toBe($intervals);
+})->with([
+    'default' => ['5s', '5s', ['5s', '10s', '15s', '30s', '1m', '5m']],
+    'faster, with GF_DASHBOARDS_MIN_REFRESH_INTERVAL' => ['1s', '1s', ['1s', '5s', '10s', '15s', '30s', '1m', '5m']],
+    'two seconds' => ['2s', '2s', ['2s', '5s', '10s', '15s', '30s', '1m', '5m']],
+    'in minutes' => ['2m', '2m', ['5s', '10s', '15s', '30s', '1m', '2m', '5m']],
+    'seconds of a whole minute' => ['60s', '1m', ['5s', '10s', '15s', '30s', '1m', '5m']],
+]);
+
+it('refreshes off and stream renders at S whatever the poll interval', function (string $live): void {
+    [$status] = runGrafana(['path' => $this->output, '--live' => $live, '--live-poll-interval' => '2s', '--scrape-interval' => '30s']);
+    $dashboard = json_decode((string) file_get_contents($this->output.'/'.Render::DASHBOARD), true, flags: JSON_THROW_ON_ERROR);
+
+    expect($status)->toBe(0)
+        ->and($dashboard['refresh'])->toBe('30s');
+})->with(['off', 'stream']);
 
 it('writes the dashboard and the alert rules', function (): void {
     [$status] = runGrafana(['path' => $this->output]);
@@ -189,10 +253,16 @@ it('refuses invalid options and writes nothing', function (array $options, strin
     'empty title' => [['--title' => ' '], '--title must not be empty'],
     'title on two lines' => [['--title' => "Queues\nProduction"], '--title must be a single line'],
     'folder with an environment variable' => [['--folder' => 'Horizon $ENV'], '--folder must not contain "$"'],
-    // The live panels arrive later (WP8D); until then only off renders
-    'live poll' => [['--live' => 'poll'], '--live must be off'],
-    'live stream' => [['--live' => 'stream'], '--live must be off'],
-    'unknown live mode' => [['--live' => 'fast'], '--live must be off'],
+    'unknown live mode' => [['--live' => 'fast'], '--live must be off, poll or stream'],
+    'empty live mode' => [['--live' => ''], '--live must not be empty'],
+    'poll interval of 0 s' => [['--live-poll-interval' => '0s'], '--live-poll-interval must be'],
+    'poll interval over 5 minutes' => [['--live-poll-interval' => '301s'], '--live-poll-interval must be'],
+    'poll interval in milliseconds' => [['--live-poll-interval' => '500ms'], '--live-poll-interval must be'],
+    'poll interval without a unit' => [['--live-poll-interval' => '5'], '--live-poll-interval must be'],
+    'poll interval in hours' => [['--live-poll-interval' => '1h'], '--live-poll-interval must be'],
+    'stream id with a slash' => [['--live' => 'stream', '--live-stream-id' => 'a/b'], '--live-stream-id must be'],
+    'stream id with a dot' => [['--live-stream-id' => 'queues.prod'], '--live-stream-id must be'],
+    'stream id of 65 characters' => [['--live-stream-id' => str_repeat('s', 65)], '--live-stream-id must be'],
 ]);
 
 it('summarises where a file differs from the render', function (): void {

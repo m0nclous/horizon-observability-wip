@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use DF\HorizonObservability\Grafana\DashboardBuilder;
 use DF\HorizonObservability\Grafana\DashboardOptions;
+use DF\HorizonObservability\Grafana\Live\LiveMode;
 use DF\HorizonObservability\Grafana\PanelRegistry;
 use DF\HorizonObservability\Grafana\Render;
 use DF\HorizonObservability\Metrics\Metric;
@@ -13,7 +14,8 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 /*
  * Scrape-interval agnostic windows (Arch Q5.2, Q5.6 steps 6 and 12, ADDENDUM R3.3 and Q9' WP8B): the hidden
  * scrape_interval variable is every Prometheus panel's min interval, the busy window defaults to max(15s, 2 x S), the
- * counter lookback is max(10m, 10 x S), the RPM window max(5m, 5 x S), and the refresh follows S.
+ * counter lookback is max(10m, 10 x S), the RPM window max(5m, 5 x S), and the refresh follows S in off and stream
+ * modes and --live-poll-interval in poll mode (ADDENDUM R2.5).
  */
 
 pest()->group('grafana');
@@ -26,12 +28,12 @@ function windowVariables(array $dashboard): array
     return array_column($dashboard['templating']['list'], null, 'name');
 }
 
-it('has no literal 15 s window and no day-long lookback on a counter', function (): void {
+it('has no literal 15 s window and no day-long lookback on a counter', function (LiveMode $mode): void {
     $counters = array_filter(Metric::cases(), static fn (Metric $metric): bool => $metric->type() !== MetricType::Gauge);
     $names = implode('|', array_map(static fn (Metric $metric): string => 'ho_'.$metric->value.'(?:_bucket|_sum|_count)?', $counters));
     $dayLong = [];
 
-    foreach (Rendered::expressions() as $where => $expr) {
+    foreach (Rendered::expressions(mode: $mode) as $where => $expr) {
         expect($expr)->not->toContain('[15s]');
 
         if (preg_match('/\b(?:'.$names.')(?:\{(?:[^}"]|"(?:[^"\\\\]|\\\\.)*")*\})?\[(?:1d|7d|\d+h)\]/', $expr, $match) === 1) {
@@ -40,14 +42,17 @@ it('has no literal 15 s window and no day-long lookback on a counter', function 
     }
 
     expect($dayLong)->toBe([])
-        ->and(implode("\n", Rendered::expressions()))->toContain('status=~"completed"}[10m] offset $__range');
-});
+        ->and(implode("\n", Rendered::expressions(mode: $mode)))->toContain('status=~"completed"}[10m] offset $__range');
+})->with(Rendered::modes());
 
-it('gives every Prometheus panel the scrape interval as its min interval', function (): void {
+it('gives every panel with a Prometheus query the scrape interval as its min interval', function (LiveMode $mode, int $count): void {
     $prometheus = [];
 
-    foreach (PanelRegistry::panels(Rendered::dashboard()) as $panel) {
-        if (($panel['datasource']['type'] ?? null) === 'prometheus') {
+    foreach (PanelRegistry::panels(Rendered::dashboard($mode)) as $panel) {
+        // A Prometheus panel, or a Mixed live tile with its Prometheus sparkline (ADDENDUM R4.8)
+        $types = array_map(static fn (array $target): ?string => $target['datasource']['type'] ?? null, $panel['targets'] ?? []);
+
+        if (($panel['datasource']['type'] ?? null) === 'prometheus' || in_array('prometheus', $types, true)) {
             $prometheus[] = $panel['id'];
             expect($panel['interval'] ?? null)->toBe('$scrape_interval', 'panel '.$panel['id']);
         } else {
@@ -55,13 +60,17 @@ it('gives every Prometheus panel the scrape interval as its min interval', funct
         }
     }
 
-    expect($prometheus)->toHaveCount(14);
-});
+    expect($prometheus)->toHaveCount($count);
+})->with([
+    'poll: Supervisor Processes reads the snapshot only' => [LiveMode::Poll, 13],
+    'off' => [LiveMode::Off, 14],
+    'stream: Supervisor Processes, Pending and Delayed read Grafana Live' => [LiveMode::Stream, 11],
+]);
 
-it('defines the hidden scrape_interval and busy_window textboxes and refreshes at S', function (): void {
-    $dashboard = Rendered::dashboard();
+it('defines the hidden scrape_interval and busy_window textboxes and refreshes at S, or at the poll interval', function (LiveMode $mode, string $refresh): void {
+    $dashboard = Rendered::dashboard($mode);
     $variables = windowVariables($dashboard);
-    $expressions = implode("\n", Rendered::expressions());
+    $expressions = implode("\n", Rendered::expressions(mode: $mode));
 
     expect($variables['scrape_interval'])->toMatchArray(['hide' => 2, 'type' => 'textbox', 'query' => '10s', 'current' => ['text' => '10s', 'value' => '10s']])
         // Overridable in the URL: ?var-scrape_interval=30s
@@ -69,12 +78,16 @@ it('defines the hidden scrape_interval and busy_window textboxes and refreshes a
         ->and($variables['busy_window'])->toMatchArray(['hide' => 2, 'type' => 'textbox', 'query' => '20s', 'current' => ['text' => '20s', 'value' => '20s']])
         ->and($expressions)->toContain('[$busy_window]')
         ->and(substr_count($expressions, '[$busy_window]'))->toBe(substr_count($expressions, 'sum_over_time(ho_queue_jobs_reserved') * 2)
-        ->and($dashboard['refresh'])->toBe('10s')
-        ->and($dashboard['timepicker']['refresh_intervals'])->toContain('10s');
-});
+        ->and($dashboard['refresh'])->toBe($refresh)
+        ->and($dashboard['timepicker']['refresh_intervals'])->toContain($refresh);
+})->with([
+    'poll (package render)' => [LiveMode::Poll, '5s'],
+    'off' => [LiveMode::Off, '10s'],
+    'stream' => [LiveMode::Stream, '10s'],
+]);
 
 it('derives the windows from the scrape interval', function (int $seconds, string $text, string $busy, string $lookback, int $rpm): void {
-    $options = new DashboardOptions(scrapeInterval: $seconds);
+    $options = new DashboardOptions(scrapeInterval: $seconds, live: LiveMode::Stream);
     $dashboard = (new DashboardBuilder($options))->build();
     $variables = windowVariables($dashboard);
     $expressions = implode("\n", Rendered::expressions($dashboard, []));
@@ -85,6 +98,8 @@ it('derives the windows from the scrape interval', function (int $seconds, strin
         ->and($options->rpmMinutes())->toBe($rpm)
         ->and($dashboard['refresh'])->toBe($text)
         ->and($dashboard['timepicker']['refresh_intervals'])->toContain($text)
+        // The poll render refreshes at the poll interval whatever S
+        ->and((new DashboardBuilder(new DashboardOptions(scrapeInterval: $seconds)))->build()['refresh'])->toBe('5s')
         ->and($expressions)->toContain('status=~"completed"}['.$lookback.'] offset')
         ->toContain('status=~"completed"}['.$rpm.'m])')
         ->toContain(' / '.$rpm.')');
@@ -97,7 +112,7 @@ it('derives the windows from the scrape interval', function (int $seconds, strin
 ]);
 
 it('lists the refresh in the time picker in order', function (): void {
-    $dashboard = (new DashboardBuilder(new DashboardOptions(scrapeInterval: 45)))->build();
+    $dashboard = (new DashboardBuilder(new DashboardOptions(scrapeInterval: 45, live: LiveMode::Off)))->build();
 
     expect($dashboard['timepicker']['refresh_intervals'])->toBe(['5s', '10s', '15s', '30s', '45s', '1m', '5m']);
 });
@@ -106,7 +121,7 @@ it('takes --scrape-interval on the command line', function (string $value, strin
     $directory = sys_get_temp_dir().'/ho-grafana-s-'.bin2hex(random_bytes(4));
 
     try {
-        $this->artisan('horizon-observability:grafana', ['path' => $directory, '--scrape-interval' => $value])->assertExitCode(0);
+        $this->artisan('horizon-observability:grafana', ['path' => $directory, '--scrape-interval' => $value, '--live' => 'off'])->assertExitCode(0);
         $dashboard = json_decode((string) file_get_contents($directory.'/'.Render::DASHBOARD), true);
 
         expect(windowVariables($dashboard)['scrape_interval']['query'])->toBe($expected)

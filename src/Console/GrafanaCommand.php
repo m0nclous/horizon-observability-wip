@@ -6,7 +6,7 @@ namespace DF\HorizonObservability\Console;
 
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Grafana\DashboardOptions;
-use DF\HorizonObservability\Grafana\LiveMode;
+use DF\HorizonObservability\Grafana\Live\LiveMode;
 use DF\HorizonObservability\Grafana\Render;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
@@ -19,9 +19,12 @@ use Symfony\Component\Console\Input\InputOption;
  * compares those files with the render and exits 1 when they differ (for the CI of an infrastructure repository).
  *
  * Metric names carry the prefix of `horizon-observability.namespace` (default `ho_`), also with `--defaults`, so the
- * render matches what the application exports. A relative path is relative to the application root (`base_path()`,
- * Arch Q5.1), wherever the command runs from; under `vendor/bin/testbench` that is its skeleton, so the package's
- * own scripts pass an absolute path.
+ * render matches what the application exports. The Live Overview polls the application by default (`--live=poll`,
+ * owner decision 9); `--live=stream` subscribes to the Grafana Live stream of `horizon-observability.live.stream.id`
+ * (the package default with `--defaults`), and `--live=off` reads every tile from Prometheus.
+ *
+ * A relative path is relative to the application root (`base_path()`, Arch Q5.1), wherever the command runs from;
+ * under `vendor/bin/testbench` that is its skeleton, so the package's own scripts pass an absolute path.
  */
 final class GrafanaCommand extends Command
 {
@@ -45,7 +48,9 @@ final class GrafanaCommand extends Command
         {--scrape-interval=10s : Scrape interval S of the package endpoint, 5s to 60s: the panels\' min interval, the busy window max(15s, 2 x S), the counter lookback max(10m, 10 x S) and the refresh}
         {--folder=Horizon : Grafana folder of the alert rules}
         {--datasource-uid= : Uid of the Prometheus datasource of the alert rules (the description is set in the constructor)}
-        {--live=off : Live Overview mode: off (every tile reads Prometheus); poll and stream arrive with the live panels}
+        {--live=poll : Live Overview mode: poll (the live tiles read the live endpoint of the application at every dashboard refresh), stream (they read Grafana Live, pushed every second by horizon-observability:stream) or off (every tile reads Prometheus)}
+        {--live-poll-interval=5s : Poll mode: the dashboard refresh, 1s to 5m; Grafana raises it to its min_refresh_interval, 5s by default}
+        {--live-stream-id= : Stream mode: the Grafana Live stream id, as horizon-observability.live.stream.id of the stream command (default: that config value, or the package default with --defaults)}
         {--health-rules : Add the opt-in health rules: a failing metrics collector, and more than one scraped target per job}
         {--prometheus-datasource= : Name regex of the Prometheus datasource (default: Grafana\'s default datasource)}
         {--infinity-datasource= : Name regex of the Infinity datasource of the job lists (default: the first one)}';
@@ -159,8 +164,16 @@ final class GrafanaCommand extends Command
 
         $live = LiveMode::tryFrom($this->text('live'));
 
-        if ($live !== LiveMode::Off) {
-            throw new InvalidArgumentException('--live must be off: the poll and stream live panels are not rendered yet.');
+        if ($live === null) {
+            throw new InvalidArgumentException('--live must be off, poll or stream.');
+        }
+
+        $streamId = $this->text('live-stream-id', required: false);
+
+        if ($streamId === '') {
+            $streamId = $this->option('defaults') === true ? Config::DEFAULT_LIVE_STREAM_ID : $config->liveStreamId;
+        } elseif (preg_match(DashboardOptions::STREAM_ID_PATTERN, $streamId) !== 1) {
+            throw new InvalidArgumentException('--live-stream-id must be 1 to 64 characters of A-Z, a-z, 0-9, "_" and "-" (as horizon-observability.live.stream.id).');
         }
 
         $job = $this->text('job', required: false);
@@ -183,7 +196,43 @@ final class GrafanaCommand extends Command
             live: $live,
             job: $job === '' ? null : $job,
             healthRules: $this->option('health-rules') === true,
+            livePollInterval: $this->livePollInterval(),
+            liveStreamId: $streamId,
         );
+    }
+
+    /**
+     * `--live-poll-interval` in seconds: `<n>s` or `<n>m`, 1 second to 5 minutes (ADDENDUM R4.1).
+     *
+     * @throws InvalidArgumentException
+     */
+    private function livePollInterval(): int
+    {
+        $seconds = $this->seconds('live-poll-interval');
+
+        if ($seconds === null || $seconds < DashboardOptions::MIN_LIVE_POLL_INTERVAL || $seconds > DashboardOptions::MAX_LIVE_POLL_INTERVAL) {
+            throw new InvalidArgumentException(sprintf(
+                '--live-poll-interval must be a duration from %ds to %dm such as 5s or 1m (the dashboard refresh in poll mode).',
+                DashboardOptions::MIN_LIVE_POLL_INTERVAL,
+                intdiv(DashboardOptions::MAX_LIVE_POLL_INTERVAL, 60),
+            ));
+        }
+
+        return $seconds;
+    }
+
+    /**
+     * A duration option `<n>s` or `<n>m` in seconds, or null when it is not one.
+     */
+    private function seconds(string $option): ?int
+    {
+        $value = $this->option($option);
+
+        if (! is_string($value) || preg_match('/^(\d{1,6})(s|m)$/', trim($value), $match) !== 1) {
+            return null;
+        }
+
+        return (int) $match[1] * ($match[2] === 'm' ? 60 : 1);
     }
 
     /**
@@ -193,11 +242,9 @@ final class GrafanaCommand extends Command
      */
     private function scrapeInterval(): int
     {
-        $value = $this->option('scrape-interval');
+        $seconds = $this->seconds('scrape-interval');
 
-        if (! is_string($value) || preg_match('/^(\d+)(s|m)$/', trim($value), $match) !== 1
-            || ($seconds = (int) $match[1] * ($match[2] === 'm' ? 60 : 1)) < DashboardOptions::MIN_SCRAPE_INTERVAL
-            || $seconds > DashboardOptions::MAX_SCRAPE_INTERVAL) {
+        if ($seconds === null || $seconds < DashboardOptions::MIN_SCRAPE_INTERVAL || $seconds > DashboardOptions::MAX_SCRAPE_INTERVAL) {
             throw new InvalidArgumentException(sprintf(
                 '--scrape-interval must be a duration from %ds to %ds such as 10s, 30s or 1m (the scrape interval of the package endpoint).',
                 DashboardOptions::MIN_SCRAPE_INTERVAL,

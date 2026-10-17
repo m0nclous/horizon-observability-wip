@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use DF\HorizonObservability\Grafana\Live\LiveMode;
 use DF\HorizonObservability\Grafana\PanelRegistry;
 use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
@@ -11,7 +12,8 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
  * the value mapping query B lists. B is an instant query now, and Grafana runs it at the end of the period, while
  * the last point of A sits on the step grid at or before the end. B reads its value through a subquery with the step
  * $__interval, which Prometheus aligns to the same grid, so the mapping always has the shown value, also when a scrape
- * changed it after the last step.
+ * changed it after the last step. The --live=off render: in the live modes the tile reads its value and colour from the
+ * live snapshot (ADDENDUM R4.8).
  */
 
 pest()->group('grafana');
@@ -23,8 +25,9 @@ beforeEach(function (): void {
 });
 
 it('maps the value of the last step of the tile, not the value at the end of the period (O8)', function (): void {
-    $id = PanelRegistry::idOf(Rendered::dashboard(), 'Supervisor Processes');
-    $target = Rendered::dashboard()['panels'][array_search($id, array_column(Rendered::dashboard()['panels'], 'id'), true)]['targets'][1];
+    $dashboard = Rendered::dashboard(LiveMode::Off);
+    $id = PanelRegistry::idOf($dashboard, 'Supervisor Processes');
+    $target = $dashboard['panels'][array_search($id, array_column($dashboard['panels'], 'id'), true)]['targets'][1];
     $labels = 'job="app", instance="app:8080"';
 
     [$status, $output] = Promtool::testRules([], [[

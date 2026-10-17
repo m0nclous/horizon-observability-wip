@@ -5,6 +5,7 @@ declare(strict_types=1);
 use DF\HorizonObservability\Grafana\AlertRulesBuilder;
 use DF\HorizonObservability\Grafana\DashboardBuilder;
 use DF\HorizonObservability\Grafana\DashboardOptions;
+use DF\HorizonObservability\Grafana\Live\LiveMode;
 use DF\HorizonObservability\Grafana\Promql;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
@@ -36,10 +37,10 @@ function unscopedSelectors(string $expr, string $scope): array
     return $unscoped;
 }
 
-it('scopes every package selector of the dashboard to the prometheus_job variable', function (): void {
+it('scopes every package selector of the dashboard to the prometheus_job variable', function (LiveMode $mode): void {
     $unscoped = [];
 
-    foreach (Rendered::expressions(alerting: []) as $where => $expr) {
+    foreach (Rendered::expressions(alerting: [], mode: $mode) as $where => $expr) {
         foreach (unscopedSelectors($expr, 'job=~"$prometheus_job"') as $selector) {
             $unscoped[] = $where.': '.$selector;
         }
@@ -47,19 +48,19 @@ it('scopes every package selector of the dashboard to the prometheus_job variabl
 
     // The variable itself lists the jobs
     expect($unscoped)->toBe(['variable prometheus_job: ho_horizon_status']);
-});
+})->with(Rendered::modes());
 
-it('scopes every selector of the alert rules to all jobs by default', function (): void {
+it('scopes every selector of the alert rules to all jobs by default', function (LiveMode $mode): void {
     $unscoped = [];
 
-    foreach (Rendered::expressions(dashboard: ['templating' => ['list' => []]]) as $where => $expr) {
+    foreach (Rendered::expressions(dashboard: ['templating' => ['list' => []]], mode: $mode) as $where => $expr) {
         foreach (unscopedSelectors($expr, 'job=~".+"') as $selector) {
             $unscoped[] = $where.': '.$selector;
         }
     }
 
     expect($unscoped)->toBe([]);
-});
+})->with(Rendered::modes());
 
 it('defines the hidden prometheus_job variable with All as .+', function (): void {
     $variables = array_column(Rendered::dashboard()['templating']['list'], null, 'name');

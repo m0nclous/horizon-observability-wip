@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use DF\HorizonObservability\Grafana\Live\LiveMode;
 use DF\HorizonObservability\Grafana\Promql;
 use DF\HorizonObservability\Tests\Grafana\Support\ProfileSeries;
 use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
@@ -19,7 +20,8 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
  * - as the legacy render worked: the same expression with the scope's set replaced by an empty one and Job "All"
  *   the regex of the classes the job_class variable lists (asserted too).
  * Both must return the same series with the same values. The variables that the scope replaced
- * (`batch_filtered()` of Queue and Job) are checked against the classes and queues of the kind.
+ * (`batch_filtered()` of Queue and Job) are checked against the classes and queues of the kind. The panels are those of
+ * the --live=off render, whose Prometheus targets include every one of the live renders (LiveContractTest).
  */
 
 pest()->group('grafana');
@@ -30,13 +32,13 @@ beforeEach(function (): void {
     }
 });
 
-it('puts every job-filtered selector of the committed render in the batch scope', function (): void {
+it('puts every job-filtered selector of the committed renders in the batch scope', function (LiveMode $mode): void {
     $promql = new Promql('ho_');
     $scope = ' unless on (job_class) '.$promql->batchExcluded().')';
     $unscoped = [];
     $scoped = 0;
 
-    foreach (Rendered::expressions(alerting: []) as $where => $expr) {
+    foreach (Rendered::expressions(alerting: [], mode: $mode) as $where => $expr) {
         if (str_starts_with($where, 'panel ')) {
             $scoped += substr_count($expr, $scope);
 
@@ -46,15 +48,15 @@ it('puts every job-filtered selector of the committed render in the batch scope'
         }
     }
 
-    $variables = array_column(Rendered::dashboard()['templating']['list'], null, 'name');
+    $variables = array_column(Rendered::dashboard($mode)['templating']['list'], null, 'name');
 
     expect($unscoped)->toBe([])
-        ->and($scoped)->toBeGreaterThan(200)
+        ->and($scoped)->toBeGreaterThan(150)
         ->and($variables['job_class']['allValue'])->toBe('.+')
         ->and($variables['batch_kind']['allValue'])->toBe('.*')
         ->and($variables['job_class']['query'])->toContain($scope)
         ->and($variables['queue']['query'])->toContain(' unless on (queue) '.$promql->batchExcluded('queue').')');
-});
+})->with(Rendered::modes());
 
 it('lists the classes and queues of the selected kind in the Job and Queue filters', function (?string $kind): void {
     $data = ProfileSeries::data();
@@ -103,7 +105,7 @@ it('gives every panel the legacy result with Batch All and with Batch = one kind
     $legacyAll = ProfileSeries::regex($classes);
     $tests = [];
 
-    foreach (Rendered::expressions(alerting: []) as $where => $expr) {
+    foreach (Rendered::expressions(alerting: [], mode: LiveMode::Off) as $where => $expr) {
         if (! str_starts_with($where, 'panel ')) {
             continue;
         }

@@ -4,45 +4,72 @@ declare(strict_types=1);
 
 namespace DF\HorizonObservability\Tests\Grafana\Support;
 
+use DF\HorizonObservability\Grafana\Live\LiveMode;
 use DF\HorizonObservability\Grafana\PanelRegistry;
 use DF\HorizonObservability\Grafana\Render;
 use RuntimeException;
 
 /**
- * The committed render in resources/grafana (the `--defaults` render, Arch Q5.1) as decoded JSON, and the PromQL in it.
+ * The committed renders as decoded JSON, and the PromQL in them: the package render in resources/grafana (the
+ * `--defaults` render, `--live=poll`, Arch Q5.1, owner decision 9) and the `--defaults --live=off` and
+ * `--defaults --live=stream` renders in tests/Fixtures/grafana/{off,stream} (ADDENDUM Q9' WP8D).
  */
 final class Rendered
 {
-    private const DIRECTORY = __DIR__.'/../../../resources/grafana';
+    private const PACKAGE = __DIR__.'/../../../resources/grafana';
+
+    private const FIXTURES = __DIR__.'/../../Fixtures/grafana';
 
     /**
-     * @return array<string, mixed>
+     * The directory of the committed render of a live mode.
      */
-    public static function dashboard(): array
+    public static function directory(LiveMode $mode = LiveMode::Poll): string
     {
-        return self::decode(Render::DASHBOARD);
+        return $mode === LiveMode::Poll ? self::PACKAGE : self::FIXTURES.'/'.$mode->value;
+    }
+
+    /**
+     * The three committed renders, for datasets: `->with(Rendered::modes())`.
+     *
+     * @return array<string, array{0: LiveMode}>
+     */
+    public static function modes(): array
+    {
+        return [
+            'poll (package render)' => [LiveMode::Poll],
+            'off' => [LiveMode::Off],
+            'stream' => [LiveMode::Stream],
+        ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    public static function alerting(): array
+    public static function dashboard(LiveMode $mode = LiveMode::Poll): array
     {
-        return self::decode(Render::ALERTING);
+        return self::decode($mode, Render::DASHBOARD);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public static function alerting(LiveMode $mode = LiveMode::Poll): array
+    {
+        return self::decode($mode, Render::ALERTING);
     }
 
     /**
      * Every Prometheus expression of a dashboard and its alert rules, keyed by where it is: panel targets, variable
      * queries and rule queries.
      *
-     * @param  array<array-key, mixed>|null  $dashboard  default: the committed dashboard
-     * @param  array<array-key, mixed>|null  $alerting  default: the committed alert rules
+     * @param  array<array-key, mixed>|null  $dashboard  default: the committed dashboard of $mode
+     * @param  array<array-key, mixed>|null  $alerting  default: the committed alert rules of $mode
      * @return array<string, string>
      */
-    public static function expressions(?array $dashboard = null, ?array $alerting = null): array
+    public static function expressions(?array $dashboard = null, ?array $alerting = null, LiveMode $mode = LiveMode::Poll): array
     {
-        $dashboard ??= self::dashboard();
-        $alerting ??= self::alerting();
+        $dashboard ??= self::dashboard($mode);
+        $alerting ??= self::alerting($mode);
         $expressions = [];
 
         foreach (PanelRegistry::panels($dashboard) as $panel) {
@@ -75,9 +102,9 @@ final class Rendered
     /**
      * @return array<string, mixed>
      */
-    private static function decode(string $file): array
+    private static function decode(LiveMode $mode, string $file): array
     {
-        $decoded = json_decode((string) file_get_contents(self::DIRECTORY.'/'.$file), true, flags: JSON_THROW_ON_ERROR);
+        $decoded = json_decode((string) file_get_contents(self::directory($mode).'/'.$file), true, flags: JSON_THROW_ON_ERROR);
 
         if (! is_array($decoded)) {
             throw new RuntimeException($file.' is not a JSON object.');

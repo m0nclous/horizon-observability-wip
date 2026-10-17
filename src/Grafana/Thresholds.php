@@ -81,4 +81,12 @@ final class Thresholds
     public const ALERT_LOOKBACK_SECONDS = 600;
 
     public const FAILURE_WINDOW_MINUTES = 15;
+
+    /**
+     * Stall rule of the stream mode: the last live push is older than this at scrape time, for this long
+     * (ADDENDUM R4.11).
+     */
+    public const LIVE_STALL_SECONDS = 30;
+
+    public const LIVE_STALL_FOR = '1m';
 }

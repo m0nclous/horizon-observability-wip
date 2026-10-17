@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Tests\Grafana\Support;
 
 use DF\HorizonObservability\Grafana\Json;
+use DF\HorizonObservability\Grafana\Live\LiveMode;
 use RuntimeException;
 
 /**
@@ -32,6 +33,8 @@ final class LayoutProjection
     private const JOBS = 6;
 
     private const QUEUE_SOURCE = 24;
+
+    private const OVERVIEW_ROW = 10;
 
     /**
      * The layout fields only.
@@ -121,6 +124,55 @@ final class LayoutProjection
                 }
 
                 $panel['transformations'] = $rendered;
+            }
+
+            $expected[] = $panel;
+        }
+
+        return $expected;
+    }
+
+    /**
+     * The expected projection of a live render (ADDENDUM R4.1, R4.8; the deviations the owner accepted, README decision
+     * 9): the `--live=off` projection with row #10 titled "Live Overview" and, on the live tiles ({@see LiveShapes}),
+     * the look properties R4.8 changes: no sparkline and the null sentinel on the tile-row tiles (#3, and #2 in stream
+     * mode), and the R4.8 transformations. Everything else must stay the off render's look.
+     *
+     * @param  list<array<string, mixed>>  $off  the full projection of the off render
+     * @param  array<array-key, mixed>  $offDashboard  the off render, decoded
+     * @return list<array<string, mixed>>
+     */
+    public static function live(LiveMode $mode, array $off, array $offDashboard): array
+    {
+        $offPanels = [];
+
+        foreach (self::panels($offDashboard) as $panel) {
+            $offPanels[$panel['id'] ?? null] = $panel;
+        }
+
+        $expected = [];
+
+        foreach ($off as $panel) {
+            $id = $panel['id'] ?? null;
+
+            if ($id === self::OVERVIEW_ROW) {
+                $panel['title'] = $mode->overviewTitle();
+            }
+
+            if (in_array($id, LiveShapes::tiles($mode), true) && is_array($offPanels[$id] ?? null)) {
+                /** @var array<string, mixed> $offPanel */
+                $offPanel = $offPanels[$id];
+                $live = LiveShapes::expected($mode, $offPanel);
+
+                foreach (self::LOOK_KEYS as $key) {
+                    if (array_key_exists($key, $live)) {
+                        $panel[$key] = $live[$key];
+                    } else {
+                        unset($panel[$key]);
+                    }
+                }
+
+                unset($panel['options']['afterRender']);
             }
 
             $expected[] = $panel;

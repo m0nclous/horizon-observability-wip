@@ -4,15 +4,16 @@ declare(strict_types=1);
 
 use DF\HorizonObservability\Grafana\AlertRulesBuilder;
 use DF\HorizonObservability\Grafana\DashboardOptions;
+use DF\HorizonObservability\Grafana\Live\LiveMode;
 use DF\HorizonObservability\Grafana\PanelRegistry;
 use DF\HorizonObservability\Grafana\Render;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * Arch Q5.3 and Q5.7 item 4: the committed alert rules (JSON provisioning file) are the four core rules, their uids
- * start with the dashboard uid and fit Grafana's 40 characters, they link to existing panels, the Alerts tile and
- * the alert sound watch exactly them, nothing Grafana would interpolate contains "$", and the datasource is the
- * environment placeholder.
+ * Arch Q5.3 and Q5.7 item 4: the committed alert rules (JSON provisioning file) are the four core rules, with the
+ * stall rule <uid>-live as a fifth one in stream mode (ADDENDUM R4.11); their uids start with the dashboard uid and fit
+ * Grafana's 40 characters, they link to existing panels, the Alerts tile and the alert sound watch exactly them,
+ * nothing Grafana would interpolate contains "$", and the datasource is the environment placeholder.
  */
 
 pest()->group('grafana');
@@ -20,23 +21,58 @@ pest()->group('grafana');
 /**
  * @return list<array<string, mixed>>
  */
-function committedRules(): array
+function committedRules(LiveMode $mode = LiveMode::Poll): array
 {
-    return Rendered::alerting()['groups'][0]['rules'];
+    return Rendered::alerting($mode)['groups'][0]['rules'];
 }
 
-it('provisions the four core rules of the dashboard as JSON', function (): void {
-    $group = Rendered::alerting()['groups'][0];
+it('provisions the core rules of the dashboard as JSON, with the stall rule in stream mode', function (LiveMode $mode): void {
+    $group = Rendered::alerting($mode)['groups'][0];
+    $live = $mode === LiveMode::Stream;
 
-    expect(array_keys(Rendered::alerting()))->toBe(['apiVersion', 'groups'])
+    expect(array_keys(Rendered::alerting($mode)))->toBe(['apiVersion', 'groups'])
         ->and($group)->toMatchArray(['orgId' => 1, 'name' => 'Queues', 'folder' => 'Horizon', 'interval' => '1m'])
-        ->and(array_column(committedRules(), 'uid'))->toBe([
+        ->and(array_column(committedRules($mode), 'uid'))->toBe([
             'horizon-observability-no-metrics',
             'horizon-observability-down',
             'horizon-observability-long-wait',
             'horizon-observability-failures',
+            ...($live ? ['horizon-observability-live'] : []),
         ])
-        ->and(array_column(committedRules(), 'title'))->toBe(['No queue metrics', 'Horizon is down', 'Queue wait over 2x limit', 'High failure rate']);
+        ->and(array_column(committedRules($mode), 'title'))->toBe([
+            'No queue metrics', 'Horizon is down', 'Queue wait over 2x limit', 'High failure rate',
+            ...($live ? ['Live overview stalled'] : []),
+        ]);
+})->with(Rendered::modes());
+
+it('renders the stall rule of ADDENDUM R4.11 in stream mode: the push age at scrape time', function (): void {
+    $rules = array_column(committedRules(LiveMode::Stream), null, 'uid');
+    $rule = $rules['horizon-observability-live'];
+
+    // timestamp() wraps the raw selector: after an aggregation it would return the evaluation time
+    expect($rule['data'][0]['model']['expr'])->toBe('max by (job) (timestamp(ho_exporter_live_push_timestamp_seconds{job=~".+"}) - ho_exporter_live_push_timestamp_seconds{job=~".+"})')
+        ->and($rule['data'][0]['model']['instant'])->toBeTrue()
+        ->and($rule['data'][1]['model']['conditions'][0]['evaluator'])->toBe(['type' => 'gt', 'params' => [30]])
+        ->and($rule['condition'])->toBe('C')
+        ->and($rule['for'])->toBe('1m')
+        // Quiet before the stream ever ran: no push timestamp is exported until the first push
+        ->and($rule['noDataState'])->toBe('OK')
+        ->and($rule['annotations']['__panelId__'])->toBe((string) PanelRegistry::SUPERVISOR_PROCESSES)
+        ->and($rule['annotations']['summary'])->toContain('{{ $labels.job }}');
+});
+
+it('scopes the stall rule to the pinned job and leaves it out of the other modes', function (): void {
+    $rules = static fn (LiveMode $live, ?string $job = null): array => array_column(
+        (new AlertRulesBuilder(new DashboardOptions(uid: 'queues', live: $live, job: $job, healthRules: true)))->build()['groups'][0]['rules'],
+        null,
+        'uid',
+    );
+
+    expect(array_keys($rules(LiveMode::Stream)))->toBe(['queues-no-metrics', 'queues-down', 'queues-long-wait', 'queues-failures', 'queues-live', 'queues-collector', 'queues-duplicates'])
+        ->and($rules(LiveMode::Stream, 'app')['queues-live']['data'][0]['model']['expr'])
+        ->toBe('max by (job) (timestamp(ho_exporter_live_push_timestamp_seconds{job=~"app"}) - ho_exporter_live_push_timestamp_seconds{job=~"app"})')
+        ->and($rules(LiveMode::Poll))->not->toHaveKey('queues-live')
+        ->and($rules(LiveMode::Off))->not->toHaveKey('queues-live');
 });
 
 it('renders the rule expressions of Arch Q5.3 per job', function (): void {
@@ -64,7 +100,7 @@ it('names the job in the summaries of the per-job rules', function (): void {
 
 it('fits the rule uids into 40 characters for every valid dashboard uid', function (): void {
     $uid = str_repeat('u', 29);
-    $rules = (new AlertRulesBuilder(new DashboardOptions(uid: $uid)))->build()['groups'][0]['rules'];
+    $rules = (new AlertRulesBuilder(new DashboardOptions(uid: $uid, live: LiveMode::Stream, healthRules: true)))->build()['groups'][0]['rules'];
 
     foreach ($rules as $rule) {
         expect(strlen($rule['uid']))->toBeLessThanOrEqual(40)
@@ -75,18 +111,18 @@ it('fits the rule uids into 40 characters for every valid dashboard uid', functi
     expect(max(array_map(strlen(...), AlertRulesBuilder::CORE_RULES)))->toBe(10);
 });
 
-it('links every rule to a panel of the committed dashboard', function (): void {
-    $ids = array_column(PanelRegistry::panels(Rendered::dashboard()), 'id');
+it('links every rule to a panel of the committed dashboard', function (LiveMode $mode): void {
+    $ids = array_column(PanelRegistry::panels(Rendered::dashboard($mode)), 'id');
 
-    foreach (committedRules() as $rule) {
+    foreach (committedRules($mode) as $rule) {
         expect($ids)->toContain((int) $rule['annotations']['__panelId__']);
     }
-});
+})->with(Rendered::modes());
 
-it('watches exactly the core rules in the Alerts tile and the alert sound', function (): void {
+it('watches exactly the core rules in the Alerts tile and the alert sound', function (LiveMode $mode): void {
     $selectors = [];
 
-    foreach (Rendered::expressions(alerting: []) as $where => $expr) {
+    foreach (Rendered::expressions(alerting: [], mode: $mode) as $where => $expr) {
         preg_match_all('/GRAFANA_ALERTS\{grafana_rule_uid=~"([^"]*)"/', $expr, $matches);
 
         foreach ($matches[1] as $regex) {
@@ -94,19 +130,22 @@ it('watches exactly the core rules in the Alerts tile and the alert sound', func
         }
     }
 
-    expect(array_keys($selectors))->toBe(['horizon-observability-(no-metrics|down|long-wait|failures)'])
+    $core = $mode === LiveMode::Stream ? 'no-metrics|down|long-wait|failures|live' : 'no-metrics|down|long-wait|failures';
+
+    expect(array_keys($selectors))->toBe(['horizon-observability-('.$core.')'])
         ->and(array_values(array_unique(reset($selectors))))->toBe(['panel '.PanelRegistry::ALERT_SOUND, 'panel '.PanelRegistry::ALERTS]);
 
-    foreach (committedRules() as $rule) {
+    foreach (committedRules($mode) as $rule) {
         expect(preg_match('/^'.array_key_first($selectors).'$/', $rule['uid']))->toBe(1);
     }
 
     expect(preg_match('/^'.array_key_first($selectors).'$/', 'horizon-observability-collector'))->toBe(0)
+        ->and(preg_match('/^'.array_key_first($selectors).'$/', 'horizon-observability-live'))->toBe($mode === LiveMode::Stream ? 1 : 0)
         ->and(preg_match('/^'.array_key_first($selectors).'$/', 'horizon-down'))->toBe(0);
-});
+})->with(Rendered::modes());
 
-it('keeps "$" out of everything Grafana interpolates and uses the datasource placeholder', function (): void {
-    foreach (committedRules() as $rule) {
+it('keeps "$" out of everything Grafana interpolates and uses the datasource placeholder', function (LiveMode $mode): void {
+    foreach (committedRules($mode) as $rule) {
         expect($rule['uid'])->not->toContain('$')
             ->and($rule['title'])->not->toContain('$')
             ->and($rule['labels'] ?? [])->each->not->toContain('$')
@@ -114,8 +153,8 @@ it('keeps "$" out of everything Grafana interpolates and uses the datasource pla
             ->and($rule['data'][1]['datasourceUid'])->toBe('__expr__');
     }
 
-    expect(Rendered::alerting()['groups'][0]['folder'])->not->toContain('$');
-});
+    expect(Rendered::alerting($mode)['groups'][0]['folder'])->not->toContain('$');
+})->with(Rendered::modes());
 
 it('renders a literal datasource uid and keeps the office rule uids with --uid=horizon', function (): void {
     $directory = sys_get_temp_dir().'/ho-grafana-rules-'.bin2hex(random_bytes(4));
@@ -144,7 +183,9 @@ it('refuses a datasource uid Grafana would not accept', function (string $uid): 
 it('reads rule values only where the rule has one', function (): void {
     // In the no-data state $values.A.Value is nil, and a template function given nil logs "Error in expanding
     // template" on every evaluation (the pilot's failure rule did); `with $values.A` keeps a zero value
-    $rules = (new AlertRulesBuilder(new DashboardOptions(healthRules: true)))->build()['groups'][0]['rules'];
+    $rules = (new AlertRulesBuilder(new DashboardOptions(live: LiveMode::Stream, healthRules: true)))->build()['groups'][0]['rules'];
+
+    expect(array_column($rules, 'uid'))->toContain('horizon-observability-live');
 
     foreach ($rules as $rule) {
         $summary = $rule['annotations']['summary'];

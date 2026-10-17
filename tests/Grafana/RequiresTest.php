@@ -2,19 +2,22 @@
 
 declare(strict_types=1);
 
+use DF\HorizonObservability\Grafana\Live\LiveMode;
 use DF\HorizonObservability\Grafana\PanelRegistry;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 use Symfony\Component\Yaml\Yaml;
 
 /*
  * Arch Q5.2 and Q5.6 step 8: __requires lists Grafana 12.3.0 and exactly the datasources and panels the dashboard
- * uses, with the plugin versions the dev stack and CI provision (owner decision 4).
+ * uses, with the plugin versions the dev stack and CI provision (owner decision 4). In every mode: Infinity stays
+ * (the live modes read the snapshot and the job lists with it), and stream adds nothing, Grafana Live and the
+ * -- Grafana -- datasource being core (ADDENDUM R4.8).
  */
 
 pest()->group('grafana');
 
-it('requires Grafana 12.3 and exactly the plugins the dashboard uses', function (): void {
-    $dashboard = Rendered::dashboard();
+it('requires Grafana 12.3 and exactly the plugins the dashboard uses', function (LiveMode $mode): void {
+    $dashboard = Rendered::dashboard($mode);
     $used = ['grafana' => ['grafana']];
 
     foreach (PanelRegistry::panels($dashboard) as $panel) {
@@ -55,8 +58,9 @@ it('requires Grafana 12.3 and exactly the plugins the dashboard uses', function 
 
     expect(array_key_first($dashboard))->toBe('__requires')
         ->and($required)->toBe($used)
-        ->and(array_column($dashboard['__requires'], 'version', 'id'))->toMatchArray(['grafana' => '12.3.0']);
-});
+        ->and(array_column($dashboard['__requires'], 'version', 'id'))->toMatchArray(['grafana' => '12.3.0'])
+        ->and($dashboard['__requires'])->toBe(Rendered::dashboard(LiveMode::Off)['__requires']);
+})->with(Rendered::modes());
 
 it('requires the plugin versions the dev stack provisions', function (): void {
     $compose = Yaml::parseFile(dirname(__DIR__, 2).'/docker-compose.yml');

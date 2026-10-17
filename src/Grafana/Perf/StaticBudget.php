@@ -15,15 +15,25 @@ use DF\HorizonObservability\Metrics\MetricType;
  * `maxDataPoints` on the hidden queue source (O5).
  *
  * What runs on a refresh: every panel outside the collapsed rows, hidden ones included, one request per datasource
- * it queries (a panel on the `-- Dashboard --` datasource reads another panel and sends none), each copy of a
- * repeated panel, and the query variables that refresh on a time range change. Grafana interpolates the
- * expressions the way {@see interpolate()} does for a one-hour range at the reference scrape interval.
+ * it queries (a panel on the `-- Dashboard --` datasource reads another panel and sends none, a Grafana Live channel
+ * of the `-- Grafana --` datasource is a subscription, not a request), each copy of a repeated panel, and the query
+ * variables that refresh on a time range change. Grafana interpolates the expressions the way {@see interpolate()}
+ * does for a one-hour range at the reference scrape interval.
+ *
+ * The budget of 12 requests is the `--live=off` dashboard's (ADDENDUM R2.3); the live modes add the snapshot calls
+ * of their Infinity targets (`${api_path}/live`), at most 5 per refresh, each served from the snapshot cache, which
+ * {@see liveRequests()} counts apart.
  *
  * @internal
  */
 final readonly class StaticBudget
 {
     public const MAX_REQUESTS = 12;
+
+    /**
+     * Poll mode's extra cost per refresh: calls of the live snapshot endpoint (ADDENDUM R2.3).
+     */
+    public const MAX_LIVE_REQUESTS = 5;
 
     public const MAX_VARIABLE_REQUESTS = 2;
 
@@ -76,6 +86,16 @@ final readonly class StaticBudget
     private const DATASOURCE_DASHBOARD = '-- Dashboard --';
 
     /**
+     * The `-- Grafana --` datasource of the stream tiles: a Grafana Live subscription, no request per refresh.
+     */
+    private const DATASOURCE_GRAFANA = 'grafana';
+
+    /**
+     * Infinity targets of the live snapshot endpoint (`LivePanels::URL`).
+     */
+    private const LIVE_URL = '${api_path}/live';
+
+    /**
      * @param  array<array-key, mixed>  $dashboard  the decoded dashboard JSON
      * @param  array<string, list<string>>  $options  the options of the multi-value variables without an allValue,
      *                                                by name: Grafana's "All" is the regex of all of them
@@ -98,6 +118,10 @@ final readonly class StaticBudget
 
         if ($this->requests() > self::MAX_REQUESTS) {
             $violations[] = sprintf('%d requests per refresh, more than %d', $this->requests(), self::MAX_REQUESTS);
+        }
+
+        if ($this->liveRequests() > self::MAX_LIVE_REQUESTS) {
+            $violations[] = sprintf('%d live snapshot calls per refresh, more than %d', $this->liveRequests(), self::MAX_LIVE_REQUESTS);
         }
 
         if ($this->variableRequests() > self::MAX_VARIABLE_REQUESTS) {
@@ -125,7 +149,7 @@ final readonly class StaticBudget
 
     /**
      * Requests per auto-refresh: one per datasource of each panel that runs, each repeat copy counted, plus the
-     * variable queries.
+     * variable queries; the live snapshot calls are {@see liveRequests()}.
      */
     public function requests(): int
     {
@@ -136,6 +160,23 @@ final readonly class StaticBudget
         }
 
         return $requests;
+    }
+
+    /**
+     * Calls of the live snapshot endpoint per auto-refresh: one per Infinity target of `${api_path}/live` (Grafana
+     * runs the targets of one datasource in one request, but Infinity fetches each URL), each repeat copy counted.
+     */
+    public function liveRequests(): int
+    {
+        $calls = 0;
+
+        foreach ($this->runningPanels() as $panel) {
+            foreach ($this->list($panel['targets'] ?? []) as $target) {
+                $calls += $this->isLive($target) ? $this->copies($panel) : 0;
+            }
+        }
+
+        return $calls;
     }
 
     /**
@@ -370,7 +411,8 @@ final readonly class StaticBudget
     }
 
     /**
-     * The datasources a panel queries (by uid), without the `-- Dashboard --` datasource.
+     * The datasources a panel queries (by uid) for other than the live snapshot, without the `-- Dashboard --` and
+     * `-- Grafana --` datasources.
      *
      * @param  array<array-key, mixed>  $panel
      * @return list<string>
@@ -381,13 +423,29 @@ final readonly class StaticBudget
         $default = is_array($panel['datasource'] ?? null) ? $this->string($panel['datasource']['uid'] ?? '') : '';
 
         foreach ($this->list($panel['targets'] ?? []) as $target) {
+            if ($this->isLive($target)) {
+                continue;
+            }
+
             $uid = is_array($target['datasource'] ?? null) ? $this->string($target['datasource']['uid'] ?? '') : $default;
             $uids[$uid === '' ? $default : $uid] = true;
         }
 
-        unset($uids[self::DATASOURCE_DASHBOARD]);
+        unset($uids[self::DATASOURCE_DASHBOARD], $uids[self::DATASOURCE_GRAFANA]);
 
         return array_map(strval(...), array_keys($uids));
+    }
+
+    /**
+     * Whether a target reads the live snapshot endpoint.
+     *
+     * @param  array<array-key, mixed>  $target
+     */
+    private function isLive(array $target): bool
+    {
+        $url = $this->string($target['url'] ?? '');
+
+        return $url === self::LIVE_URL || str_starts_with($url, self::LIVE_URL.'?');
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DF\HorizonObservability\Grafana;
 
+use DF\HorizonObservability\Grafana\Live\LivePanels;
 use DF\HorizonObservability\Grafana\Panels\AlertSound;
 use DF\HorizonObservability\Grafana\Panels\Batches;
 use DF\HorizonObservability\Grafana\Panels\Common;
@@ -17,13 +18,13 @@ use DF\HorizonObservability\Grafana\Queries\BatchState;
 use DF\HorizonObservability\Grafana\Queries\Selection;
 use DF\HorizonObservability\Grafana\Queries\Waits;
 use DF\HorizonObservability\Grafana\Queries\Workers;
-use LogicException;
 
 /**
  * Renders the dashboard model: panels, layout, variables and links (port of
  * `legacy/grafana/generate_queues_dashboard.py`).
  *
- * Layout: the hidden alert sound panel takes the first grid row; then the Overview row with the tiles, the
+ * Layout: the hidden alert sound panel takes the first grid row; then the Overview row with the tiles ("Live
+ * Overview" when some of them read the live snapshot, {@see LivePanels}), the
  * Current Workload row with the queue tables (one per supervisor) and the batch workload, and two collapsed
  * detail rows. A row owns every panel below it up to the next row, so the tiles and the tables each need their
  * own row; the tables carry no title of their own, their row names them. Collapsed rows do not run their
@@ -51,8 +52,6 @@ final readonly class DashboardBuilder
      */
     public function build(): array
     {
-        $this->assertSupported();
-
         $dashboard = [
             'annotations' => ['list' => [[
                 'builtIn' => 1,
@@ -131,9 +130,9 @@ final readonly class DashboardBuilder
         $panels = [(new AlertSound($common, $alertState, Resources::alertSoundScript()))->panel(), $queues->source()];
         $y = AlertSound::HEIGHT;
 
-        $panels[] = Common::row(PanelRegistry::OVERVIEW_ROW, 'Overview', $y);
+        $panels[] = Common::row(PanelRegistry::OVERVIEW_ROW, $this->options->live->overviewTitle(), $y);
         $y += Common::ROW_HEIGHT;
-        array_push($panels, ...$tiles->all($y));
+        array_push($panels, ...(new LivePanels($this->options->live, $this->options->liveStreamId))->tiles($tiles->all($y)));
         $y += Tiles::HEIGHT;
 
         $panels[] = Common::row(PanelRegistry::WORKLOAD_ROW, 'Current Workload', $y);
@@ -163,7 +162,7 @@ final readonly class DashboardBuilder
     /**
      * Every Prometheus panel takes the scrape interval as its min interval, so `$__interval` is never below S
      * whatever the datasource's `timeInterval` (ADDENDUM R3.3, verified on Grafana 12 and 13); the panels of a
-     * collapsed row too.
+     * collapsed row too, and the Mixed live tiles for their Prometheus sparkline (ADDENDUM R4.8).
      *
      * @param  array<string, mixed>  $panel
      * @return array<string, mixed>
@@ -176,9 +175,7 @@ final readonly class DashboardBuilder
             $panel['panels'] = array_map(self::withMinInterval(...), $children);
         }
 
-        $datasource = $panel['datasource'] ?? null;
-
-        if (! is_array($datasource) || ($datasource['type'] ?? null) !== 'prometheus') {
+        if (! self::queriesPrometheus($panel)) {
             return $panel;
         }
 
@@ -193,6 +190,32 @@ final readonly class DashboardBuilder
         }
 
         return $interval;
+    }
+
+    /**
+     * A Prometheus panel, or a Mixed one with a Prometheus target.
+     *
+     * @param  array<string, mixed>  $panel
+     */
+    private static function queriesPrometheus(array $panel): bool
+    {
+        $datasource = is_array($panel['datasource'] ?? null) ? $panel['datasource'] : [];
+
+        if (($datasource['type'] ?? null) === 'prometheus') {
+            return true;
+        }
+
+        if ($datasource !== LivePanels::mixed()) {
+            return false;
+        }
+
+        foreach (is_array($panel['targets'] ?? null) ? $panel['targets'] : [] as $target) {
+            if (is_array($target) && is_array($target['datasource'] ?? null) && ($target['datasource']['type'] ?? null) === 'prometheus') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -252,19 +275,5 @@ final readonly class DashboardBuilder
                 'targetBlank' => true, 'title' => 'Horizon', 'tooltip' => '', 'type' => 'link', 'url' => '${horizon_url}',
             ],
         ];
-    }
-
-    /**
-     * The live modes arrive with WP8D; until then they are rejected rather than silently rendered as off.
-     */
-    private function assertSupported(): void
-    {
-        $unsupported = array_keys(array_filter([
-            'live' => $this->options->live !== LiveMode::Off,
-        ]));
-
-        if ($unsupported !== []) {
-            throw new LogicException('Not supported by the dashboard renderer yet: '.implode(', ', $unsupported).'.');
-        }
     }
 }

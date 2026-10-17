@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use DF\HorizonObservability\Grafana\Live\LiveMode;
 use DF\HorizonObservability\Grafana\Perf\StaticBudget;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 use Workbench\App\Perf\SyntheticModel;
@@ -9,7 +10,8 @@ use Workbench\App\Perf\SyntheticModel;
 /*
  * The static performance gates of the committed render (ADDENDUM R2.2 step 6, R2.3, Q9' WP8C), computed from the JSON
  * with every filter at "All": no Prometheus needed, so the CI grafana job runs them on every change. The wall-time
- * budget is measured with bin/perf.mjs on the reference profile (docker/perf/README.md).
+ * budget is measured with bin/perf.mjs on the reference profile (docker/perf/README.md). Every committed render (off,
+ * poll, stream) meets them; the live modes add at most 5 snapshot calls per refresh (ADDENDUM R2.3).
  */
 
 pest()->group('grafana');
@@ -37,9 +39,9 @@ function referenceOptions(): array
     return array_map(array_keys(...), $options);
 }
 
-function committedBudget(): StaticBudget
+function committedBudget(LiveMode $mode = LiveMode::Poll): StaticBudget
 {
-    return new StaticBudget(Rendered::dashboard(), referenceOptions());
+    return new StaticBudget(Rendered::dashboard($mode), referenceOptions());
 }
 
 /**
@@ -85,22 +87,54 @@ it('refreshes only the batch variables with the time range (O3)', function (): v
         ->and($budget->variableRequests())->toBeLessThanOrEqual(StaticBudget::MAX_VARIABLE_REQUESTS);
 });
 
-it('sends at most 12 requests per refresh: the queue tables read the hidden source #24 (O5)', function (): void {
-    $budget = committedBudget();
-    $source = array_values(array_filter(Rendered::dashboard()['panels'], static fn (array $panel): bool => $panel['id'] === StaticBudget::QUEUE_SOURCE));
+it('sends at most 12 requests per refresh: the queue tables read the hidden source #24 (O5)', function (LiveMode $mode, int $requests, int $live): void {
+    $budget = committedBudget($mode);
+    $source = array_values(array_filter(Rendered::dashboard($mode)['panels'], static fn (array $panel): bool => $panel['id'] === StaticBudget::QUEUE_SOURCE));
 
-    expect($budget->requests())->toBeLessThanOrEqual(StaticBudget::MAX_REQUESTS)
+    expect($budget->requests())->toBe($requests)
+        ->and($budget->requests())->toBeLessThanOrEqual(StaticBudget::MAX_REQUESTS)
+        // The live tiles: poll #3 S, #2 L and C, #8 C and #9 L; stream only the #8 caption
+        ->and($budget->liveRequests())->toBe($live)
+        ->and($budget->liveRequests())->toBeLessThanOrEqual(StaticBudget::MAX_LIVE_REQUESTS)
         ->and($budget->queueSource())->toBe([])
         ->and($source[0]['maxDataPoints'] ?? null)->toBe(100)
         ->and($budget->panelBytes()[5])->toBe(0);
-});
+})->with([
+    'poll (package render)' => [LiveMode::Poll, 11, 5],
+    'off' => [LiveMode::Off, 12, 0],
+    'stream' => [LiveMode::Stream, 9, 1],
+]);
 
-it('meets every static gate of the budget (ADDENDUM R2.3) with one attempts query per table (O6)', function (): void {
-    $budget = committedBudget();
+it('meets every static gate of the budget (ADDENDUM R2.3) with one attempts query per table (O6)', function (LiveMode $mode): void {
+    $budget = committedBudget($mode);
 
     expect($budget->violations())->toBe([])
         ->and($budget->interpolatedBytes())->toBeLessThanOrEqual(StaticBudget::MAX_INTERPOLATED_BYTES)
         ->and(max($budget->panelBytes()))->toBeLessThanOrEqual(StaticBudget::MAX_PANEL_BYTES);
+})->with(Rendered::modes());
+
+it('counts the live snapshot calls apart and Grafana Live subscriptions not at all', function (): void {
+    $live = static fn (string $refId): array => [
+        'refId' => $refId,
+        'datasource' => ['type' => 'yesoreyeram-infinity-datasource', 'uid' => '${app_api}'],
+        'url' => '${api_path}/live?${supervisor:queryparam}',
+    ];
+    $budget = new StaticBudget(budgetDashboard([
+        // Mixed: Prometheus A and two snapshot calls
+        budgetPanel(1, ['sum(x)'], '-- Mixed --', ['targets' => [['refId' => 'A', 'expr' => 'sum(x)', 'datasource' => ['type' => 'prometheus', 'uid' => '${datasource}']], $live('L'), $live('C')]]),
+        // Only the snapshot
+        budgetPanel(2, [], '${app_api}', ['targets' => [$live('S')]]),
+        // A job list is a request of its own
+        budgetPanel(3, [], '${app_api}', ['targets' => [['refId' => 'A', 'datasource' => ['type' => 'yesoreyeram-infinity-datasource', 'uid' => '${app_api}'], 'url' => '${api_path}/jobs/failed?limit=500']]]),
+        // A Grafana Live channel
+        budgetPanel(4, [], 'grafana', ['targets' => [['refId' => 'A', 'datasource' => ['type' => 'datasource', 'uid' => 'grafana'], 'channel' => 'stream/x/tiles']]]),
+        // A repeated copy calls the snapshot once per copy
+        budgetPanel(5, [], '${app_api}', ['targets' => [$live('S')], 'repeat' => 'supervisor_title']),
+    ]), repeats: 3);
+
+    expect($budget->requests())->toBe(1 + 1)
+        ->and($budget->liveRequests())->toBe(2 + 1 + 3)
+        ->and($budget->violations())->toBe(['6 live snapshot calls per refresh, more than 5']);
 });
 
 it('finds a day-long counter lookback, also in collapsed rows and variables', function (): void {

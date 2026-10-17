@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 use DF\HorizonObservability\Grafana\AlertRulesBuilder;
 use DF\HorizonObservability\Grafana\DashboardOptions;
+use DF\HorizonObservability\Grafana\Live\LiveMode;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 use Illuminate\Support\Facades\Process;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Yaml\Yaml;
 
 /*
- * Arch Q5.7 item 5: every PromQL expression of the committed dashboard and alert rules (and of the opt-in health
- * rules), with Grafana's macros and the dashboard variables substituted, parses. The test writes them as recording
+ * Arch Q5.7 item 5: every PromQL expression of the committed dashboards and alert rules (off, poll, stream; and of the
+ * opt-in health rules), with Grafana's macros and the dashboard variables substituted, parses. The test writes them as recording
  * rules to build/grafana-rules.yml, which the CI grafana job checks with promtool, and runs promtool itself when
  * PROMTOOL is set (e.g. "docker run --rm -i --entrypoint promtool quay.io/prometheus/prometheus:v3.15.0") or
  * promtool is on the PATH.
@@ -44,9 +45,16 @@ function withoutMacros(string $expr): string
  */
 function syntaxRules(): array
 {
-    $expressions = Rendered::expressions();
+    $expressions = [];
 
-    foreach ((new AlertRulesBuilder(new DashboardOptions(healthRules: true)))->build()['groups'][0]['rules'] as $rule) {
+    foreach ([LiveMode::Off, LiveMode::Poll, LiveMode::Stream] as $mode) {
+        foreach (Rendered::expressions(mode: $mode) as $where => $expr) {
+            // The renders share most expressions; each one once
+            $expressions[in_array($expr, $expressions, true) ? (string) array_search($expr, $expressions, true) : $mode->value.' '.$where] = $expr;
+        }
+    }
+
+    foreach ((new AlertRulesBuilder(new DashboardOptions(live: LiveMode::Stream, healthRules: true)))->build()['groups'][0]['rules'] as $rule) {
         $expressions['rule '.$rule['uid'].' A'] = $rule['data'][0]['model']['expr'];
     }
 

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use DF\HorizonObservability\Grafana\DashboardOptions;
 use DF\HorizonObservability\Grafana\Json;
-use DF\HorizonObservability\Grafana\LiveMode;
 use DF\HorizonObservability\Grafana\Render;
 
 /*
@@ -39,7 +38,3 @@ it('prints the decoded committed render back byte for byte', function (string $f
 
     expect(Json::encode(json_decode($committed, false, flags: JSON_THROW_ON_ERROR)))->toBe($committed);
 })->with([Render::DASHBOARD, Render::ALERTING]);
-
-it('refuses the live modes until their panels exist', function (LiveMode $live): void {
-    expect(fn (): array => (new Render(new DashboardOptions(live: $live)))->files())->toThrow(LogicException::class, 'live');
-})->with([LiveMode::Poll, LiveMode::Stream]);

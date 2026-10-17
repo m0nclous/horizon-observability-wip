@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DF\HorizonObservability\Grafana;
 
+use DF\HorizonObservability\Grafana\Live\LiveMode;
 use DF\HorizonObservability\Grafana\Queries\Attempts;
 use DF\HorizonObservability\Metrics\Metric;
 use LogicException;
@@ -37,6 +38,11 @@ final readonly class AlertRulesBuilder
      * The uid suffixes of the core rules, which the Alerts tile and the alert sound watch (Arch Q5.2, Q5.3).
      */
     public const CORE_RULES = ['no-metrics', 'down', 'long-wait', 'failures'];
+
+    /**
+     * The uid suffix of the stall rule of the stream mode, a core rule there (ADDENDUM R4.11).
+     */
+    public const LIVE_RULE = 'live';
 
     /**
      * The uid suffixes of the opt-in health rules (Arch Q1.5).
@@ -120,6 +126,10 @@ final readonly class AlertRulesBuilder
             ),
         ];
 
+        if ($this->options->live === LiveMode::Stream) {
+            $rules[] = $this->liveRule($promql, PanelRegistry::idOf($dashboard, 'Supervisor Processes'));
+        }
+
         if ($this->options->healthRules) {
             array_push($rules, ...$this->healthRules($promql, PanelRegistry::idOf($dashboard, 'Horizon')));
         }
@@ -131,6 +141,34 @@ final readonly class AlertRulesBuilder
             'interval' => Thresholds::ALERT_INTERVAL,
             'rules' => $rules,
         ]]];
+    }
+
+    /**
+     * `<uid>-live` "Live overview stalled" (ADDENDUM R4.11), rendered with `--live=stream` only: no stream command has
+     * pushed the live tiles for 30 seconds, so they show stale values. The age of the last push is taken at scrape
+     * time, `timestamp(x) - x` on the raw replica series (after an aggregation `timestamp()` would return the
+     * evaluation time), so neither the scrape interval nor the rule evaluation adds to it; the outer max is the
+     * replica dedupe. No data is OK: the exporter has no push timestamp before the stream ever ran.
+     *
+     * @return array<string, mixed>
+     */
+    private function liveRule(Promql $promql, int $panelId): array
+    {
+        $pushed = $promql->replicas(Metric::LivePushTimestamp);
+
+        return $this->rule(
+            self::LIVE_RULE,
+            'Live overview stalled',
+            Promql::max(Promql::call('timestamp', $pushed).' - '.$pushed, 'job'),
+            ['type' => 'gt', 'params' => [Thresholds::LIVE_STALL_SECONDS]],
+            noData: 'OK',
+            summary: $this->withValue(
+                'The live overview of {{ $labels.job }} was last pushed {{ printf "%.0f" .Value }} s before the scrape; check the horizon-observability:stream process',
+                'No push data for {{ $labels.job }}',
+            ),
+            panelId: $panelId,
+            for: Thresholds::LIVE_STALL_FOR,
+        );
     }
 
     /**
@@ -183,12 +221,22 @@ final readonly class AlertRulesBuilder
     }
 
     /**
+     * The uid suffixes of the core rules of a live mode: {@see CORE_RULES}, and {@see LIVE_RULE} in stream mode.
+     *
+     * @return list<string>
+     */
+    public static function coreRules(LiveMode $live = LiveMode::Off): array
+    {
+        return $live === LiveMode::Stream ? [...self::CORE_RULES, self::LIVE_RULE] : self::CORE_RULES;
+    }
+
+    /**
      * The `grafana_rule_uid` regex of the core rules of a dashboard uid: the Alerts tile and the alert sound watch
      * exactly these, not the opt-in health rules or other dashboards' rules.
      */
-    public static function coreRuleUids(string $uid): string
+    public static function coreRuleUids(string $uid, LiveMode $live = LiveMode::Off): string
     {
-        return $uid.'-('.implode('|', self::CORE_RULES).')';
+        return $uid.'-('.implode('|', self::coreRules($live)).')';
     }
 
     /**
