@@ -107,3 +107,24 @@ it('names what to check for each failure', function (?int $status, string $hint)
     [500, 'Grafana rejected'],
     [400, 'refused'],
 ]);
+
+it('does not follow a redirect, which would resend the token or turn the POST into a GET', function (): void {
+    Http::fake(['*' => Http::response('', 302, ['Location' => 'https://grafana.example/api/live/push/id'])]);
+
+    $result = app(GrafanaLivePusher::class)->push('http://grafana.example', 'id', PUSHER_TOKEN, 'x');
+
+    expect($result->ok)->toBeFalse()
+        ->and($result->status)->toBe(302)
+        ->and(GrafanaLivePusher::hint($result->status))->toContain('final URL');
+    Http::assertSentCount(1);
+});
+
+it('keeps the user and password of a Grafana URL out of the output and the errors', function (): void {
+    Http::fake(static fn (): never => throw new ConnectionException('cURL error 7: Failed to connect for http://admin:secret@grafana:3000/api/live/push/id'));
+
+    $result = app(GrafanaLivePusher::class)->push('http://admin:secret@grafana:3000', 'id', PUSHER_TOKEN, 'x');
+
+    expect(GrafanaLivePusher::display('https://admin:secret@grafana.example:3000/sub'))->toBe('https://grafana.example:3000/sub')
+        ->and(GrafanaLivePusher::display('http://grafana:3000'))->toBe('http://grafana:3000')
+        ->and((string) $result->error)->toBe('ConnectionException: cURL error 7: Failed to connect for http://grafana:3000/api/live/push/id');
+});

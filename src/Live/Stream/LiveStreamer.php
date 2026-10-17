@@ -304,7 +304,7 @@ final class LiveStreamer
 
             if ($result->ok) {
                 if (($this->urls[$url]['failures'] ?? 0) > 0) {
-                    $this->emit('pushed', sprintf('Pushing to %s again.', $url));
+                    $this->emit('pushed', sprintf('Pushing to %s again.', GrafanaLivePusher::display($url)));
                 }
 
                 unset($this->urls[$url]);
@@ -426,8 +426,8 @@ final class LiveStreamer
         $answer = $result->status === null ? 'no answer' : 'HTTP '.$result->status;
         $reason = sprintf('%s (%s); retrying in %d s', $result->error ?? $answer, GrafanaLivePusher::hint($result->status), $backoff);
         // Throttled per URL and answer: a changed answer (500, then 401) is logged at once.
-        $this->reporter->reportLocally(sprintf('live push to %s (%s)', $url, $answer), new RuntimeException($reason), ['bytes' => $bytes, 'status' => $result->status]);
-        $this->emit('push-failed', sprintf('The push to %s failed: %s.', $url, $reason));
+        $this->reporter->reportLocally(sprintf('live push to %s (%s)', GrafanaLivePusher::display($url), $answer), new RuntimeException($reason), ['bytes' => $bytes, 'status' => $result->status]);
+        $this->emit('push-failed', sprintf('The push to %s failed: %s.', GrafanaLivePusher::display($url), $reason));
     }
 
     /**

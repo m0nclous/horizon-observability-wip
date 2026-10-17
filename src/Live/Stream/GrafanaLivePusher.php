@@ -12,7 +12,7 @@ use Throwable;
 
 /**
  * `POST {grafana}/api/live/push/{id}` of a line-protocol body with a service-account token (Addendum R4.6), through
- * Laravel's HTTP client (`Http::fake()` works): 2 s timeout, 1 s connect timeout, no retries.
+ * Laravel's HTTP client (`Http::fake()` works): 2 s timeout, 1 s connect timeout, no retries, no redirects.
  *
  * A push never throws: connection errors and timeouts are a {@see PushResult} without a status, a non-2xx answer one
  * with it. The error text is short and never contains the token. {@see self::hint()} gives the operator hint for a
@@ -60,6 +60,8 @@ final readonly class GrafanaLivePusher
             $response = $this->http
                 ->timeout(self::TIMEOUT_SECONDS)
                 ->connectTimeout(self::CONNECT_TIMEOUT_SECONDS)
+                // A redirect would resend the token elsewhere or turn the POST into a GET that "succeeds".
+                ->withoutRedirecting()
                 ->withToken($token)
                 ->withBody($body, 'text/plain')
                 ->post(self::url($baseUrl, $streamId));
@@ -81,6 +83,14 @@ final readonly class GrafanaLivePusher
     }
 
     /**
+     * A Grafana URL for logs and output: without the user and password of the URL, if any.
+     */
+    public static function display(string $url): string
+    {
+        return (string) preg_replace('~^([a-z][a-z0-9+.-]*://)[^/@]*@~i', '$1', $url);
+    }
+
+    /**
      * What to check for a failed push, by HTTP status (null: no answer).
      */
     public static function hint(?int $status): string
@@ -90,13 +100,19 @@ final readonly class GrafanaLivePusher
             $status === 401 => 'service account token invalid or missing; check HORIZON_OBSERVABILITY_LIVE_GRAFANA_TOKEN',
             $status === 403 => 'service account token invalid, or role Editor needed on Grafana 13 (live:push)',
             $status === 404 => 'no Grafana Live push endpoint at this URL; check HORIZON_OBSERVABILITY_LIVE_GRAFANA_URL and that Grafana Live is enabled',
+            $status >= 300 && $status < 400 => 'Grafana redirected the push (pushes do not follow redirects); set HORIZON_OBSERVABILITY_LIVE_GRAFANA_URL to the final URL, e.g. https',
             $status >= 500 => 'Grafana rejected or failed to process the push',
             default => 'Grafana refused the push',
         };
     }
 
+    /**
+     * The token and any `user:password@` of a URL out of an error text.
+     */
     private function redact(string $text, string $token): string
     {
+        $text = (string) preg_replace('~(://)[^/@\s]*@~', '$1', $text);
+
         return $token === '' ? $text : str_replace($token, '[redacted]', $text);
     }
 }

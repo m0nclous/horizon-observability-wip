@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Console;
 
 use DF\HorizonObservability\Config\Config;
+use DF\HorizonObservability\Live\Stream\GrafanaLivePusher;
 use DF\HorizonObservability\Live\Stream\LiveStreamer;
 use Illuminate\Console\Command;
 
@@ -80,7 +81,7 @@ final class StreamCommand extends Command
 
         $this->components->info(sprintf(
             'Streaming the live overview to %s as stream %s every %s s.',
-            implode(', ', $config->liveGrafanaUrls),
+            implode(', ', array_map(GrafanaLivePusher::display(...), $config->liveGrafanaUrls)),
             $config->liveStreamId,
             rtrim(rtrim(sprintf('%.2F', $config->liveStreamInterval), '0'), '.'),
         ));
