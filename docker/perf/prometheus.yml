@@ -1,0 +1,16 @@
+# Perf Prometheus (ADDENDUM R2.2): scrapes the continuation exporter (vendor/bin/testbench workbench:perf-exporter on
+# the host, port 8391) at S = 10 s. The job and instance labels equal the ones workbench:perf-data writes into the
+# backfill (--job=perf-horizon --instance=perf-exporter), so backfill and scrape form one series each.
+global:
+  scrape_interval: 10s
+  scrape_timeout: 8s
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: perf-horizon
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['host.docker.internal:8391']
+    relabel_configs:
+      - target_label: instance
+        replacement: perf-exporter

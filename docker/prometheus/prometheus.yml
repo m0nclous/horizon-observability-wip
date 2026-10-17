@@ -1,0 +1,17 @@
+# Dev Prometheus, PHP on the host (composer serve on :8000). The package endpoint is its own scrape job at the
+# recommended 10 s (ADDENDUM R3.2): the job name is the dashboard's prometheus_job scope.
+global:
+  scrape_interval: 10s
+  scrape_timeout: 8s
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: workbench-horizon
+    metrics_path: /horizon/observability/metrics
+    scrape_interval: 10s
+    scrape_timeout: 8s
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/token
+    static_configs:
+      - targets: ['host.docker.internal:8000']

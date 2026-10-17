@@ -1,0 +1,16 @@
+# Dev Prometheus, everything in containers: PROMETHEUS_CONFIG=prometheus.app.yml APP_URL_FROM_GRAFANA=http://app:8000
+global:
+  scrape_interval: 10s
+  scrape_timeout: 8s
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: workbench-horizon
+    metrics_path: /horizon/observability/metrics
+    scrape_interval: 10s
+    scrape_timeout: 8s
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/token
+    static_configs:
+      - targets: ['app:8000']
