@@ -138,6 +138,19 @@ it('provisions the Infinity datasource with the API bearer token', function (): 
         ->and($datasource['jsonData']['customHealthCheckUrl'])->toEndWith('/horizon/'.RoutePath::SEGMENT.'/jobs/pending?limit=1');
 });
 
+it('publishes every port on 127.0.0.1 unless BIND_ADDRESS says otherwise', function (): void {
+    $published = [];
+
+    foreach (devStackYaml('docker-compose.yml')['services'] as $name => $service) {
+        foreach ($service['ports'] ?? [] as $port) {
+            $published[] = $name.' '.$port;
+        }
+    }
+
+    expect($published)->toHaveCount(5)
+        ->each->toMatch('/^[\w-]+ \$\{BIND_ADDRESS:-127\.0\.0\.1\}:\$\{\w+_PORT:-\d+\}:\d+$/');
+});
+
 it('mounts only files that exist', function (): void {
     $missing = [];
 

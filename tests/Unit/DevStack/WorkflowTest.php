@@ -77,7 +77,9 @@ it('runs on master, claude branches, pull requests, by hand and weekly', functio
         ->and($on)->toHaveKeys(['pull_request', 'workflow_dispatch'])
         ->and($on['schedule'])->toBe([['cron' => '23 5 * * 1']])
         ->and(workflow('tests.yml')['permissions'])->toBe(['contents' => 'read'])
-        ->and(workflow('tests.yml')['concurrency']['cancel-in-progress'])->toBeTrue();
+        ->and(workflow('tests.yml')['concurrency']['cancel-in-progress'])->toBeTrue()
+        // A push must not cancel the weekly e2e run of the same branch.
+        ->and(workflow('tests.yml')['concurrency']['group'])->toBe('tests-${{ github.ref }}-${{ github.event_name }}');
 });
 
 it('expands the test matrix to the 10 base and 6 targeted legs of Arch 8.5', function (): void {
@@ -121,6 +123,17 @@ it('runs the e2e job weekly and by hand only, with the dedupe gate, screenshots 
         ->toContain('node bin/screenshot.mjs')
         ->toContain('node bin/perf.mjs compare')
         ->toContain('--budget docker/perf/budget.json');
+});
+
+it('backfills the perf data with the metric names of the mounted dashboard', function (): void {
+    $runs = implode("\n", array_column(workflow('tests.yml')['jobs']['e2e']['steps'], 'run'));
+    $mounted = (string) file_get_contents(dirname(__DIR__, 3).'/tests/Fixtures/grafana/legacy/queues.json');
+
+    // Until T13 the pilot dashboard (office_*) is mounted, so the weekly report must measure the legacy schema.
+    expect($runs)->toContain("grep -q 'office_queue_jobs_total' build/dashboard.json")
+        ->toContain('backfill.sh --profile=medium --hours=26 --schema="$PERF_SCHEMA"')
+        ->toContain('workbench:perf-exporter --profile=medium --schema="$PERF_SCHEMA"')
+        ->and($mounted)->toContain('office_queue_jobs_total');
 });
 
 it('gates style, types and composer.json in the static job', function (): void {

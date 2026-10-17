@@ -14,8 +14,9 @@ on:
 permissions:
   contents: read
 
+# Per ref and event: a push cancels the previous push run of its branch, never the weekly or manual e2e run.
 concurrency:
-  group: tests-${{ github.ref }}
+  group: tests-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
@@ -294,8 +295,14 @@ jobs:
         run: |
           curl -fsS http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {scrapeUrl, health, lastError}'
           curl -fsS http://localhost:9092/api/v1/targets | jq '.data.activeTargets[] | {scrapeUrl, health, lastError}'
-      - name: Dashboard uid
-        run: echo "DASHBOARD_UID=$(docker compose exec -T grafana sh -c 'cat /etc/grafana/dashboards/horizon-observability/*.json' | jq -r .uid | head -n 1)" >> "$GITHUB_ENV"
+      # The perf data must use the metric names of the mounted dashboard: the pilot's office_* (legacy schema) until
+      # T13 mounts the package render (catalog schema, ho_*).
+      - name: Dashboard uid and perf schema
+        run: |
+          docker compose exec -T grafana sh -c 'cat /etc/grafana/dashboards/horizon-observability/*.json' > build/dashboard.json
+          echo "DASHBOARD_UID=$(jq -r .uid build/dashboard.json | head -n 1)" >> "$GITHUB_ENV"
+          if grep -q 'office_queue_jobs_total' build/dashboard.json; then schema=legacy; else schema=catalog; fi
+          echo "PERF_SCHEMA=$schema" >> "$GITHUB_ENV"
       - name: Screenshots (look review against planning/baseline)
         run: node bin/screenshot.mjs --uid "$DASHBOARD_UID" --from now-15m --name "dashboard-${GRAFANA_IMAGE##*:}"
       - name: Replica dedupe gate (C7)
@@ -315,8 +322,8 @@ jobs:
         continue-on-error: true
         run: |
           docker compose stop grafana
-          docker/perf/backfill.sh --profile=medium --hours=26
-          nohup php vendor/bin/testbench workbench:perf-exporter --profile=medium > build/logs/perf-exporter.log 2>&1 &
+          docker/perf/backfill.sh --profile=medium --hours=26 --schema="$PERF_SCHEMA"
+          nohup php vendor/bin/testbench workbench:perf-exporter --profile=medium --schema="$PERF_SCHEMA" > build/logs/perf-exporter.log 2>&1 &
           PROMETHEUS_URL=http://perf-prometheus:9090 docker compose up -d grafana
           for i in $(seq 1 90); do curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 && break; sleep 2; done
           sleep 60
