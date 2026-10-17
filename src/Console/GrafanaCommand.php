@@ -25,6 +25,11 @@ final class GrafanaCommand extends Command
     private const UID_PATTERN = '/^[A-Za-z0-9_-]{1,29}$/';
 
     /**
+     * A literal Grafana uid, or an environment variable Grafana interpolates at provisioning.
+     */
+    private const DATASOURCE_UID_PATTERN = '/^(?:[A-Za-z0-9_-]{1,40}|\$\{[A-Za-z_][A-Za-z0-9_]*\})$/';
+
+    /**
      * @var string
      */
     protected $signature = 'horizon-observability:grafana
@@ -35,6 +40,7 @@ final class GrafanaCommand extends Command
         {--title=Queues : Dashboard title}
         {--job= : Prometheus job (scrape job of the package endpoint) the dashboard selects by default and the alert rules are scoped to; empty = all jobs}
         {--folder=Horizon : Grafana folder of the alert rules}
+        {--datasource-uid= : Uid of the Prometheus datasource of the alert rules (default: ${HORIZON_OBSERVABILITY_PROMETHEUS_UID}, interpolated by Grafana)}
         {--prometheus-datasource= : Name regex of the Prometheus datasource (default: Grafana\'s default datasource)}
         {--infinity-datasource= : Name regex of the Infinity datasource of the job lists (default: the first one)}';
 
@@ -130,6 +136,11 @@ final class GrafanaCommand extends Command
         }
 
         $job = $this->text('job', required: false);
+        $datasource = $this->text('datasource-uid', required: false);
+
+        if ($datasource !== '' && preg_match(self::DATASOURCE_UID_PATTERN, $datasource) !== 1) {
+            throw new InvalidArgumentException('--datasource-uid must be a Grafana uid (1 to 40 characters of A-Z, a-z, 0-9, "_" and "-") or an environment variable such as ${PROMETHEUS_UID}.');
+        }
 
         return new DashboardOptions(
             metricPrefix: $config->prefix(),
@@ -138,6 +149,7 @@ final class GrafanaCommand extends Command
             prometheusDatasourceRegex: $this->text('prometheus-datasource', required: false),
             infinityDatasourceRegex: $this->text('infinity-datasource', required: false),
             alertFolder: $folder,
+            alertDatasourceUid: $datasource === '' ? DashboardOptions::DATASOURCE_PLACEHOLDER : $datasource,
             job: $job === '' ? null : $job,
         );
     }

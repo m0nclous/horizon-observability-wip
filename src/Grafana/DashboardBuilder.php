@@ -91,7 +91,7 @@ final readonly class DashboardBuilder
         $workers = new Workers($promql, $selection, $this->options->legacy ? $this->options->busyWindow : Variables::BUSY_WINDOW);
         $waits = new Waits($promql, $selection);
         $batchState = new BatchState($promql);
-        $alertState = new AlertState($this->options->alertRuleUidRegex);
+        $alertState = new AlertState($this->options->alertRules());
         $common = new Common($promql);
 
         $tiles = new Tiles($common, $promql, $selection, $attempts, $workers, $waits, $alertState);

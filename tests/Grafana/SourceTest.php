@@ -40,5 +40,5 @@ it('writes every package selector through Promql::selector()', function (): void
 
     ksort($names);
 
-    expect($names)->toBe(['AlertRulesBuilder.php' => 1, 'Variables.php' => 1]);
+    expect($names)->toBe(['AlertRulesBuilder.php' => 2, 'Variables.php' => 1]);
 });

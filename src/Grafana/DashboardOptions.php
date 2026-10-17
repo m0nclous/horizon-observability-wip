@@ -21,6 +21,12 @@ final readonly class DashboardOptions
     public const DEFAULT_UID = 'horizon-observability';
 
     /**
+     * The Prometheus datasource of the alert rules: alert rules have no default datasource, so Grafana interpolates
+     * this environment variable at provisioning (Arch Q5.3).
+     */
+    public const DATASOURCE_PLACEHOLDER = '${HORIZON_OBSERVABILITY_PROMETHEUS_UID}';
+
+    /**
      * @param  string  $metricPrefix  prefix of every package metric name, including the trailing underscore
      * @param  string  $uid  dashboard uid, also the prefix of the alert rule uids
      * @param  list<string>  $tags
@@ -30,7 +36,8 @@ final readonly class DashboardOptions
      * @param  string  $busyWindow  default of the hidden `busy_window` variable, the window of the worker utilisation
      *                              (legacy `BUSY_WINDOW`, a literal in the pilot), at least one scrape interval
      * @param  string  $refresh  dashboard auto-refresh interval
-     * @param  string  $alertRuleUidRegex  `grafana_rule_uid` regex of the Alerts tile and of the alert sound
+     * @param  string|null  $alertRuleUidRegex  `grafana_rule_uid` regex of the Alerts tile and of the alert sound; null
+     *                                          watches exactly the core rules of this uid
      * @param  string  $alertFolder  folder of the alert rule group
      * @param  string  $alertDatasourceUid  Prometheus datasource uid of the alert rules (Grafana interpolates `${ENV}` at provisioning)
      * @param  string|null  $alertSoundScript  `afterRender` JavaScript of the hidden alert sound panel; null reads
@@ -51,9 +58,9 @@ final readonly class DashboardOptions
         public string $jobListUrl = '${api_path}/jobs/{list}',
         public string $busyWindow = '15s',
         public string $refresh = '15s',
-        public string $alertRuleUidRegex = 'horizon-.*',
+        public ?string $alertRuleUidRegex = null,
         public string $alertFolder = 'Horizon',
-        public string $alertDatasourceUid = '${HPG_PROMETHEUS_DATASOURCE_UID}',
+        public string $alertDatasourceUid = self::DATASOURCE_PLACEHOLDER,
         public ?string $alertSoundScript = null,
         public LiveMode $live = LiveMode::Off,
         public GrafanaVersion $grafana = GrafanaVersion::Grafana13,
@@ -61,6 +68,14 @@ final readonly class DashboardOptions
         public bool $dedupe = false,
         public bool $legacy = false,
     ) {}
+
+    /**
+     * The `grafana_rule_uid` regex of the Alerts tile and the alert sound.
+     */
+    public function alertRules(): string
+    {
+        return $this->alertRuleUidRegex ?? AlertRulesBuilder::coreRuleUids($this->uid);
+    }
 
     /**
      * The PromQL builder of the dashboard: selectors scoped to the `prometheus_job` variable.

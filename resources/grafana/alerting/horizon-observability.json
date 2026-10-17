@@ -18,7 +18,7 @@
                 "from": 600,
                 "to": 0
               },
-              "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
+              "datasourceUid": "${HORIZON_OBSERVABILITY_PROMETHEUS_UID}",
               "model": {
                 "editorMode": "code",
                 "expr": "count(ho_horizon_status{job=~\".+\"})",
@@ -51,7 +51,7 @@
           "execErrState": "Error",
           "for": "5m",
           "annotations": {
-            "summary": "Prometheus has no ho_horizon_status, /metrics of the app is not scraped",
+            "summary": "Prometheus has no ho_horizon_status: the metrics endpoint of the application is not scraped",
             "__dashboardUid__": "horizon-observability",
             "__panelId__": "1"
           },
@@ -68,10 +68,10 @@
                 "from": 600,
                 "to": 0
               },
-              "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
+              "datasourceUid": "${HORIZON_OBSERVABILITY_PROMETHEUS_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "min(ho_horizon_status{job=~\".+\"})",
+                "expr": "min by (job) (ho_horizon_status{job=~\".+\"})",
                 "instant": true,
                 "range": false,
                 "refId": "A"
@@ -101,7 +101,7 @@
           "execErrState": "Error",
           "for": "5m",
           "annotations": {
-            "summary": "Horizon is paused or not running",
+            "summary": "Horizon is paused or not running ({{ $labels.job }})",
             "__dashboardUid__": "horizon-observability",
             "__panelId__": "1"
           },
@@ -118,10 +118,10 @@
                 "from": 600,
                 "to": 0
               },
-              "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
+              "datasourceUid": "${HORIZON_OBSERVABILITY_PROMETHEUS_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "max by (queue) (ho_queue_oldest_pending_job_age_seconds{job=~\".+\"}) / on (queue) max by (queue) (ho_horizon_wait_threshold_seconds{job=~\".+\"})",
+                "expr": "max by (job, queue) (ho_queue_oldest_pending_job_age_seconds{job=~\".+\"}) / on (job, queue) max by (job, queue) (ho_horizon_wait_threshold_seconds{job=~\".+\"})",
                 "instant": true,
                 "range": false,
                 "refId": "A"
@@ -151,7 +151,7 @@
           "execErrState": "Error",
           "for": "5m",
           "annotations": {
-            "summary": "Oldest pending job in {{ $labels.queue }} waits {{ printf \"%.1f\" $values.A.Value }}x the queue wait limit",
+            "summary": "Oldest pending job in {{ $labels.queue }} ({{ $labels.job }}) waits {{ printf \"%.1f\" $values.A.Value }}x the queue wait limit",
             "__dashboardUid__": "horizon-observability",
             "__panelId__": "2"
           },
@@ -168,10 +168,10 @@
                 "from": 900,
                 "to": 0
               },
-              "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
+              "datasourceUid": "${HORIZON_OBSERVABILITY_PROMETHEUS_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "sum by (queue) (increase(ho_queue_jobs_total{job=~\".+\", status=~\"failed|timed_out\"}[15m])) / clamp_min(sum by (queue) (increase(ho_queue_jobs_total{job=~\".+\", status=~\"completed|failed|timed_out\"}[15m])), 100)",
+                "expr": "sum by (job, queue) (increase(ho_queue_jobs_total{job=~\".+\", status=~\"failed|timed_out\"}[15m])) / clamp_min(sum by (job, queue) (increase(ho_queue_jobs_total{job=~\".+\", status=~\"completed|failed|timed_out\"}[15m])), 100)",
                 "instant": true,
                 "range": false,
                 "refId": "A"
@@ -201,7 +201,7 @@
           "execErrState": "Error",
           "for": "5m",
           "annotations": {
-            "summary": "{{ humanizePercentage $values.A.Value }} of attempts in {{ $labels.queue }} failed in 15 minutes",
+            "summary": "{{ humanizePercentage $values.A.Value }} of attempts in {{ $labels.queue }} ({{ $labels.job }}) failed in 15 minutes",
             "__dashboardUid__": "horizon-observability",
             "__panelId__": "4"
           },

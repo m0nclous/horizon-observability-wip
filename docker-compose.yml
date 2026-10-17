@@ -86,7 +86,6 @@ services:
       HORIZON_OBSERVABILITY_SCRAPE_INTERVAL: ${SCRAPE_INTERVAL:-10s}                   # the datasource timeInterval
       HORIZON_OBSERVABILITY_APP_URL: ${APP_URL_FROM_GRAFANA:-http://host.docker.internal:8000}
       HORIZON_OBSERVABILITY_API_TOKEN: workbench-token-0123456789abcdef
-      HPG_PROMETHEUS_DATASOURCE_UID: prometheus          # the datasource placeholder of the rendered rules until T13 step 7
     volumes:
       - ./docker/grafana/provisioning/datasources/prometheus.yaml:/etc/grafana/provisioning/datasources/prometheus.yaml:ro
       - ./resources/grafana/provisioning/datasources/horizon-observability.yaml:/etc/grafana/provisioning/datasources/horizon-observability.yaml:ro
