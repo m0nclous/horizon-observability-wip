@@ -205,7 +205,7 @@ final class BatchReader
             total: $total,
             pending: $pending,
             failed: $failed,
-            progress: $total > 0 ? (int) round(($total - $pending) / $total * 100) : 0,
+            progress: $total > 0 ? self::integer(round(($total - $pending) / $total * 100)) ?? 0 : 0,
             createdAt: $createdAt,
             closedAt: match ($status) {
                 BatchStatus::Running => null,
@@ -369,12 +369,17 @@ final class BatchReader
         return self::$detections ??= new WeakMap;
     }
 
+    /**
+     * An integer column read as an int, or null when it is not a number. A float outside the integer range (a
+     * corrupt row) is null as well: casting it wraps on PHP 8.2-8.4 and warns on PHP 8.5, which Laravel's error
+     * handler turns into an exception that would fail the whole collector while the row exists.
+     */
     private static function integer(mixed $value): ?int
     {
         return match (true) {
             is_int($value) => $value,
-            is_float($value) && is_finite($value) => (int) $value,
-            is_string($value) && is_numeric(trim($value)) => (int) (float) trim($value),
+            is_float($value) => $value >= (float) PHP_INT_MIN && $value < (float) PHP_INT_MAX ? (int) $value : null,
+            is_string($value) && is_numeric(trim($value)) => self::integer((float) trim($value)),
             default => null,
         };
     }

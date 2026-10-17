@@ -49,6 +49,8 @@ final class PayloadClock
     {
         $attempts = $payload['attempts'] ?? null;
 
-        return ! is_numeric($attempts) || (int) $attempts === 0;
+        // |attempts| < 1 is what (int) truncates to 0, without casting a float past the integer range (a wrapped
+        // value on PHP 8.2-8.4, a warning on PHP 8.5).
+        return ! is_numeric($attempts) || abs((float) $attempts) < 1;
     }
 }

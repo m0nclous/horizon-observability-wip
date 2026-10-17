@@ -44,3 +44,14 @@ it('counts a payload as a first attempt when attempts is 0 or missing', function
         ->and(PayloadClock::isFirstAttempt(['attempts' => 1]))->toBeFalse()
         ->and(PayloadClock::isFirstAttempt(['attempts' => 3]))->toBeFalse();
 });
+
+it('reads attempts past the integer range as a retry instead of casting them (PHP 8.5, T18)', function (): void {
+    // (int) of such a float wraps on PHP 8.2-8.4 (2^64 wraps to 0, a first attempt) and warns on 8.5 (failOnWarning).
+    expect(PayloadClock::isFirstAttempt(['attempts' => 1.8446744073709552E19]))->toBeFalse()
+        ->and(PayloadClock::isFirstAttempt(['attempts' => 1e30]))->toBeFalse()
+        ->and(PayloadClock::isFirstAttempt(['attempts' => '1e30']))->toBeFalse()
+        ->and(PayloadClock::isFirstAttempt(json_decode('{"attempts":1e999}', true)))->toBeFalse()
+        ->and(PayloadClock::isFirstAttempt(['attempts' => 0.5]))->toBeTrue()
+        ->and(PayloadClock::isFirstAttempt(['attempts' => ' 0']))->toBeTrue()
+        ->and(PayloadClock::isFirstAttempt(['attempts' => 1.0]))->toBeFalse();
+});
