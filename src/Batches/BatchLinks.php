@@ -19,6 +19,10 @@ use Illuminate\Queue\Events\JobQueued;
 use Illuminate\Redis\Connections\Connection;
 use Illuminate\Redis\Connections\PhpRedisConnection;
 use JsonException;
+use Predis\Response\ErrorInterface;
+use Redis;
+use RedisCluster;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -139,10 +143,10 @@ final class BatchLinks
             $prune = $this->prunedAt === null || $now - $this->prunedAt >= self::REFRESH_SECONDS;
             $write = function () use ($key, $now, $member, $prune): void {
                 $storage = $this->storage();
-                $storage->zadd($key, $now, $member);
+                $this->command($storage, 'zadd', [$key, $now, $member]);
 
                 if ($prune) {
-                    $storage->command('zremrangebyscore', [$key, '-inf', '('.($now - self::TTL_SECONDS)]);
+                    $this->command($storage, 'zremrangebyscore', [$key, '-inf', '('.($now - self::TTL_SECONDS)]);
                 }
             };
 
@@ -217,7 +221,7 @@ final class BatchLinks
     {
         $storage = $this->storage();
         // phpredis takes the WITHSCORES flag as a bool, predis as the modifier; both answer member => score.
-        $reply = $storage->command('zrange', [
+        $reply = $this->command($storage, 'zrange', [
             $this->keys()->batchLinks(),
             -self::MAX_LINKS,
             -1,
@@ -248,13 +252,49 @@ final class BatchLinks
      */
     public function prune(CarbonImmutable $now): int
     {
-        $removed = $this->storage()->command('zremrangebyscore', [
+        $removed = $this->command($this->storage(), 'zremrangebyscore', [
             $this->keys()->batchLinks(),
             '-inf',
             '('.($now->getTimestamp() - self::TTL_SECONDS),
         ]);
 
         return is_numeric($removed) ? (int) $removed : 0;
+    }
+
+    /**
+     * One command on the storage connection. An error reply (`WRONGTYPE`, `OOM`, ...) throws on both clients: predis
+     * throws or returns an error response, phpredis answers `false` and keeps the message in `getLastError()`, which
+     * would otherwise read as "no links" or as a successful write.
+     *
+     * @param  list<mixed>  $parameters
+     */
+    private function command(Connection $storage, string $method, array $parameters): mixed
+    {
+        $client = $storage->client();
+        $phpredis = $client instanceof Redis || $client instanceof RedisCluster;
+
+        if ($phpredis) {
+            $client->clearLastError();
+        }
+
+        $reply = $storage->command($method, $parameters);
+
+        if ($reply instanceof ErrorInterface) {
+            throw new RuntimeException(sprintf('%s of the batch links failed: %s', strtoupper($method), $reply->getMessage()));
+        }
+
+        if ($phpredis && $reply === false) {
+            $error = $client->getLastError();
+            $client->clearLastError();
+
+            throw new RuntimeException(sprintf(
+                '%s of the batch links failed: %s',
+                strtoupper($method),
+                is_string($error) && $error !== '' ? $error : 'no reply',
+            ));
+        }
+
+        return $reply;
     }
 
     private function kindOf(string $batchId): string

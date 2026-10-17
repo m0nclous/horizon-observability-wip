@@ -217,6 +217,21 @@ describe('writing', function (): void {
             ->and($log->messages('warning')[0])->toStartWith('horizon-observability: batch_links failed: QueryException: ');
     });
 
+    it('treats an error reply as a failed write on both clients', function (): void {
+        // phpredis answers WRONGTYPE with false instead of throwing: still a failure, never a memoised write.
+        app(RedisClients::class)->storage()->set((new Keys)->batchLinks(), 'not a zset');
+        $log = new LogRecorder;
+        $this->app->instance('log', $log);
+        $batch = Bus::batch([])->name('Import')->onConnection('redis')->dispatch();
+
+        app(BatchLinks::class)->onQueued(batchLinksTestEvent($batch->id));
+
+        expect(app(CircuitBreaker::class)->isOpen())->toBeTrue()
+            ->and($log->messages('warning'))->toHaveCount(1)
+            ->and($log->messages('warning')[0])->toStartWith('horizon-observability: breaker:batch_links failed: ')
+            ->and($log->messages('warning')[0])->toContain('WRONGTYPE');
+    });
+
     it('skips writes while the breaker is open without counting them as dropped attempts', function (): void {
         // C11: an unreachable storage costs one timeout per cooldown; the dispatch itself is unaffected.
         config()->set('database.redis.horizon.port', 1);
@@ -339,6 +354,15 @@ describe('reading', function (): void {
         expect(app(BatchLinks::class)->prune(CarbonImmutable::createFromTimestamp($now)))->toBe(2)
             ->and(array_keys(batchLinksTestStored()))->toBe([Keys::field('c', 'redis', 'default', 'X'), Keys::field('d', 'redis', 'default', 'X')])
             ->and(app(BatchLinks::class)->prune(CarbonImmutable::createFromTimestamp($now)))->toBe(0);
+    });
+
+    it('fails on an error reply on both clients', function (): void {
+        // phpredis answers WRONGTYPE with false: without the check that reads as "no links" and "nothing pruned".
+        app(RedisClients::class)->storage()->set((new Keys)->batchLinks(), 'not a zset');
+        $links = app(BatchLinks::class);
+
+        expect(static fn () => $links->forKinds(['import']))->toThrow(Exception::class, 'WRONGTYPE')
+            ->and(static fn () => $links->prune(CarbonImmutable::createFromTimestamp(BATCH_LINKS_TEST_NOW)))->toThrow(Exception::class, 'WRONGTYPE');
     });
 
     it('fails visibly when the storage cannot be read', function (): void {

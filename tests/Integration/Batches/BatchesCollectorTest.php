@@ -223,6 +223,21 @@ it('keeps the table data when the links cannot be read', function (): void {
         ->and(array_column($failures, 'source'))->toBe(['links']);
 });
 
+it('reports an error reply of the links on both clients and keeps the table data', function (): void {
+    // phpredis answers WRONGTYPE with false; it must not pass for an empty link set with success 1.
+    BatchTable::create();
+    BatchTable::insert(['id' => 'b', 'name' => 'import']);
+    app(RedisClients::class)->storage()->set((new Keys)->batchLinks(), 'not a zset');
+    $context = batchesCollectorTestContext();
+
+    $families = Families::of(app(BatchesCollector::class)->collect($context));
+    $failures = $context->takeFailures();
+
+    expect($families['queue_batches_running'])->toBe(['batch="import"' => 1])
+        ->and(array_column($failures, 'source'))->toBe(['links'])
+        ->and($failures[0]['exception']->getMessage())->toContain('WRONGTYPE');
+});
+
 it('skips the links when the scrape budget has run out', function (): void {
     BatchTable::create();
     BatchTable::insert(['id' => 'b', 'name' => 'import']);
