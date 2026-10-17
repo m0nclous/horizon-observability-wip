@@ -71,7 +71,11 @@ final class HistogramSnapshot
 
     /**
      * The `le` spelling of a bound: an integral bound without a decimal (`1`, `60`), any other in its shortest
-     * round-trip form (`0.05`, `2.5`), infinity as `+Inf`.
+     * round-trip form (`0.05`, `2.5`, `1.0E-5`), infinity as `+Inf`.
+     *
+     * The spelling is part of the exposed series (`le="0.05"`), so it must not depend on the `serialize_precision`
+     * ini (with the old php.ini value 17, `var_export(0.05)` gives `0.050000000000000003`) nor on the locale: `%H` is
+     * the locale-independent `%G`.
      */
     public static function label(float $bound): string
     {
@@ -83,7 +87,15 @@ final class HistogramSnapshot
             return (string) (int) $bound;
         }
 
-        return var_export($bound, true);
+        for ($digits = 1; $digits < 17; $digits++) {
+            $text = sprintf('%.'.$digits.'H', $bound);
+
+            if ((float) $text === $bound) {
+                return $text;
+            }
+        }
+
+        return sprintf('%.17H', $bound);
     }
 
     /**

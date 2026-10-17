@@ -54,6 +54,20 @@ it('spells le like the pilot: integers without a decimal, others in shortest for
     [INF, '+Inf'],
 ]);
 
+it('spells le the same whatever serialize_precision is', function (): void {
+    $previous = ini_set('serialize_precision', '17');
+
+    try {
+        expect(array_map(HistogramSnapshot::label(...), [0.05, 0.005, 2.5, 1.0E-5, 0.1 + 0.2]))
+            ->toBe(['0.05', '0.005', '2.5', '1.0E-5', '0.30000000000000004'])
+            ->and(HistogramSnapshot::labels([0.05, 0.1, 1.0]))->toBe('0.05,0.1,1')
+            ->and(HistogramSnapshot::bucket(0.07, [0.05, 0.1]))->toBe('0.1')
+            ->and(HistogramSnapshot::cumulative(['0.1' => 2], [0.05, 0.1]))->toBe(['0.05' => 0, '0.1' => 2, '+Inf' => 2]);
+    } finally {
+        ini_set('serialize_precision', $previous === false ? '-1' : $previous);
+    }
+});
+
 it('picks the stored bucket of an observation', function (float $value, string $le): void {
     expect(HistogramSnapshot::bucket($value, [0.05, 0.1, 1.0, 60.0]))->toBe($le);
 })->with([
