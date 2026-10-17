@@ -1,2 +1,13 @@
+/vendor/
+/composer.lock
+/build/
+/coverage/
+/.phpunit.cache/
+.phpunit.result.cache
+/node_modules/
+/screenshots/
+.env
+.DS_Store
 # IDE
-.idea
+/.idea/
+/.vscode/
