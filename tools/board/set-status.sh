@@ -22,11 +22,19 @@
 #   --no-push            work offline: no fetch, no push, the gates read the local state; the commit stays local
 #   --dry-run            print the change and the checks, change nothing (it still fetches, unless --no-push)
 #
-# Gates (--force overrides): in progress, testing and done need every dependency done; a task enters in progress or
-# testing only below the WIP limit of that column (a QA rejection, testing -> in progress with a --qa text that
-# rejects, always passes); needs owner needs --question; the main checkout must be on the integration branch.
+# Gates (--force overrides): starting work (todo -> in progress or testing; needs owner -> in progress or testing
+# when the task had not started before its question) and done need every dependency done, while moves that keep,
+# continue or return work (a note, in progress -> testing, a QA rejection, an answer that resumes it, reopening) do
+# not; a task enters in progress or testing only below the WIP limit of that column (a QA rejection, testing ->
+# in progress with a --qa text that rejects, always passes); needs owner needs --question; the main checkout must be
+# on the integration branch.
 # Refused without override: a merge, rebase, cherry-pick or revert in progress, unmerged paths, a detached HEAD,
-# uncommitted changes of planning/TASKS.md, and local commits that origin does not have while origin moved too.
+# uncommitted changes of planning/TASKS.md, local commits that are not status changes (the push would publish
+# them), and local commits that origin does not have while origin moved too.
+# A failure after the first change (a commit that fails: signing, a hook, no identity; a push that fails) undoes
+# the attempt: HEAD, TASKS.md and the screenshots go back to where they were.
+#
+# Needs bash 4+, git, python3, flock (util-linux; on macOS `brew install flock`), od and cmp.
 #
 # Examples:
 #   tools/board/set-status.sh T12 "in progress"
@@ -46,6 +54,7 @@
 #   BOARD_TRAILERS            trailer lines for the commit message (newline-separated), like --trailer
 #   BOARD_ATTACH_MAX_KB       size limit of one screenshot (default 1024)
 #   BOARD_WAIT                seconds to wait for a merge, rebase or TASKS.md edit in the main checkout (default 300)
+#   BOARD_PUSH_TRIES          attempts when the push loses a race with another push (default 10, random back-off)
 #   BOARD_REPO                owner/repo of the screenshot links (default: from the origin URL)
 #   BOARD_NOW                 "YYYY-MM-DD HH:MM" UTC stamp to use instead of the clock (tests)
 
@@ -67,6 +76,10 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
     exit 0
 fi
 [[ $# -ge 2 ]] || die "$USAGE"
+for tool in git python3 flock od cmp; do
+    command -v "$tool" >/dev/null ||
+        die "$tool is required (set-status.sh needs git, python3, flock, od and cmp; on macOS: brew install flock)"
+done
 
 ID="$1"
 STATUS="$2"
@@ -150,11 +163,14 @@ if [[ ${#SOURCES[@]} -gt 0 && -z "$QA" && -z "$QUESTION" ]]; then
     die "--attach needs --qa or --question (the screenshots are linked from that text)"
 fi
 
-MAIN="${BOARD_MAIN:-$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')}"
+# The main checkout is the first worktree; its path may contain spaces.
+MAIN="${BOARD_MAIN:-$(git worktree list --porcelain | awk '/^worktree /{sub(/^worktree /, ""); print; exit}')}"
 TASKS_FILE="${TASKS_FILE:-planning/TASKS.md}"
 INTEGRATION="${BOARD_INTEGRATION_BRANCH:-claude/hopeful-hawking-njeu3v}"
 WAIT="${BOARD_WAIT:-300}"
 [[ "$WAIT" =~ ^[0-9]+$ ]] || die "invalid BOARD_WAIT: $WAIT"
+TRIES="${BOARD_PUSH_TRIES:-10}"
+[[ "$TRIES" =~ ^[1-9][0-9]*$ ]] || die "invalid BOARD_PUSH_TRIES: $TRIES"
 [[ -f "$MAIN/$TASKS_FILE" ]] || die "task list not found: $MAIN/$TASKS_FILE"
 
 cd "$MAIN"
@@ -210,10 +226,54 @@ fi
 BRANCH_FORCED=("${FORCED[@]}")
 UPSTREAM="refs/remotes/origin/$BRANCH"
 
-# The task list the gates read: the main checkout's, or origin's in a dry run of a checkout that is behind.
+# The task list the gates read, and the history they read it with: the main checkout's, or origin's in a dry run of
+# a checkout that is behind.
 SOURCE_FILE="$TASKS_FILE"
+HISTORY_REF="HEAD"
 TEMP_FILES=()
-trap 'rm -f "${TEMP_FILES[@]}"' EXIT
+SHOT_PATHS=()
+# Set while an attempt has changed the main checkout (screenshots copied, TASKS.md edited, commits made) and the
+# result has not reached origin: any exit then undoes the attempt, so that a failure (a commit refused by signing or
+# a hook, a push that fails, an interrupt) never leaves the shared main checkout dirty for every later call.
+UNDO_BASE=""
+# shellcheck disable=SC2317,SC2329 # called by the EXIT trap
+on_exit() {
+    local rc=$?
+    if [[ -n "$UNDO_BASE" ]]; then
+        if undo_to "$UNDO_BASE" 2>/dev/null; then
+            echo "set-status: undid this attempt: HEAD, $TASKS_FILE and the screenshots are back at ${UNDO_BASE:0:7}; nothing changed" >&2
+        else
+            echo "set-status: could not undo this attempt in $MAIN; check \`git status\` there (HEAD was ${UNDO_BASE:0:7})" >&2
+        fi
+        UNDO_BASE=""
+    fi
+    rm -f "${TEMP_FILES[@]}"
+    return "$rc"
+}
+trap on_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# The local commits that origin does not have and that set-status.sh did not write, one "<sha> <subject>" per line:
+# anything but a one-parent "board: Txx -> <status>" or "board: Txx screenshots" commit that touches only the task
+# list and the screenshots. The push would publish them (an integrator's local merge under test, for example).
+foreign_commits() {
+    local sha parents subject path ok
+    local re='^board: T[0-9]+ (-> (todo|in progress|testing|needs owner|done)( \(.*\))?|screenshots)$'
+    local shots
+    shots="$(dirname "$TASKS_FILE")/screenshots/"
+    while IFS=$'\t' read -r sha parents subject; do
+        [[ -n "$sha" ]] || continue
+        ok=1
+        [[ "$parents" != *" "* && "$subject" =~ $re ]] || ok=0
+        if [[ "$ok" == 1 ]]; then
+            while IFS= read -r path; do
+                [[ -z "$path" || "$path" == "$TASKS_FILE" || "$path" == "$shots"* ]] || ok=0
+            done < <(git diff-tree --no-commit-id --name-only -r "$sha")
+        fi
+        [[ "$ok" == 1 ]] || echo "${sha:0:7} $subject"
+    done < <(git log --format='%H%x09%P%x09%s' "$UPSTREAM..HEAD")
+}
 
 # Brings the main checkout up to date with origin: fetch, then fast-forward. Local commits that origin does not have
 # are kept (the push publishes them) unless origin moved too; then the caller must integrate them first.
@@ -223,6 +283,13 @@ sync_with_origin() {
         die "cannot fetch $BRANCH from origin (${error//$'\n'/ }); --no-push works offline"
     behind="$(git rev-list --count "HEAD..$UPSTREAM")"
     ahead="$(git rev-list --count "$UPSTREAM..HEAD")"
+    if [[ "$ahead" -gt 0 ]]; then
+        local foreign
+        foreign="$(foreign_commits)"
+        if [[ -n "$foreign" ]]; then
+            die "$MAIN has $ahead local commit(s) that origin/$BRANCH does not have, and not only status changes (${foreign//$'\n'/; }): the push of a status change would publish them. Push them yourself when they are ready (an integrator merges in a separate worktree, or pushes the merge first), or move them to a task branch, then try again"
+        fi
+    fi
     [[ "$behind" -gt 0 ]] || return 0
     if [[ "$ahead" -gt 0 ]]; then
         die "$MAIN has $ahead commit(s) that origin/$BRANCH does not have, and origin has $behind new one(s); integrate them first (git pull --rebase, or push them), then try again"
@@ -231,12 +298,28 @@ sync_with_origin() {
         echo "set-status: dry run: $MAIN is $behind commit(s) behind origin/$BRANCH; a real run fast-forwards it first and the checks below read origin's $TASKS_FILE"
         SOURCE_FILE="$(mktemp)"
         TEMP_FILES+=("$SOURCE_FILE")
+        HISTORY_REF="$UPSTREAM"
         git show "$UPSTREAM:$TASKS_FILE" >"$SOURCE_FILE"
         return 0
     fi
     error="$(git merge -q --ff-only "$UPSTREAM" 2>&1)" ||
         die "cannot fast-forward $MAIN to origin/$BRANCH (${error//$'\n'/ }); update it by hand, then try again"
     echo "set-status: fast-forwarded $MAIN to origin/$BRANCH ($behind new commit(s))" >&2
+}
+
+# Whether the task was at work before it went to needs owner: the last "board: Txx -> ..." commit of the task that
+# does not move it to needs owner moved it to in progress, testing or done (not to todo, and not none at all).
+resumes_after_question() {
+    local subject re="^board: $ID -> (todo|in progress|testing|needs owner|done)( \\(.*\\))?\$"
+    while IFS= read -r subject; do
+        [[ "$subject" =~ $re ]] || continue
+        case "${BASH_REMATCH[1]}" in
+            "needs owner") ;;
+            todo) return 1 ;;
+            *) return 0 ;;
+        esac
+    done < <(git log --format=%s "$HISTORY_REF" -- "$TASKS_FILE" 2>/dev/null)
+    return 1
 }
 
 # Loads the task list and applies the gates; sets CURRENT.
@@ -250,15 +333,28 @@ check_gates() {
         refuse "needs owner needs --question \"...\" (the owner sees it as an issue comment)"
     fi
 
-    local missing limit others
-    case "$STATUS" in
-        "in progress" | testing | done)
-            missing="$(board_missing_deps "$ID")"
-            if [[ -n "$missing" ]]; then
-                refuse "$ID depends on $(board_describe_ids "$missing"), not done yet"
-            fi
-            ;;
-    esac
+    # Dependencies gate the moves that start or finish work: todo -> in progress or testing, needs owner -> in
+    # progress or testing for a task that had not started before its question, and anything -> done. A dependency
+    # that is reopened later must not lock its dependants in place: notes, in progress -> testing, QA rejections,
+    # answers that resume work and reopened tasks pass.
+    local missing limit others gate=0
+    if [[ "$STATUS" != "$CURRENT" ]]; then
+        case "$STATUS" in
+            done) gate=1 ;;
+            "in progress" | testing)
+                case "$CURRENT" in
+                    todo) gate=1 ;;
+                    "needs owner") resumes_after_question || gate=1 ;;
+                esac
+                ;;
+        esac
+    fi
+    if [[ "$gate" == 1 ]]; then
+        missing="$(board_missing_deps "$ID")"
+        if [[ -n "$missing" ]]; then
+            refuse "$ID depends on $(board_describe_ids "$missing"), not done yet"
+        fi
+    fi
 
     case "$STATUS" in
         "in progress" | testing)
@@ -417,6 +513,8 @@ attempt() {
 
     local base shots_sha body i error
     base="$(git rev-parse HEAD)"
+    # From the first change on, any exit undoes this attempt (on_exit), until the result is on origin.
+    UNDO_BASE="$base"
     shots_sha="$base"
     if [[ ${#SOURCES[@]} -gt 0 ]]; then
         for i in "${!SOURCES[@]}"; do
@@ -425,10 +523,10 @@ attempt() {
         done
         git add -- "${SHOT_PATHS[@]}"
         if ! git diff --cached --quiet -- "${SHOT_PATHS[@]}"; then
-            git commit -q -m "board: $ID screenshots
+            commit_paths "board: $ID screenshots
 
 Screenshots: ${SHOT_PATHS[*]}
-$TRAILER_TEXT" -- "${SHOT_PATHS[@]}"
+$TRAILER_TEXT" "${SHOT_PATHS[@]}"
             shots_sha="$(git rev-parse HEAD)"
         fi
     fi
@@ -445,21 +543,27 @@ $TRAILER_TEXT" -- "${SHOT_PATHS[@]}"
         body+="Forced: $reason"$'\n'
     done
     [[ -z "$REASON" ]] || body+="Forced because: $REASON"$'\n'
-    git commit -q -m "$SUBJECT
+    commit_paths "$SUBJECT
 ${body:+
-$body}$TRAILER_TEXT" -- "$TASKS_FILE"
+$body}$TRAILER_TEXT" "$TASKS_FILE"
     echo "set-status: $ID -> $STATUS ($(git rev-parse --short HEAD))"
 
-    [[ "$PUSH" == 1 ]] || return 0
+    if [[ "$PUSH" == 0 ]]; then
+        UNDO_BASE=""
+        return 0
+    fi
     if error="$(git push -q origin "HEAD:refs/heads/$BRANCH" 2>&1)"; then
+        UNDO_BASE=""
         return 0
     fi
     # A push that failed: landed anyway (a lost reply), rejected because origin moved (retry), or another failure.
     if git fetch -q origin "+refs/heads/$BRANCH:$UPSTREAM" 2>/dev/null; then
         if [[ "$(git rev-parse "$UPSTREAM")" == "$(git rev-parse HEAD)" ]]; then
+            UNDO_BASE=""
             return 0
         fi
         undo_to "$base"
+        UNDO_BASE=""
         if ! git merge-base --is-ancestor "$UPSTREAM" HEAD; then
             echo "set-status: origin/$BRANCH moved while committing; the commit was undone, trying again" >&2
             RETRY=1
@@ -467,14 +571,30 @@ $body}$TRAILER_TEXT" -- "$TASKS_FILE"
         fi
     else
         undo_to "$base"
+        UNDO_BASE=""
     fi
     die "push failed (${error//$'\n'/ }); the commit was undone, nothing changed"
 }
 
-for try in 1 2 3; do
+# commit_paths <message> <path>...: commits only these paths, or exits 1 with git's reason (signing, a hook, no
+# identity); on_exit then undoes the attempt.
+commit_paths() {
+    local message="$1" error
+    shift
+    error="$(git commit -q -m "$message" -- "$@" 2>&1)" || die "cannot commit (${error//$'\n'/ })"
+}
+
+# A random pause after a lost push race (0.1 s up to 0.5 s per lost round, at most 3 s), so that sessions that keep
+# colliding drift apart.
+backoff() {
+    awk -v round="$1" -v r="$RANDOM" 'BEGIN { m = (round < 6 ? round : 6) * 0.5; printf "%.2f\n", 0.1 + m * r / 32767 }'
+}
+
+for ((try = 1; try <= TRIES; try++)); do
     RETRY=0
     attempt
     [[ "$RETRY" == 1 ]] || exit 0
-    echo "set-status: attempt $try of 3 lost the race with another push" >&2
+    echo "set-status: attempt $try of $TRIES lost the race with another push" >&2
+    [[ "$try" == "$TRIES" ]] || sleep "$(backoff "$try")"
 done
-die "origin/$BRANCH kept moving; nothing changed, try again"
+die "origin/$BRANCH kept moving; nothing changed after $TRIES attempts (BOARD_PUSH_TRIES), try again"

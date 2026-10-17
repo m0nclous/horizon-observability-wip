@@ -46,7 +46,7 @@ git config --file "$GIT_CONFIG_GLOBAL" commit.gpgsign false
 git config --file "$GIT_CONFIG_GLOBAL" advice.detachedHead false
 unset BOARD_BRANCH BOARD_MAIN BOARD_MENTION BOARD_NOW BOARD_WIP_IN_PROGRESS BOARD_WIP_TESTING TASKS_FILE GH_STUB_FAIL
 unset BOARD_TRAILERS BOARD_NOTIFY_TOKEN BOARD_ATTACH_MAX_KB
-unset CI_CONCLUSION CI_RUN_ID CI_RUN_ATTEMPT CI_RUN_URL CI_HEAD_SHA
+unset CI_CONCLUSION CI_RUN_ID CI_RUN_ATTEMPT CI_RUN_URL CI_HEAD_SHA CI_EVENT BOARD_PUSH_TRIES
 export BOARD_REPO="m0nclous/board-fixture" BOARD_OWNER="m0nclous" BOARD_NUMBER=5 BOARD_AREAS_FILE="$FIXTURES/areas.tsv"
 # set-status.sh: the fixture's integration branch; no waiting for a merge or an edit (one case tests the wait).
 export BOARD_INTEGRATION_BRANCH="$BRANCH" BOARD_WAIT=0
@@ -460,6 +460,16 @@ case_14() {
 
 # --- board.sh ci ----------------------------------------------------------------------------------------------------
 
+# The hidden job record of a red comment (base64 JSON) as <record>; record_of decodes the one of a comment body.
+norecord() {
+    sed 's/<!-- ci-jobs:[A-Za-z0-9+\/=]* -->/<!-- ci-jobs:<record> -->/g'
+}
+
+record_of() { # record_of <issue number> <run id>: the decoded job record of that run's red comment
+    jq -r --argjson n "$1" --arg run "<!-- ci-run:$2-" '.issues[] | select(.number == $n) | .comments[] | select(.body | contains($run))
+        | .body | capture("<!-- ci-jobs:(?<r>[A-Za-z0-9+/=]+) -->").r | @base64d | fromjson | to_entries[] | "\(.key)=\(.value)"' "$GH_STUB_STATE"
+}
+
 ci() { # ci <conclusion> <run id> [<head sha>] [extra board.sh arguments]
     (
         cd "$REPO"
@@ -479,11 +489,15 @@ case_15() {
     head="$(git -C "$REPO" rev-parse HEAD)"
     short="${head:0:7}"
     ci failure 900 "$head" >"$OUT" 2>"$ERR"
-    check_file "red: gh calls" "ci-red.calls" "$(calls | sed "s/$short/<head>/g")"
+    check_file "red: gh calls" "ci-red.calls" "$(calls | sed "s/$short/<head>/g" | norecord)"
+    check "red: the comment records the conclusion of every job that ran" "PHP 8.2 / L^11.23 / prefer-lowest / predis / redis:6.2-alpine=failure
+PHP 8.3 / L13.* / prefer-stable / phpredis / redis:7.4-alpine=success
+Static analysis and style=success
+Dist archive contents=failure" "$(record_of 1 900)"
     check "red: issue body" "<!-- board:stop-the-line -->
 The \`tests\` workflow is red on the integration branch \`$BRANCH\` since [tests run 900](https://github.com/m0nclous/board-fixture/actions/runs/900) (attempt 1) at \`$short\` on \`$BRANCH\`.
 
-**Stop the line.** While this issue is open nothing moves to \`done\`: testers do not post \`QA verdict: APPROVED\`, nobody runs \`set-status.sh <Txx> done\` and the integrator merges no task branch. Make the branch green first (fix forward or revert the breaking merge). The board workflow comments every further red run here and closes this issue when the \`tests\` workflow is green again." \
+**Stop the line.** While this issue is open nothing moves to \`done\`: testers do not post \`QA verdict: APPROVED\`, nobody runs \`set-status.sh <Txx> done\` and the integrator merges no task branch. Make the branch green first (fix forward or revert the breaking merge). The board workflow comments every further red run here and closes this issue when a green run has run every job that is still red." \
         "$(jq -r '.issues[] | select(.number == 1) | .body' "$GH_STUB_STATE")"
 
     reset_log
@@ -495,8 +509,8 @@ gh issue view 1 --repo m0nclous/board-fixture --json comments --jq '[.comments[]
 
     reset_log
     ci failure 901 "$head" >"$OUT" 2>"$ERR"
-    check "another red run: one comment" "gh issue comment 1 --repo m0nclous/board-fixture --body '**Red:** [tests run 901](https://github.com/m0nclous/board-fixture/actions/runs/901) (attempt 1) at \`<head>\` on \`$BRANCH\`.\\n\\nFailed jobs:\\n- Coverage (pcov, minimum 85 %)\\n\\n<!-- ci-run:901-1 -->'" \
-        "$(writes | sed "s/$short/<head>/g")"
+    check "another red run: one comment" "gh issue comment 1 --repo m0nclous/board-fixture --body '**Red:** [tests run 901](https://github.com/m0nclous/board-fixture/actions/runs/901) (attempt 1) at \`<head>\` on \`$BRANCH\`.\\n\\nFailed jobs:\\n- Coverage (pcov, minimum 85 %)\\n\\n<!-- ci-run:901-1 -->\\n<!-- ci-jobs:<record> -->'" \
+        "$(writes | sed "s/$short/<head>/g" | norecord)"
 
     reset_log
     older="$(git -C "$REPO" rev-parse HEAD~1)"
@@ -517,6 +531,8 @@ gh issue view 1 --repo m0nclous/board-fixture --json comments --jq '[.comments[]
     head2="$(git -C "$REPO" rev-parse HEAD)"
     ci success 902 "$head" >"$OUT" 2>"$ERR"
     check "green run of the code commit under board commits: close with a comment" "gh issue list --repo m0nclous/board-fixture --state open --label stop-the-line --limit 100 --json number --jq '.[].number'
+gh run view 902 --repo m0nclous/board-fixture --attempt 1 --json jobs --jq '[.jobs[] | select((.conclusion // \"\") | IN(\"\", \"skipped\", \"neutral\") | not) | {name, conclusion}]'
+gh issue view 1 --repo m0nclous/board-fixture --json comments --jq '[.comments[] | {url, body}]'
 gh issue close 1 --repo m0nclous/board-fixture --reason completed --comment '**Green again:** [tests run 902](https://github.com/m0nclous/board-fixture/actions/runs/902) (attempt 1) at \`<head>\` on \`$BRANCH\`. The line moves again.\\n\\n<!-- ci-green:902-1 -->'" \
         "$(calls | sed "s/$short/<head>/g")"
     check_contains "it says why the older run decides" "ci      tests run 902 of $short decides: only planning/TASKS.md planning/screenshots changed up to the branch head ${head2:0:7}" "$(cat "$OUT")"
@@ -527,10 +543,10 @@ gh issue close 1 --repo m0nclous/board-fixture --reason completed --comment '**G
     check_contains "green again: output" "ci      the line is clear" "$(cat "$OUT")"
     check "final state" "label stop-the-line #b60205 The integration branch is red: nothing moves to done
 issue #1 CLOSED [CI] The integration branch is red [stop-the-line]
-  comment: **Red:** [tests run 900](https://github.com/m0nclous/board-fixture/actions/runs/900) (attempt 1) at \`<head>\` on \`$BRANCH\`.\\n\\nFailed jobs:\\n- PHP 8.2 / L^11.23 / prefer-lowest / predis / redis:6.2-alpine\\n- Dist archive contents\\n\\n<!-- ci-run:900-1 -->
-  comment: **Red:** [tests run 901](https://github.com/m0nclous/board-fixture/actions/runs/901) (attempt 1) at \`<head>\` on \`$BRANCH\`.\\n\\nFailed jobs:\\n- Coverage (pcov, minimum 85 %)\\n\\n<!-- ci-run:901-1 -->
+  comment: **Red:** [tests run 900](https://github.com/m0nclous/board-fixture/actions/runs/900) (attempt 1) at \`<head>\` on \`$BRANCH\`.\\n\\nFailed jobs:\\n- PHP 8.2 / L^11.23 / prefer-lowest / predis / redis:6.2-alpine\\n- Dist archive contents\\n\\n<!-- ci-run:900-1 -->\\n<!-- ci-jobs:<record> -->
+  comment: **Red:** [tests run 901](https://github.com/m0nclous/board-fixture/actions/runs/901) (attempt 1) at \`<head>\` on \`$BRANCH\`.\\n\\nFailed jobs:\\n- Coverage (pcov, minimum 85 %)\\n\\n<!-- ci-run:901-1 -->\\n<!-- ci-jobs:<record> -->
   comment: **Green again:** [tests run 902](https://github.com/m0nclous/board-fixture/actions/runs/902) (attempt 1) at \`<head>\` on \`$BRANCH\`. The line moves again.\\n\\n<!-- ci-green:902-1 -->" \
-        "$(summary | grep -E '^(label stop-the-line|issue #1 |  comment)' | sed "s/$short/<head>/g")"
+        "$(summary | grep -E '^(label stop-the-line|issue #1 |  comment)' | sed "s/$short/<head>/g" | norecord)"
 
     reset_log
     ci failure 904 "$head2" >"$OUT" 2>"$ERR"
@@ -1236,8 +1252,12 @@ case_43() {
     grep -v '^T07' "$FIXTURES/areas.tsv" >"$WORK/world/areas.tsv"
     (cd "$REPO" && BOARD_AREAS_FILE="$WORK/world/areas.tsv" "$BOARD/board.sh" list) >"$OUT" 2>"$ERR"
     check "warned" "board: warning: no area for T07 in $WORK/world/areas.tsv; add a line \"Txx<TAB>area\" for every task (the Area field stays empty)" "$(cat "$ERR")"
-    check "the real map covers the real task list" "" \
-        "$(cd "$BOARD/../.." && env -u BOARD_AREAS_FILE "$BOARD/board.sh" list 2>&1 >/dev/null | grep 'no area' || true)"
+    # The real task list is not checked against the real map here: a TASKS.md change runs no tests (paths-ignore),
+    # so a missing line would turn the next unrelated push red. The sync warns instead (an annotation of its run).
+    rc=0
+    (cd "$REPO" && BOARD_AREAS_FILE="$WORK/world/areas.tsv" "$BOARD/board.sh" sync) >"$OUT" 2>"$ERR" || rc=$?
+    check_status "a task without an area does not stop the sync" 0 "$rc"
+    check "its card has no Area" "card #8 Status=Todo; Phase=C; QA rounds=0" "$(summary | grep '^card #8 ')"
 }
 
 CASES+=("qa2 dependency parsing")
@@ -1579,11 +1599,39 @@ case_53() {
 CASES+=("adv2 finding: a board field that cannot be created stops the whole sync")
 case_54() {
     new_world
+    # Every card can take its Status (the fixture board has no "Needs owner" option for T04's card otherwise).
+    state_edit '(.project.fields[] | select(.name == "Status") | .options) += [{"id": "st_owner", "name": "Needs owner"}]'
     rc=0
     (cd "$REPO" && GH_STUB_FAIL="project field-create" "$BOARD/board.sh" sync) >"$OUT" 2>"$ERR" || rc=$?
     check_status "the sync goes on without the field" 0 "$rc"
     check "every task has its issue" "8" "$(jq '[.issues[] | select(.labels | index("task"))] | length' "$GH_STUB_STATE")"
     check "the cards still get their Status" "8" "$(summary | grep -c '^card #[0-9]* Status=')"
+    check "each field that cannot be created is named once" "5" "$(grep -c '^board: warning: could not create the board field' "$ERR")"
+    check_contains "the warning" "board: warning: could not create the board field \"Area\" (gh stub: injected failure for: gh project field-create 5 --owner @me --name Area" "$(cat "$ERR")"
+    reset_log
+    board sync >/dev/null 2>&1
+    check "the next sync creates them" "5" "$(calls | grep -c '^gh project field-create')"
+
+    # A board that cannot be read at all (the token's scope, a wrong number): the issues are synced first, then the
+    # sync names the board and fails, so the run shows it.
+    new_world
+    rc=0
+    (cd "$REPO" && GH_STUB_FAIL="project item-list" "$BOARD/board.sh" sync) >"$OUT" 2>"$ERR" || rc=$?
+    check_status "an unreadable board fails the run" 1 "$rc"
+    check "the issues, labels and comments are synced before" "8 issues, 5 comments" \
+        "$(jq -r '"\([.issues[] | select(.labels | index("task"))] | length) issues, \([.issues[].comments[]] | length) comments"' "$GH_STUB_STATE")"
+    check_contains "it says what is synced" "board: cannot read the items of board 5 of @me (gh's message above); the issues, labels and comments are synced, the board is not" "$(cat "$ERR")"
+    board sync >/dev/null 2>&1
+    check "the next sync places the cards" "8" "$(summary | grep -c '^card #')"
+
+    # A card that cannot be added: a warning per card, the next sync adds it.
+    new_world
+    rc=0
+    (cd "$REPO" && GH_STUB_FAIL="project item-add" "$BOARD/board.sh" sync) >"$OUT" 2>"$ERR" || rc=$?
+    check_status "a card that cannot be added does not stop the sync" 0 "$rc"
+    check "named per card" "8" "$(grep -c '^board: warning: could not add https://github.com/m0nclous/board-fixture/issues/[0-9]* to the board' "$ERR")"
+    board sync >/dev/null 2>&1
+    check "the next sync adds them" "8" "$(summary | grep -c '^card #')"
 }
 
 CASES+=("adv2 finding: a main checkout path with a space")
@@ -1643,10 +1691,14 @@ case_57() {
     }
     new_world
     failing_signer
+    before="$(tasks_sum)"
     rc=0
     status "2026-10-12 09:01" T03 "done" --qa "round 1 approved by x" --attach "$FIXTURES/shot.png" >"$OUT" 2>"$ERR" || rc=$?
     check "the screenshot commit fails: exit 1" "1" "$rc"
     check "the screenshot commit fails: the checkout is clean (no staged screenshot)" "" "$(git -C "$REPO" status --porcelain)"
+    check "the screenshot commit fails: HEAD and TASKS.md unchanged" "$before" "$(tasks_sum)"
+    check_contains "the screenshot commit fails: git's reason" "set-status: cannot commit (" "$(cat "$ERR")"
+    check_contains "the screenshot commit fails: undone" "set-status: undid this attempt: HEAD, planning/TASKS.md and the screenshots are back at ${before:0:7}; nothing changed" "$(cat "$ERR")"
 
     new_world
     failing_signer
@@ -1663,6 +1715,18 @@ case_57() {
     check "the next call goes through" "0 ### T05 Grafana port — \`in progress\` (depends only on T00; start first)" \
         "$rc $(grep '^### T05 ' "$REPO/planning/TASKS.md")"
     check "and commits only its own change" "board: T05 -> in progress" "$(git -C "$REPO" log -1 --format=%s)"
+
+    # The screenshot commit lands, then a hook refuses the status commit: both are undone.
+    new_world
+    printf '#!/bin/sh\ngrep -q "^board: T[0-9]* ->" "$1" && { echo "commit-msg: no status commits today" >&2; exit 1; }\nexit 0\n' >"$REPO/.git/hooks/commit-msg"
+    chmod +x "$REPO/.git/hooks/commit-msg"
+    before="$(tasks_sum)"
+    rc=0
+    status "2026-10-12 09:01" T03 "done" --qa "round 1 approved by x" --attach "$FIXTURES/shot.png" >"$OUT" 2>"$ERR" || rc=$?
+    check "the status commit after the screenshot commit fails: exit 1, git's reason" "1 yes" \
+        "$rc $(grep -q '^set-status: cannot commit (commit-msg: no status commits today)' "$ERR" && echo yes)"
+    check "both undone: HEAD, TASKS.md, no screenshot" "$before " "$(tasks_sum) $(git -C "$REPO" status --porcelain)"
+    check "origin unchanged" "$(git -C "$REPO" rev-parse HEAD)" "$(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
 }
 
 CASES+=("adv2 finding: approvals worded with a negation count as rejections")
@@ -1695,9 +1759,317 @@ case_59() {
     git -C "$REPO" merge -q --no-ff -m "integrator: merge wip/T05-grafana" wip/T05-grafana
     local_merge="$(git -C "$REPO" rev-parse HEAD)"
     # Meanwhile another agent records a verdict on another task in the same main checkout.
-    status "2026-10-12 09:00" T03 testing --qa "round 1 approved by the spec tester" >"$OUT" 2>"$ERR" || true
+    before="$(tasks_sum)"
+    pushed="$(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
+    rc=0
+    status "2026-10-12 09:00" T03 testing --qa "round 1 approved by the spec tester" >"$OUT" 2>"$ERR" || rc=$?
     check "the integrator's local merge is not pushed by someone else's status change" "no" \
-        "$(git -C "$WORK/world/origin.git" merge-base --is-ancestor "$local_merge" "$BRANCH" && echo yes || echo no)"
+        "$(git -C "$WORK/world/origin.git" merge-base --is-ancestor "$local_merge" "$BRANCH" 2>/dev/null && echo yes || echo no)"
+    check_status "refused" 1 "$rc"
+    check "refused: it names the commits and the way out" "set-status: $REPO has 2 local commit(s) that origin/$BRANCH does not have, and not only status changes (${local_merge:0:7} integrator: merge wip/T05-grafana; $(git -C "$REPO" rev-parse HEAD^2 | cut -c1-7) Port the dashboard): the push of a status change would publish them. Push them yourself when they are ready (an integrator merges in a separate worktree, or pushes the merge first), or move them to a task branch, then try again" "$(cat "$ERR")"
+    check "refused: nothing changed" "$before $pushed" "$(tasks_sum) $(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
+    # The integrator pushes the merge when it is ready: status changes go through again.
+    git -C "$REPO" push -q origin HEAD
+    rc=0
+    status "2026-10-12 09:05" T03 testing --qa "round 1 approved by the spec tester" >"$OUT" 2>"$ERR" || rc=$?
+    check "after the integrator's push" "0 $(git -C "$REPO" rev-parse HEAD)" "$rc $(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
+    # A commit with a status subject that carries code is not a status change either.
+    echo '<?php' >"$REPO/src/other.php"
+    git -C "$REPO" add src/other.php
+    git -C "$REPO" commit -q -m "board: T05 -> testing"
+    rc=0
+    status "2026-10-12 09:10" T04 todo --answer "Not now" >"$OUT" 2>"$ERR" || rc=$?
+    check_contains "a status subject with code: refused" "not only status changes ($(git -C "$REPO" rev-parse HEAD | cut -c1-7) board: T05 -> testing)" "$rc $(cat "$ERR")"
+    git -C "$REPO" reset -q --hard HEAD~1
+    # set-status's own unpushed commits (--no-push) still go out with the next status change.
+    status "2026-10-12 09:15" T04 todo --answer "Not now" --no-push >/dev/null
+    status "2026-10-12 09:16" T05 "in progress" >/dev/null
+    check "own commits go out" "board: T05 -> in progress
+board: T04 -> todo (answer)" "$(git -C "$WORK/world/origin.git" log -2 --format=%s "$BRANCH")"
+}
+
+# --- QA round 3: the round 2 findings, fixed (cases 53-59 above), and the new rules ---------------------------------
+
+# code_commit: a commit of code on top of the world's history, pushed; sets head and short.
+code_commit() {
+    mkdir -p "$REPO/src"
+    echo '<?php' >"$REPO/src/app.php"
+    git -C "$REPO" add src/app.php
+    git -C "$REPO" commit -q -m "Add code"
+    git -C "$REPO" push -q origin HEAD
+    head="$(git -C "$REPO" rev-parse HEAD)"
+    short="${head:0:7}"
+}
+
+CASES+=("qa3 stop the line: a green push run does not close what only a weekly or manual run runs")
+case_60() {
+    new_world
+    code_commit
+    # The weekly run (schedule) fails its e2e job on Grafana 12.4.13.
+    CI_EVENT=schedule ci failure 910 "$head" >"$OUT" 2>"$ERR"
+    check "the weekly run opens the issue" "issue #1 OPEN [CI] The integration branch is red [stop-the-line]" "$(summary | grep '^issue #1 ')"
+    check_contains "the comment names the event and the job" "(attempt 1, schedule) at \`$short\` on \`$BRANCH\`.\\n\\nFailed jobs:\\n- End to end / grafana/grafana:12.4.13" "$(comments_of_issue 1)"
+    # A push run is green, but it skips the e2e job: the line stays stopped, with one comment that says how to go on.
+    waiting="$(printf '%s' "End to end / grafana/grafana:12.4.13" | sha1 | cut -c1-12)"
+    reset_log
+    CI_EVENT=push ci success 911 "$head" >"$OUT" 2>"$ERR"
+    check "a green push run without the red job: one comment, no close" "gh issue comment 1 --repo m0nclous/board-fixture --body '**Green, but not every red job ran:** [tests run 911](https://github.com/m0nclous/board-fixture/actions/runs/911) (attempt 1, push) at \`<head>\` on \`$BRANCH\` is green, but it did not run End to end / grafana/grafana:12.4.13, which failed before. The line stays stopped until a run that runs them is green: run the \`tests\` workflow by hand on \`$BRANCH\` (Actions → tests → Run workflow, or MCP \`actions_run_trigger\`), or wait for the weekly run.\\n\\n<!-- ci-waiting:$waiting -->'" \
+        "$(writes | sed "s/$short/<head>/g")"
+    check "still open" "issue #1 OPEN [CI] The integration branch is red [stop-the-line]" "$(summary | grep '^issue #1 ')"
+    reset_log
+    CI_EVENT=push ci success 911 "$head" >"$OUT" 2>"$ERR"
+    CI_EVENT=push ci success 914 "$head" >"$OUT" 2>"$ERR"
+    check "the same run again and another such push run: no write" "" "$(writes)"
+    check "they say what the line waits for" "ci      tests run 914 is green, but #1 still waits for a green run of: End to end / grafana/grafana:12.4.13" "$(cat "$OUT")"
+    # A push run that fails another job adds it; a green push run that runs that job leaves only the e2e job open.
+    CI_EVENT=push ci failure 913 "$head" >/dev/null 2>&1
+    reset_log
+    CI_EVENT=push ci success 914 "$head" >"$OUT" 2>"$ERR"
+    check "the push job is green again, the e2e job still waits: no new comment" "" "$(writes)"
+    # A manual run (or the next weekly run) runs the e2e job green: the line moves again.
+    reset_log
+    CI_EVENT=workflow_dispatch ci success 912 "$head" >"$OUT" 2>"$ERR"
+    check "a manual run with the e2e job green closes the issue" "gh issue close 1 --repo m0nclous/board-fixture --reason completed --comment '**Green again:** [tests run 912](https://github.com/m0nclous/board-fixture/actions/runs/912) (attempt 1, workflow_dispatch) at \`<head>\` on \`$BRANCH\`. The line moves again.\\n\\n<!-- ci-green:912-1 -->'" \
+        "$(writes | sed "s/$short/<head>/g")"
+    check "the comments of the issue" "  comment: **Red:** [tests run 910](https://github.com/m0nclous/board-fixture/actions/runs/910) (attempt 1, schedule) at \`<head>\` on \`$BRANCH\`.\\n\\nFailed jobs:\\n- End to end / grafana/grafana:12.4.13\\n\\n<!-- ci-run:910-1 -->\\n<!-- ci-jobs:<record> -->
+  comment: **Green, but not every red job ran:** [tests run 911](https://github.com/m0nclous/board-fixture/actions/runs/911) (attempt 1, push) at \`<head>\` on \`$BRANCH\` is green, but it did not run End to end / grafana/grafana:12.4.13, which failed before. The line stays stopped until a run that runs them is green: run the \`tests\` workflow by hand on \`$BRANCH\` (Actions → tests → Run workflow, or MCP \`actions_run_trigger\`), or wait for the weekly run.\\n\\n<!-- ci-waiting:$waiting -->
+  comment: **Red:** [tests run 913](https://github.com/m0nclous/board-fixture/actions/runs/913) (attempt 1, push) at \`<head>\` on \`$BRANCH\`.\\n\\nFailed jobs:\\n- PHP 8.3 / L13.* / prefer-stable / phpredis / redis:7.4-alpine\\n\\n<!-- ci-run:913-1 -->\\n<!-- ci-jobs:<record> -->
+  comment: **Green again:** [tests run 912](https://github.com/m0nclous/board-fixture/actions/runs/912) (attempt 1, workflow_dispatch) at \`<head>\` on \`$BRANCH\`. The line moves again.\\n\\n<!-- ci-green:912-1 -->" \
+        "$(comments_of_issue 1 | sed "s/$short/<head>/g" | norecord)"
+    check "skipped jobs are not recorded" "PHP 8.3 / L13.* / prefer-stable / phpredis / redis:7.4-alpine=failure
+Static analysis and style=success" "$(record_of 1 913)"
+
+    # A red comment written before the job records: a green run closes the issue (nothing is recorded as red).
+    new_world
+    code_commit
+    CI_EVENT=schedule ci failure 910 "$head" >/dev/null 2>&1
+    state_edit '(.issues[0].comments[0].body) |= sub("\n<!-- ci-jobs:[^ ]* -->"; "")'
+    CI_EVENT=push ci success 911 "$head" >/dev/null 2>&1
+    check "an old red comment without a record: a green run closes" "issue #1 CLOSED [CI] The integration branch is red [stop-the-line]" "$(summary | grep '^issue #1 ')"
+
+    # A green run whose jobs cannot be listed: it closes the issue on its conclusion alone, and says so.
+    new_world
+    code_commit
+    CI_EVENT=schedule ci failure 910 "$head" >/dev/null 2>&1
+    rc=0
+    (cd "$REPO" && GH_STUB_FAIL="run view" CI_CONCLUSION=success CI_RUN_ID=911 CI_HEAD_SHA="$head" "$BOARD/board.sh" ci) >"$OUT" 2>"$ERR" || rc=$?
+    check "no job list: closed on the conclusion" "0 issue #1 CLOSED [CI] The integration branch is red [stop-the-line]" "$rc $(summary | grep '^issue #1 ')"
+    check_contains "no job list: a warning" "board: warning: could not list the jobs of tests run 911; it closes the issue on its conclusion alone" "$(cat "$ERR")"
+}
+
+CASES+=("qa3 board.yml: the token, the refs and the runs that decide")
+case_61() {
+    if ! python3 -c 'import yaml' 2>/dev/null; then
+        echo "skipped (no PyYAML)" >&2
+        return 0
+    fi
+    OUT="$WORK/board-yml.out"
+    python3 -I - "$BOARD/../../.github/workflows/board.yml" >"$OUT" <<'PY'
+import sys, yaml
+
+wf = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
+print("workflow env:", sorted(wf.get("env", {})))
+for name, job in wf["jobs"].items():
+    print("job", name, "if:", " ".join(str(job.get("if", "(always)")).split()))
+    for step in job["steps"]:
+        what = step.get("uses") or step.get("run", "").strip()
+        print("  step:", what, "| GH_TOKEN:", step.get("env", {}).get("GH_TOKEN", "-"), "| shell:", step.get("shell", "-"))
+PY
+    check "jobs, conditions and the token" "workflow env: ['BOARD_NUMBER', 'BOARD_OWNER', 'BOARD_REPO', 'BOARD_WIP_IN_PROGRESS', 'BOARD_WIP_TESTING']
+job sync if: \${{ vars.BOARD_NUMBER != '' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == (vars.INTEGRATION_BRANCH || 'claude/hopeful-hawking-njeu3v') }}
+  step: actions/checkout@v7 | GH_TOKEN: - | shell: -
+  step: tools/board/board.sh sync 2>&1 | sed 's/^board: warning: /::warning title=board::/' | GH_TOKEN: \${{ secrets.PROJECT_TOKEN }} | shell: bash
+job ci if: \${{ vars.BOARD_NUMBER != '' && github.event_name == 'workflow_run' && contains(fromJSON('[\"push\", \"schedule\", \"workflow_dispatch\"]'), github.event.workflow_run.event) && github.event.workflow_run.head_branch == (vars.INTEGRATION_BRANCH || 'claude/hopeful-hawking-njeu3v') }}
+  step: actions/checkout@v7 | GH_TOKEN: - | shell: -
+  step: tools/board/board.sh ci 2>&1 | sed 's/^board: warning: /::warning title=board::/' | GH_TOKEN: \${{ secrets.PROJECT_TOKEN }} | shell: bash
+job report if: \${{ always() && (needs.sync.result == 'success' || needs.ci.result == 'success') }}
+  step: actions/checkout@v7 | GH_TOKEN: - | shell: -
+  step: tools/board/board.sh report 2>&1 | sed 's/^board: warning: /::warning title=board::/' | GH_TOKEN: \${{ secrets.PROJECT_TOKEN }} | shell: bash" "$(cat "$OUT")"
+    # The sync step's own line, with a board.sh that warns and fails: the warning becomes an annotation, and the
+    # step keeps board.sh's exit code (shell: bash runs the line with -eo pipefail).
+    printf '#!/bin/sh\necho "board: warning: no area for T19" >&2\necho "board: cannot read the board" >&2\nexit 1\n' >"$WORK/fake-board.sh"
+    chmod +x "$WORK/fake-board.sh"
+    line="$(grep -m 1 'tools/board/board.sh sync 2>&1' "$BOARD/../../.github/workflows/board.yml" | sed 's/^ *//')"
+    rc=0
+    annotated="$(bash --noprofile --norc -eo pipefail -c "${line/tools\/board\/board.sh/$WORK/fake-board.sh}")" || rc=$?
+    check "a warning becomes an annotation, the exit code stays" "1 ::warning title=board::no area for T19
+board: cannot read the board" "$rc $annotated"
+}
+
+CASES+=("qa3 set-status retries a lost push race with a random back-off")
+case_62() {
+    new_world
+    other_clone
+    mkdir -p "$OTHER/src"
+    # A pre-push hook that lets the other session push first, as long as $WORK/world/lose says so.
+    hook="$REPO/.git/hooks/pre-push"
+    cat >"$hook" <<EOF
+#!/bin/sh
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+left=\$(cat "$WORK/world/lose")
+[ "\$left" -gt 0 ] || exit 0
+echo \$((left - 1)) >"$WORK/world/lose"
+cd "$OTHER" && git pull -q --ff-only && echo "\$left" >>src/race.txt && git add src/race.txt &&
+    git commit -q -m "Another session's commit \$left" && git push -q origin HEAD
+EOF
+    chmod +x "$hook"
+    echo 4 >"$WORK/world/lose"
+    rc=0
+    status "2026-10-12 09:00" T05 "in progress" >"$OUT" 2>"$ERR" || rc=$?
+    check "four lost races, then the fifth attempt lands" "0 4" "$rc $(grep -c 'lost the race with another push' "$ERR")"
+    check_contains "it counts the attempts" "set-status: attempt 4 of 10 lost the race with another push" "$(cat "$ERR")"
+    check "on origin: the other session's four commits, then the status change" "board: T05 -> in progress
+Another session's commit 1
+Another session's commit 2
+Another session's commit 3
+Another session's commit 4" "$(git -C "$WORK/world/origin.git" log -5 --format=%s "$BRANCH")"
+    check "one status commit, a clean checkout" "1 " "$(git -C "$REPO" log --format=%s | grep -c '^board: T05 -> in progress$') $(git -C "$REPO" status --porcelain --untracked-files=no)"
+
+    echo 5 >"$WORK/world/lose"
+    rc=0
+    BOARD_PUSH_TRIES=3 status "2026-10-12 09:10" T04 todo --answer "Not now" >"$OUT" 2>"$ERR" || rc=$?
+    check "BOARD_PUSH_TRIES=3: gives up cleanly" "1 set-status: origin/$BRANCH kept moving; nothing changed after 3 attempts (BOARD_PUSH_TRIES), try again" "$rc $(tail -n 1 "$ERR")"
+    check "nothing of it on origin" "Another session's commit 3" "$(git -C "$WORK/world/origin.git" log -1 --format=%s "$BRANCH")"
+    # The last lost round leaves the checkout one commit behind origin (the next call fast-forwards it), clean.
+    git -C "$REPO" fetch -q origin
+    check "the checkout trails origin, clean" "behind " "$(git -C "$REPO" merge-base --is-ancestor HEAD "origin/$BRANCH" && echo behind) $(git -C "$REPO" status --porcelain --untracked-files=no)"
+    rc=0
+    BOARD_PUSH_TRIES=0 status "2026-10-12 09:10" T04 todo >"$OUT" 2>"$ERR" || rc=$?
+    check "an invalid number of attempts" "1 set-status: invalid BOARD_PUSH_TRIES: 0" "$rc $(cat "$ERR")"
+}
+
+CASES+=("qa3 set-status gates an answer only when it starts work")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_63() {
+    new_world
+    # T06 is blocked (T02-T05 are not done). A question before anyone started it, then the answer: still blocked.
+    status "2026-10-12 09:00" T06 "needs owner" --question "Start with the snapshot?" >/dev/null
+    rc=0
+    status "2026-10-12 09:05" T06 "in progress" --answer "Yes" >"$OUT" 2>"$ERR" || rc=$?
+    check "an answer cannot start a blocked task" "1 set-status: T06 depends on T02 (in progress), T03 (testing), T04 (needs owner), T05 (todo), not done yet; --force --reason \"why\" overrides" "$rc $(cat "$ERR")"
+    # Started (forced, for a spike), then a question, then the answer: the task resumes.
+    status "2026-10-12 09:10" T06 "in progress" --answer "Yes" --force --reason "a spike the owner asked for" >/dev/null 2>&1
+    status "2026-10-12 09:20" T06 "needs owner" --question "Keep the spike?" >/dev/null
+    BOARD_WIP_IN_PROGRESS=3 status "2026-10-12 09:30" T06 "in progress" --answer "Yes, go on" >"$OUT" 2>"$ERR"
+    check "an answer that resumes started work passes" "### T06 Live backend — \`in progress\` (depends on T02–T04, T05)" "$(grep '^### T06 ' "$REPO/planning/TASKS.md")"
+    # Handed back (todo), asked again, answered: that would start it again, so it is gated again.
+    status "2026-10-12 09:40" T06 todo >/dev/null
+    status "2026-10-12 09:50" T06 "needs owner" --question "Pick it up later?" >/dev/null
+    rc=0
+    BOARD_WIP_IN_PROGRESS=3 status "2026-10-12 10:00" T06 "in progress" --answer "Now" >"$OUT" 2>"$ERR" || rc=$?
+    check_status "a task handed back to todo is gated again" 1 "$rc"
+    # Moves inside the work are never gated by dependencies: testing, and a note on a task in testing.
+    BOARD_WIP_IN_PROGRESS=3 status "2026-10-12 10:10" T06 "in progress" --answer "Now" --force --reason "go" >/dev/null 2>&1
+    rc=0
+    status "2026-10-12 10:20" T06 testing >"$OUT" 2>"$ERR" || rc=$?
+    check "in progress -> testing is not gated by dependencies" "0 " "$rc $(cat "$ERR")"
+}
+
+CASES+=("qa3 parser warnings and a task outside a phase")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_64() {
+    new_world
+    cat >"$WORK/world/parse.md" <<'EOF'
+## Phase B: packages (All Depend On T00)
+
+### T00 Zero — `done`
+### T01 One — `todo`
+### T02 Two — `todo` (Depends on T01)
+### T03 Three — `todo` (depend on T01)
+### T04 Four (depends on T01) — `todo`
+### T05 Five - `todo` (depends on T01)
+### T06 Six — `Todo` (depends on T01)
+### T07 Seven — `in-progress`
+## T08 Eight — `todo`
+### T09 Nine — `todo` (after T05 lands)
+### T10 Ten — `todo` (Depends On T01 Through T02 AND T05)
+### T11 Eleven — `todo` (depends on T01; T05 later)
+EOF
+    (cd "$REPO" && TASKS_FILE="$WORK/world/parse.md" "$BOARD/board.sh" list) >"$OUT" 2>"$ERR"
+    check "list" "T00  done         phase:B  process     Zero
+T01  todo         phase:B  exporter    One [ready]
+T02  todo         phase:B  exporter    Two [blocked by T01]
+T03  todo         phase:B  attempts    Three [ready]
+T04  todo         phase:B  queues      Four (depends on T01) [ready]
+T09  todo         phase:-  -           Nine [ready]
+T10  todo         phase:-  -           Ten [blocked by T01, T02, T05]
+T11  todo         phase:-  -           Eleven [blocked by T01]" "$(cat "$OUT")"
+    known="todo, in progress, testing, needs owner, done"
+    check "warnings" "board: warning: T03: \"(depend on T01)\" names a dependency without a \"(depends on ...)\" clause, so it is not read (the task keeps its phase's dependencies)
+board: warning: T04: a dependency clause in the title is not read (put it after the status): Four (depends on T01)
+board: warning: T05: not a task heading, so the board does not show it (want \"### Txx Title — \`status\`\" with an em dash and a status of $known): ### T05 Five - \`todo\` (depends on T01)
+board: warning: T06: not a task heading, so the board does not show it (want \"### Txx Title — \`status\`\" with an em dash and a status of $known): ### T06 Six — \`Todo\` (depends on T01)
+board: warning: T07: not a task heading, so the board does not show it (want \"### Txx Title — \`status\`\" with an em dash and a status of $known): ### T07 Seven — \`in-progress\`
+board: warning: T08: not a task heading, so the board does not show it (want \"### Txx Title — \`status\`\" with an em dash and a status of $known): ## T08 Eight — \`todo\`
+board: warning: T09: \"(after T05 lands)\" names a dependency without a \"(depends on ...)\" clause, so it is not read (the task keeps its phase's dependencies)
+board: warning: no area for T09 T10 T11 in $FIXTURES/areas.tsv; add a line \"Txx<TAB>area\" for every task (the Area field stays empty)" "$(cat "$ERR")"
+    # set-status explains why it cannot find a task whose heading it cannot read.
+    cp "$WORK/world/parse.md" "$REPO/planning/TASKS.md"
+    git -C "$REPO" commit -q -am "Odd headings"
+    rc=0
+    status "2026-10-12 09:00" T06 todo --no-push >"$OUT" 2>"$ERR" || rc=$?
+    check_contains "set-status: the heading is named" "board: warning: T06: not a task heading" "$(cat "$ERR")"
+    check_contains "set-status: then not found" "set-status: task T06 not found in planning/TASKS.md" "$rc $(cat "$ERR")"
+}
+
+CASES+=("qa3 QA verdicts come from the words after round N")
+case_65() {
+    # shellcheck source-path=SCRIPTDIR/.. source=lib.sh
+    actual="$(source "$BOARD/lib.sh" && while IFS= read -r text; do
+        printf '%s|%s|%s\n' "$(board_qa_verdict "$text")" "$(board_qa_round "$text")" "$text"
+    done <<'EOF'
+round 1 approved by the spec and adversarial testers, no changes requested
+round 2 QA verdict: APPROVED by the spec tester (nothing rejected, nothing open)
+round 2 approved by the adversarial tester: the round 1 findings that were rejected are fixed
+round 1 rejected by the spec tester: a missing test
+round 2 QA verdict: CHANGES REQUESTED (spec tester): the range parser
+round 2 not approved by the adversarial tester
+Round 3: approved by both testers
+spec tester, round 4 — rejected: the cache key
+QA verdict: CHANGES REQUESTED by the spec tester: x
+rejected by the spec tester: x
+escalated to the owner: 3 rounds rejected before
+unapproved notes and a disapproved idea
+picked up
+EOF
+    )"
+    check "verdict|round|text" "approved|1|round 1 approved by the spec and adversarial testers, no changes requested
+approved|2|round 2 QA verdict: APPROVED by the spec tester (nothing rejected, nothing open)
+approved|2|round 2 approved by the adversarial tester: the round 1 findings that were rejected are fixed
+rejected|1|round 1 rejected by the spec tester: a missing test
+rejected|2|round 2 QA verdict: CHANGES REQUESTED (spec tester): the range parser
+rejected|2|round 2 not approved by the adversarial tester
+approved|3|Round 3: approved by both testers
+rejected|4|spec tester, round 4 — rejected: the cache key
+rejected||QA verdict: CHANGES REQUESTED by the spec tester: x
+rejected||rejected by the spec tester: x
+||escalated to the owner: 3 rounds rejected before
+||unapproved notes and a disapproved idea
+||picked up" "$actual"
+    # An approval with a negation does not pass the WIP exception of a QA rejection.
+    new_world
+    status "2026-10-12 09:00" T05 "in progress" >/dev/null
+    rc=0
+    status "2026-10-12 09:10" T03 "in progress" --qa "round 1 approved by the spec tester, nothing rejected" >"$OUT" 2>"$ERR" || rc=$?
+    check_contains "an approval is no rejection at a full In Progress" "1 set-status: the WIP limit of in progress is 2" "$rc $(cat "$ERR")"
+}
+
+CASES+=("qa3 set-status names a missing tool")
+case_66() {
+    new_world
+    # A PATH with every command of this one but flock.
+    nobin="$WORK/no-flock"
+    mkdir -p "$nobin"
+    local dir file
+    IFS=: read -ra dirs <<<"$PATH"
+    for dir in "${dirs[@]}"; do
+        for file in "$dir"/*; do
+            [[ -x "$file" && "${file##*/}" != flock && ! -e "$nobin/${file##*/}" ]] && ln -s "$file" "$nobin/${file##*/}"
+        done
+    done
+    rc=0
+    PATH="$nobin" status "2026-10-12 09:00" T05 "in progress" >"$OUT" 2>"$ERR" || rc=$?
+    check "flock missing" "1 set-status: flock is required (set-status.sh needs git, python3, flock, od and cmp; on macOS: brew install flock)" "$rc $(cat "$ERR")"
 }
 
 run_cases

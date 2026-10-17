@@ -6,8 +6,11 @@ name: board
 # variable BOARD_NUMBER (the number in the board URL). Optional variables: BOARD_OWNER (default: the repository owner),
 # INTEGRATION_BRANCH (default: claude/hopeful-hawking-njeu3v), BOARD_WIP_IN_PROGRESS (2), BOARD_WIP_TESTING (3).
 # workflow_run only fires from the copy of this file on the default branch.
-# Owner questions are posted with this workflow's GITHUB_TOKEN (github-actions[bot]): GitHub notifies nobody of their
-# own comments, and every other write uses the owner's PROJECT_TOKEN.
+# The owner's token (GH_TOKEN) is given only to the board.sh steps, not to the workflow, so checkout and any other
+# step never see it. Owner questions are posted with this workflow's GITHUB_TOKEN (github-actions[bot]): GitHub
+# notifies nobody of their own comments, and every other write uses the owner's PROJECT_TOKEN.
+# board.sh warnings (a task without an area, a heading or dependency clause it cannot read, a missing board option)
+# become annotations of the run.
 
 on:
   push:
@@ -25,7 +28,6 @@ permissions:
   contents: read
 
 env:
-  GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
   BOARD_REPO: ${{ github.repository }}
   BOARD_OWNER: ${{ vars.BOARD_OWNER || github.repository_owner }}
   BOARD_NUMBER: ${{ vars.BOARD_NUMBER }}
@@ -35,10 +37,12 @@ env:
 jobs:
   sync:
     name: Sync issues and board
-    # Only the integration branch's TASKS.md is the truth: another branch's copy must not move the cards.
+    # Only the integration branch's TASKS.md is the truth: another branch's copy must not move the cards, whether it
+    # is pushed or run by hand (Actions -> board -> Run workflow, or MCP actions_run_trigger, on any ref).
     if: >-
-      ${{ vars.BOARD_NUMBER != '' && (github.event_name == 'workflow_dispatch'
-      || (github.event_name == 'push' && github.ref_name == (vars.INTEGRATION_BRANCH || 'claude/hopeful-hawking-njeu3v'))) }}
+      ${{ vars.BOARD_NUMBER != ''
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && github.ref_name == (vars.INTEGRATION_BRANCH || 'claude/hopeful-hawking-njeu3v') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -54,17 +58,21 @@ jobs:
         with:
           fetch-depth: 0
       - name: Sync issues and board
-        run: tools/board/board.sh sync
+        shell: bash
+        run: |
+          tools/board/board.sh sync 2>&1 | sed 's/^board: warning: /::warning title=board::/'
         env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
           BOARD_BRANCH: ${{ github.ref_name }}
           BOARD_NOTIFY_TOKEN: ${{ github.token }}
 
   ci:
     name: Stop the line
-    # Only push runs of the integration branch decide; pull request runs have their own checks.
+    # Every run of the integration branch decides (pushes, the weekly run, manual runs); pull request runs have their
+    # own checks. A green push run closes the issue only when it ran every job that is still red (board.sh ci).
     if: >-
       ${{ vars.BOARD_NUMBER != '' && github.event_name == 'workflow_run'
-      && github.event.workflow_run.event == 'push'
+      && contains(fromJSON('["push", "schedule", "workflow_dispatch"]'), github.event.workflow_run.event)
       && github.event.workflow_run.head_branch == (vars.INTEGRATION_BRANCH || 'claude/hopeful-hawking-njeu3v') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -79,10 +87,14 @@ jobs:
           ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0
       - name: Open, comment on or close the stop-the-line issue
-        run: tools/board/board.sh ci
+        shell: bash
+        run: |
+          tools/board/board.sh ci 2>&1 | sed 's/^board: warning: /::warning title=board::/'
         env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
           BOARD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          CI_EVENT: ${{ github.event.workflow_run.event }}
           CI_RUN_ID: ${{ github.event.workflow_run.id }}
           CI_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           CI_RUN_URL: ${{ github.event.workflow_run.html_url }}
@@ -103,6 +115,9 @@ jobs:
           ref: ${{ github.event.workflow_run.head_branch || github.sha }}
           fetch-depth: 0
       - name: Rewrite the flow report
-        run: tools/board/board.sh report
+        shell: bash
+        run: |
+          tools/board/board.sh report 2>&1 | sed 's/^board: warning: /::warning title=board::/'
         env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
           BOARD_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}

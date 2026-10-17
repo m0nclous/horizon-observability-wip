@@ -1,11 +1,11 @@
 gh label list --repo m0nclous/board-fixture --limit 1000 --json name,color,description --jq '.[] | [.name, (.color | ascii_downcase), (.description // "")] | map(gsub("[\n\u001f]"; " ")) | join("\u001f")'
 gh issue list --repo m0nclous/board-fixture --state all --label task --limit 1000 --json number,state,url,title,labels --jq '.[] | [(.number | tostring), .state, .url, .title, ([.labels[].name] | join("\u001e"))] | map(gsub("[\n\u001f]"; " ")) | join("\u001f")'
-gh api user --jq .login
-gh project view 5 --owner @me --format json --jq .id
-gh project field-list 5 --owner @me --limit 100 --format json
-gh project item-list 5 --owner @me --limit 1000 --format json
 gh issue view 2 --repo m0nclous/board-fixture --json comments --jq '[.comments[] | {url, body}]'
 gh issue view 3 --repo m0nclous/board-fixture --json comments --jq '[.comments[] | {url, body}]'
 gh issue view 5 --repo m0nclous/board-fixture --json comments --jq '[.comments[] | {url, body}]'
 gh issue view 7 --repo m0nclous/board-fixture --json comments --jq '[.comments[] | {url, body}]'
 gh issue view 8 --repo m0nclous/board-fixture --json comments --jq '[.comments[] | {url, body}]'
+gh api user --jq .login
+gh project view 5 --owner @me --format json --jq .id
+gh project field-list 5 --owner @me --limit 100 --format json
+gh project item-list 5 --owner @me --limit 1000 --format json

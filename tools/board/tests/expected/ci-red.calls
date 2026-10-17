@@ -2,5 +2,5 @@ gh label list --repo m0nclous/board-fixture --limit 1000 --json name,color,descr
 gh label create stop-the-line --repo m0nclous/board-fixture --color b60205 --description 'The integration branch is red: nothing moves to done' --force
 gh issue list --repo m0nclous/board-fixture --state open --label stop-the-line --limit 100 --json number --jq '.[].number'
 gh issue create --repo m0nclous/board-fixture --title '[CI] The integration branch is red' --body '<ci body>' --label stop-the-line
-gh run view 900 --repo m0nclous/board-fixture --attempt 1 --json jobs --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled" or .conclusion == "startup_failure") | .name'
-gh issue comment 1 --repo m0nclous/board-fixture --body '**Red:** [tests run 900](https://github.com/m0nclous/board-fixture/actions/runs/900) (attempt 1) at `<head>` on `claude/integration`.\n\nFailed jobs:\n- PHP 8.2 / L^11.23 / prefer-lowest / predis / redis:6.2-alpine\n- Dist archive contents\n\n<!-- ci-run:900-1 -->'
+gh run view 900 --repo m0nclous/board-fixture --attempt 1 --json jobs --jq '[.jobs[] | select((.conclusion // "") | IN("", "skipped", "neutral") | not) | {name, conclusion}]'
+gh issue comment 1 --repo m0nclous/board-fixture --body '**Red:** [tests run 900](https://github.com/m0nclous/board-fixture/actions/runs/900) (attempt 1) at `<head>` on `claude/integration`.\n\nFailed jobs:\n- PHP 8.2 / L^11.23 / prefer-lowest / predis / redis:6.2-alpine\n- Dist archive contents\n\n<!-- ci-run:900-1 -->\n<!-- ci-jobs:<record> -->'

@@ -30,13 +30,51 @@
       {"name": "PHP 8.3 / L13.* / prefer-stable / phpredis / redis:7.4-alpine", "conclusion": "success"},
       {"name": "Static analysis and style", "conclusion": "success"},
       {"name": "Dist archive contents", "conclusion": "failure"}
-    ]},
+    ], "attempts": {"3": [
+      {"name": "PHP 8.2 / L^11.23 / prefer-lowest / predis / redis:6.2-alpine", "conclusion": "success"},
+      {"name": "Dist archive contents", "conclusion": "success"}
+    ]}},
     "901": {"jobs": [
       {"name": "Coverage (pcov, minimum 85 %)", "conclusion": "timed_out"},
       {"name": "Static analysis and style", "conclusion": "success"}
     ]},
     "902": {"jobs": [
-      {"name": "Static analysis and style", "conclusion": "success"}
+      {"name": "PHP 8.2 / L^11.23 / prefer-lowest / predis / redis:6.2-alpine", "conclusion": "success"},
+      {"name": "PHP 8.3 / L13.* / prefer-stable / phpredis / redis:7.4-alpine", "conclusion": "success"},
+      {"name": "Static analysis and style", "conclusion": "success"},
+      {"name": "Coverage (pcov, minimum 85 %)", "conclusion": "success"},
+      {"name": "Dist archive contents", "conclusion": "success"},
+      {"name": "End to end / grafana/grafana:12.4.13", "conclusion": "skipped"}
+    ]},
+    "910": {"jobs": [
+      {"name": "PHP 8.3 / L13.* / prefer-stable / phpredis / redis:7.4-alpine", "conclusion": "success"},
+      {"name": "Static analysis and style", "conclusion": "success"},
+      {"name": "End to end / grafana/grafana:12.4.13", "conclusion": "failure"},
+      {"name": "End to end / grafana/grafana:13.2.4", "conclusion": "success"}
+    ]},
+    "911": {"jobs": [
+      {"name": "PHP 8.3 / L13.* / prefer-stable / phpredis / redis:7.4-alpine", "conclusion": "success"},
+      {"name": "Static analysis and style", "conclusion": "success"},
+      {"name": "End to end / grafana/grafana:12.4.13", "conclusion": "skipped"},
+      {"name": "End to end / grafana/grafana:13.2.4", "conclusion": "skipped"}
+    ]},
+    "912": {"jobs": [
+      {"name": "PHP 8.3 / L13.* / prefer-stable / phpredis / redis:7.4-alpine", "conclusion": "success"},
+      {"name": "Static analysis and style", "conclusion": "success"},
+      {"name": "End to end / grafana/grafana:12.4.13", "conclusion": "success"},
+      {"name": "End to end / grafana/grafana:13.2.4", "conclusion": "success"}
+    ]},
+    "913": {"jobs": [
+      {"name": "PHP 8.3 / L13.* / prefer-stable / phpredis / redis:7.4-alpine", "conclusion": "failure"},
+      {"name": "Static analysis and style", "conclusion": "success"},
+      {"name": "End to end / grafana/grafana:12.4.13", "conclusion": "skipped"},
+      {"name": "End to end / grafana/grafana:13.2.4", "conclusion": "skipped"}
+    ]},
+    "914": {"jobs": [
+      {"name": "PHP 8.3 / L13.* / prefer-stable / phpredis / redis:7.4-alpine", "conclusion": "success"},
+      {"name": "Static analysis and style", "conclusion": "success"},
+      {"name": "End to end / grafana/grafana:12.4.13", "conclusion": "skipped"},
+      {"name": "End to end / grafana/grafana:13.2.4", "conclusion": "skipped"}
     ]}
   }
 }

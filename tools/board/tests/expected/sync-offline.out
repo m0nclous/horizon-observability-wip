@@ -19,17 +19,37 @@ dry-run: gh label create phase:\ C --repo m0nclous/board-fixture --color c5def5 
 create  [T00] Bootstrap (done)
 dry-run: gh issue create --repo m0nclous/board-fixture --title \[T00\]\ Bootstrap --body $'Mirrors task **T00** of [`planning/TASKS.md`](https://github.com/m0nclous/board-fixture/blob/claude/integration/planning/TASKS.md) (scope, dependencies, acceptance and QA verdicts live there).\n\nStatus, labels, QA and owner comments and the board card are synced from that file by `tools/board/board.sh`; change the file (`tools/board/set-status.sh`), not this issue.' --label task --label phase:\ 0
 dry-run: gh issue close \<new\> --repo m0nclous/board-fixture --reason completed
+create  [T01] Shared contracts (done)
+dry-run: gh issue create --repo m0nclous/board-fixture --title \[T01\]\ Shared\ contracts --body $'Mirrors task **T01** of [`planning/TASKS.md`](https://github.com/m0nclous/board-fixture/blob/claude/integration/planning/TASKS.md) (scope, dependencies, acceptance and QA verdicts live there).\n\nStatus, labels, QA and owner comments and the board card are synced from that file by `tools/board/board.sh`; change the file (`tools/board/set-status.sh`), not this issue.' --label task --label phase:\ 0
+dry-run: gh issue close \<new\> --repo m0nclous/board-fixture --reason completed
+comment T01: qa: 2026-10-03 21:00 UTC: round 1 approved by the spec and adversarial testers
+dry-run: gh issue comment \<new\> --repo m0nclous/board-fixture --body $'**QA:** 2026-10-03 21:00 UTC: round 1 approved by the spec and adversarial testers\n\n<!-- qa:65c7f0bc2755 -->'
+create  [T02] Exposition (in progress)
+dry-run: gh issue create --repo m0nclous/board-fixture --title \[T02\]\ Exposition --body $'Mirrors task **T02** of [`planning/TASKS.md`](https://github.com/m0nclous/board-fixture/blob/claude/integration/planning/TASKS.md) (scope, dependencies, acceptance and QA verdicts live there).\n\nStatus, labels, QA and owner comments and the board card are synced from that file by `tools/board/board.sh`; change the file (`tools/board/set-status.sh`), not this issue.' --label task --label phase:\ B --label in\ progress
+comment T02: qa: 2026-10-10 09:00 UTC: round 1 rejected by the adversarial tester: the cache key ignores the scope
+dry-run: gh issue comment \<new\> --repo m0nclous/board-fixture --body $'**QA:** 2026-10-10 09:00 UTC: round 1 rejected by the adversarial tester: the cache key ignores the scope\n\n<!-- qa:8cde9f6fc8e8 -->'
+create  [T03] Attempts (testing)
+dry-run: gh issue create --repo m0nclous/board-fixture --title \[T03\]\ Attempts --body $'Mirrors task **T03** of [`planning/TASKS.md`](https://github.com/m0nclous/board-fixture/blob/claude/integration/planning/TASKS.md) (scope, dependencies, acceptance and QA verdicts live there).\n\nStatus, labels, QA and owner comments and the board card are synced from that file by `tools/board/board.sh`; change the file (`tools/board/set-status.sh`), not this issue.' --label task --label phase:\ B --label testing
+create  [T04] Queue state (needs owner)
+dry-run: gh issue create --repo m0nclous/board-fixture --title \[T04\]\ Queue\ state --body $'Mirrors task **T04** of [`planning/TASKS.md`](https://github.com/m0nclous/board-fixture/blob/claude/integration/planning/TASKS.md) (scope, dependencies, acceptance and QA verdicts live there).\n\nStatus, labels, QA and owner comments and the board card are synced from that file by `tools/board/board.sh`; change the file (`tools/board/set-status.sh`), not this issue.' --label task --label phase:\ B --label needs\ owner
+comment T04: question: 2026-10-11 08:30 UTC: Keep the 1 s server cache for the live endpoint?
+dry-run: gh issue comment \<new\> --repo m0nclous/board-fixture --body $'**Owner question** for @m0nclous: 2026-10-11 08:30 UTC: Keep the 1 s server cache for the live endpoint?\n\n<!-- owner-question:675c4cc25f6b -->'
+create  [T05] Grafana port (todo)
+dry-run: gh issue create --repo m0nclous/board-fixture --title \[T05\]\ Grafana\ port --body $'Mirrors task **T05** of [`planning/TASKS.md`](https://github.com/m0nclous/board-fixture/blob/claude/integration/planning/TASKS.md) (scope, dependencies, acceptance and QA verdicts live there).\n\nStatus, labels, QA and owner comments and the board card are synced from that file by `tools/board/board.sh`; change the file (`tools/board/set-status.sh`), not this issue.' --label task --label phase:\ B --label ready
+create  [T06] Live backend (todo)
+dry-run: gh issue create --repo m0nclous/board-fixture --title \[T06\]\ Live\ backend --body $'Mirrors task **T06** of [`planning/TASKS.md`](https://github.com/m0nclous/board-fixture/blob/claude/integration/planning/TASKS.md) (scope, dependencies, acceptance and QA verdicts live there).\n\nStatus, labels, QA and owner comments and the board card are synced from that file by `tools/board/board.sh`; change the file (`tools/board/set-status.sh`), not this issue.' --label task --label phase:\ C --label blocked
+comment T06: blocked by T02 T03 T04 T05
+dry-run: gh issue comment \<new\> --repo m0nclous/board-fixture --body $'**Blocked** by T02, T03, T04, T05: this task becomes ready when they are done.\n\n<!-- blocked:T02,T03,T04,T05 -->'
+create  [T07] Release (todo)
+dry-run: gh issue create --repo m0nclous/board-fixture --title \[T07\]\ Release --body $'Mirrors task **T07** of [`planning/TASKS.md`](https://github.com/m0nclous/board-fixture/blob/claude/integration/planning/TASKS.md) (scope, dependencies, acceptance and QA verdicts live there).\n\nStatus, labels, QA and owner comments and the board card are synced from that file by `tools/board/board.sh`; change the file (`tools/board/set-status.sh`), not this issue.' --label task --label phase:\ C --label blocked
+comment T07: blocked by T02 T03 T04 T05 T06
+dry-run: gh issue comment \<new\> --repo m0nclous/board-fixture --body $'**Blocked** by T02, T03, T04, T05, T06: this task becomes ready when they are done.\n\n<!-- blocked:T02,T03,T04,T05,T06 -->'
 board   T00 add https://github.com/m0nclous/board-fixture/issues/<new>
 dry-run: gh project item-add 5 --owner m0nclous --url https://github.com/m0nclous/board-fixture/issues/\<new\>
 dry-run: set Status of https://github.com/m0nclous/board-fixture/issues/<new> to "Done"
 dry-run: set Phase of https://github.com/m0nclous/board-fixture/issues/<new> to "0"
 dry-run: set Area of https://github.com/m0nclous/board-fixture/issues/<new> to "process"
 dry-run: set QA rounds of https://github.com/m0nclous/board-fixture/issues/<new> to "0"
-create  [T01] Shared contracts (done)
-dry-run: gh issue create --repo m0nclous/board-fixture --title \[T01\]\ Shared\ contracts --body $'Mirrors task **T01** of [`planning/TASKS.md`](https://github.com/m0nclous/board-fixture/blob/claude/integration/planning/TASKS.md) (scope, dependencies, acceptance and QA verdicts live there).\n\nStatus, labels, QA and owner comments and the board card are synced from that file by `tools/board/board.sh`; change the file (`tools/board/set-status.sh`), not this issue.' --label task --label phase:\ 0
-dry-run: gh issue close \<new\> --repo m0nclous/board-fixture --reason completed
-comment T01: qa: 2026-10-03 21:00 UTC: round 1 approved by the spec and adversarial testers
-dry-run: gh issue comment \<new\> --repo m0nclous/board-fixture --body $'**QA:** 2026-10-03 21:00 UTC: round 1 approved by the spec and adversarial testers\n\n<!-- qa:65c7f0bc2755 -->'
 board   T01 add https://github.com/m0nclous/board-fixture/issues/<new>
 dry-run: gh project item-add 5 --owner m0nclous --url https://github.com/m0nclous/board-fixture/issues/\<new\>
 dry-run: set Status of https://github.com/m0nclous/board-fixture/issues/<new> to "Done"
@@ -38,10 +58,6 @@ dry-run: set Area of https://github.com/m0nclous/board-fixture/issues/<new> to "
 dry-run: set QA rounds of https://github.com/m0nclous/board-fixture/issues/<new> to "1"
 dry-run: set Started of https://github.com/m0nclous/board-fixture/issues/<new> to "2026-10-01"
 dry-run: set Finished of https://github.com/m0nclous/board-fixture/issues/<new> to "2026-10-03"
-create  [T02] Exposition (in progress)
-dry-run: gh issue create --repo m0nclous/board-fixture --title \[T02\]\ Exposition --body $'Mirrors task **T02** of [`planning/TASKS.md`](https://github.com/m0nclous/board-fixture/blob/claude/integration/planning/TASKS.md) (scope, dependencies, acceptance and QA verdicts live there).\n\nStatus, labels, QA and owner comments and the board card are synced from that file by `tools/board/board.sh`; change the file (`tools/board/set-status.sh`), not this issue.' --label task --label phase:\ B --label in\ progress
-comment T02: qa: 2026-10-10 09:00 UTC: round 1 rejected by the adversarial tester: the cache key ignores the scope
-dry-run: gh issue comment \<new\> --repo m0nclous/board-fixture --body $'**QA:** 2026-10-10 09:00 UTC: round 1 rejected by the adversarial tester: the cache key ignores the scope\n\n<!-- qa:8cde9f6fc8e8 -->'
 board   T02 add https://github.com/m0nclous/board-fixture/issues/<new>
 dry-run: gh project item-add 5 --owner m0nclous --url https://github.com/m0nclous/board-fixture/issues/\<new\>
 dry-run: set Status of https://github.com/m0nclous/board-fixture/issues/<new> to "In Progress"
@@ -49,8 +65,6 @@ dry-run: set Phase of https://github.com/m0nclous/board-fixture/issues/<new> to 
 dry-run: set Area of https://github.com/m0nclous/board-fixture/issues/<new> to "exporter"
 dry-run: set QA rounds of https://github.com/m0nclous/board-fixture/issues/<new> to "1"
 dry-run: set Started of https://github.com/m0nclous/board-fixture/issues/<new> to "2026-10-09"
-create  [T03] Attempts (testing)
-dry-run: gh issue create --repo m0nclous/board-fixture --title \[T03\]\ Attempts --body $'Mirrors task **T03** of [`planning/TASKS.md`](https://github.com/m0nclous/board-fixture/blob/claude/integration/planning/TASKS.md) (scope, dependencies, acceptance and QA verdicts live there).\n\nStatus, labels, QA and owner comments and the board card are synced from that file by `tools/board/board.sh`; change the file (`tools/board/set-status.sh`), not this issue.' --label task --label phase:\ B --label testing
 board   T03 add https://github.com/m0nclous/board-fixture/issues/<new>
 dry-run: gh project item-add 5 --owner m0nclous --url https://github.com/m0nclous/board-fixture/issues/\<new\>
 dry-run: set Status of https://github.com/m0nclous/board-fixture/issues/<new> to "Testing"
@@ -58,10 +72,6 @@ dry-run: set Phase of https://github.com/m0nclous/board-fixture/issues/<new> to 
 dry-run: set Area of https://github.com/m0nclous/board-fixture/issues/<new> to "attempts"
 dry-run: set QA rounds of https://github.com/m0nclous/board-fixture/issues/<new> to "0"
 dry-run: set Started of https://github.com/m0nclous/board-fixture/issues/<new> to "2026-10-09"
-create  [T04] Queue state (needs owner)
-dry-run: gh issue create --repo m0nclous/board-fixture --title \[T04\]\ Queue\ state --body $'Mirrors task **T04** of [`planning/TASKS.md`](https://github.com/m0nclous/board-fixture/blob/claude/integration/planning/TASKS.md) (scope, dependencies, acceptance and QA verdicts live there).\n\nStatus, labels, QA and owner comments and the board card are synced from that file by `tools/board/board.sh`; change the file (`tools/board/set-status.sh`), not this issue.' --label task --label phase:\ B --label needs\ owner
-comment T04: question: 2026-10-11 08:30 UTC: Keep the 1 s server cache for the live endpoint?
-dry-run: gh issue comment \<new\> --repo m0nclous/board-fixture --body $'**Owner question** for @m0nclous: 2026-10-11 08:30 UTC: Keep the 1 s server cache for the live endpoint?\n\n<!-- owner-question:675c4cc25f6b -->'
 board   T04 add https://github.com/m0nclous/board-fixture/issues/<new>
 dry-run: gh project item-add 5 --owner m0nclous --url https://github.com/m0nclous/board-fixture/issues/\<new\>
 dry-run: set Status of https://github.com/m0nclous/board-fixture/issues/<new> to "Needs owner"
@@ -69,28 +79,18 @@ dry-run: set Phase of https://github.com/m0nclous/board-fixture/issues/<new> to 
 dry-run: set Area of https://github.com/m0nclous/board-fixture/issues/<new> to "queues"
 dry-run: set QA rounds of https://github.com/m0nclous/board-fixture/issues/<new> to "0"
 dry-run: set Started of https://github.com/m0nclous/board-fixture/issues/<new> to "2026-10-10"
-create  [T05] Grafana port (todo)
-dry-run: gh issue create --repo m0nclous/board-fixture --title \[T05\]\ Grafana\ port --body $'Mirrors task **T05** of [`planning/TASKS.md`](https://github.com/m0nclous/board-fixture/blob/claude/integration/planning/TASKS.md) (scope, dependencies, acceptance and QA verdicts live there).\n\nStatus, labels, QA and owner comments and the board card are synced from that file by `tools/board/board.sh`; change the file (`tools/board/set-status.sh`), not this issue.' --label task --label phase:\ B --label ready
 board   T05 add https://github.com/m0nclous/board-fixture/issues/<new>
 dry-run: gh project item-add 5 --owner m0nclous --url https://github.com/m0nclous/board-fixture/issues/\<new\>
 dry-run: set Status of https://github.com/m0nclous/board-fixture/issues/<new> to "Todo"
 dry-run: set Phase of https://github.com/m0nclous/board-fixture/issues/<new> to "B"
 dry-run: set Area of https://github.com/m0nclous/board-fixture/issues/<new> to "grafana"
 dry-run: set QA rounds of https://github.com/m0nclous/board-fixture/issues/<new> to "0"
-create  [T06] Live backend (todo)
-dry-run: gh issue create --repo m0nclous/board-fixture --title \[T06\]\ Live\ backend --body $'Mirrors task **T06** of [`planning/TASKS.md`](https://github.com/m0nclous/board-fixture/blob/claude/integration/planning/TASKS.md) (scope, dependencies, acceptance and QA verdicts live there).\n\nStatus, labels, QA and owner comments and the board card are synced from that file by `tools/board/board.sh`; change the file (`tools/board/set-status.sh`), not this issue.' --label task --label phase:\ C --label blocked
-comment T06: blocked by T02 T03 T04 T05
-dry-run: gh issue comment \<new\> --repo m0nclous/board-fixture --body $'**Blocked** by T02, T03, T04, T05: this task becomes ready when they are done.\n\n<!-- blocked:T02,T03,T04,T05 -->'
 board   T06 add https://github.com/m0nclous/board-fixture/issues/<new>
 dry-run: gh project item-add 5 --owner m0nclous --url https://github.com/m0nclous/board-fixture/issues/\<new\>
 dry-run: set Status of https://github.com/m0nclous/board-fixture/issues/<new> to "Todo"
 dry-run: set Phase of https://github.com/m0nclous/board-fixture/issues/<new> to "C"
 dry-run: set Area of https://github.com/m0nclous/board-fixture/issues/<new> to "live"
 dry-run: set QA rounds of https://github.com/m0nclous/board-fixture/issues/<new> to "0"
-create  [T07] Release (todo)
-dry-run: gh issue create --repo m0nclous/board-fixture --title \[T07\]\ Release --body $'Mirrors task **T07** of [`planning/TASKS.md`](https://github.com/m0nclous/board-fixture/blob/claude/integration/planning/TASKS.md) (scope, dependencies, acceptance and QA verdicts live there).\n\nStatus, labels, QA and owner comments and the board card are synced from that file by `tools/board/board.sh`; change the file (`tools/board/set-status.sh`), not this issue.' --label task --label phase:\ C --label blocked
-comment T07: blocked by T02 T03 T04 T05 T06
-dry-run: gh issue comment \<new\> --repo m0nclous/board-fixture --body $'**Blocked** by T02, T03, T04, T05, T06: this task becomes ready when they are done.\n\n<!-- blocked:T02,T03,T04,T05,T06 -->'
 board   T07 add https://github.com/m0nclous/board-fixture/issues/<new>
 dry-run: gh project item-add 5 --owner m0nclous --url https://github.com/m0nclous/board-fixture/issues/\<new\>
 dry-run: set Status of https://github.com/m0nclous/board-fixture/issues/<new> to "Todo"

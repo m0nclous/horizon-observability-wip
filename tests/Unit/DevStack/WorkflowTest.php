@@ -70,6 +70,30 @@ function workflowLegs(array $matrix): array
     return $legs;
 }
 
+/**
+ * The values of one matrix key for an event, as GitHub evaluates them: a list as written, or one branch of the pull
+ * request subset `${{ fromJSON(github.event_name == 'pull_request' && '<json list>' || '<json list>') }}`
+ * (planning/README.md decision 14: pull requests run a fast subset, everything else the full matrix).
+ *
+ * @return list<string>
+ */
+function workflowMatrixValues(mixed $values, string $event): array
+{
+    if (is_array($values)) {
+        return array_map(strval(...), array_values($values));
+    }
+
+    $pattern = "/^\\$\\{\\{ fromJSON\\(github\\.event_name == 'pull_request' && '(\\[[^']*\\])' \\|\\| '(\\[[^']*\\])'\\) \\}\\}$/";
+
+    if (! is_string($values) || preg_match($pattern, $values, $branches) !== 1) {
+        throw new UnexpectedValueException('Not a list or a pull request subset expression: '.var_export($values, true));
+    }
+
+    $list = json_decode($event === 'pull_request' ? $branches[1] : $branches[2], true, 512, JSON_THROW_ON_ERROR);
+
+    return is_array($list) ? array_map(strval(...), array_values($list)) : [];
+}
+
 it('runs on master, claude branches, pull requests, by hand and weekly', function (): void {
     $on = workflow('tests.yml')['on'];
 
@@ -109,9 +133,44 @@ it('runs the suite without the cluster and e2e groups on every leg', function ()
 it('checks the Grafana assets and the e2e flow on Grafana 12.4.13 and 13.2.4', function (string $job): void {
     $definition = workflow('tests.yml')['jobs'][$job];
 
-    expect($definition['strategy']['matrix']['grafana'])->toBe(['grafana/grafana:12.4.13', 'grafana/grafana:13.2.4'])
-        ->and($definition['env']['GRAFANA_IMAGE'])->toBe('${{ matrix.grafana }}');
+    // Pushes (the merge into the integration branch), the weekly run and manual runs check both supported majors.
+    foreach (['push', 'schedule', 'workflow_dispatch'] as $event) {
+        expect(workflowMatrixValues($definition['strategy']['matrix']['grafana'], $event))
+            ->toBe(['grafana/grafana:12.4.13', 'grafana/grafana:13.2.4'], $event);
+    }
+
+    expect($definition['env']['GRAFANA_IMAGE'])->toBe('${{ matrix.grafana }}');
 })->with(['grafana', 'e2e']);
+
+it('checks the Grafana assets of a pull request on 13.2.4 only (the fast subset of decision 14)', function (): void {
+    $jobs = workflow('tests.yml')['jobs'];
+
+    expect(workflowMatrixValues($jobs['grafana']['strategy']['matrix']['grafana'], 'pull_request'))->toBe(['grafana/grafana:13.2.4'])
+        ->and($jobs['grafana'])->not->toHaveKey('if')
+        ->and($jobs['e2e']['if'])->not->toContain('pull_request');
+});
+
+it('runs the stable and the lowest leg of the full matrix on pull requests, and the full matrix otherwise', function (): void {
+    $jobs = workflow('tests.yml')['jobs'];
+    $sorted = static function (array $leg): array {
+        $leg = array_map(strval(...), $leg);
+        ksort($leg);
+
+        return $leg;
+    };
+    $full = array_map($sorted, workflowLegs($jobs['tests']['strategy']['matrix']));
+    // An include-only matrix: every entry is one leg.
+    $subset = array_map($sorted, $jobs['tests-pr']['strategy']['matrix']['include']);
+    $describe = static fn (array $leg): string => $leg['php'].' '.$leg['laravel'].' '.$leg['stability'].' '.$leg['client'];
+
+    // Every pull request leg is a leg of the full matrix, key by key (the lowest one is a YAML alias of its line).
+    expect($jobs['tests-pr']['strategy']['matrix'])->toHaveKeys(['include'])->toHaveCount(1)
+        ->and(array_map($describe, $subset))->toBe(['8.3 13.* prefer-stable phpredis', '8.2 ^11.23 prefer-lowest predis'])
+        ->and(array_filter($subset, static fn (array $leg): bool => ! in_array($leg, $full, true)))->toBe([])
+        ->and($jobs['tests']['if'])->toBe("github.event_name != 'pull_request'")
+        ->and($jobs['tests-pr']['if'])->toBe("github.event_name == 'pull_request'")
+        ->and(array_diff_key($jobs['tests-pr'], ['strategy' => true, 'if' => true]))->toBe(array_diff_key($jobs['tests'], ['strategy' => true, 'if' => true]));
+});
 
 it('runs the e2e job weekly and by hand only, with the dedupe gate, screenshots and the perf report', function (): void {
     $e2e = workflow('tests.yml')['jobs']['e2e'];

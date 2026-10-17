@@ -15,8 +15,9 @@
 # - `report` rewrites the body of the issue "[Board] Flow report": CI state, WIP per column against the limits, and
 #   per task status, area, QA rounds, start, finish and cycle time, plus the QA rejection rate.
 # - `ci` reads a completed run of the tests workflow (CI_* variables): red opens "[CI] The integration branch is red"
-#   (label stop-the-line) or comments on it once per run; green closes it. A run of an older commit decides only when
-#   the commits after it change nothing but the task list and the screenshots (which the tests workflow ignores).
+#   (label stop-the-line) or comments on it once per run; green closes it once every job that failed has run green
+#   (a push run that skips a red e2e job leaves it open, with one comment). A run of an older commit decides only
+#   when the commits after it change nothing but the task list and the screenshots (which the tests workflow ignores).
 #
 # Usage:
 #   tools/board/board.sh sync [--dry-run]
@@ -39,7 +40,7 @@
 #   BOARD_WIP_TESTING       WIP limit of Testing for the report (default 3, as in set-status.sh)
 #   TASKS_FILE              path of the task list (default: planning/TASKS.md)
 #   GH_TOKEN                token for gh (classic: repo, project, read:org, read:discussion)
-#   CI_CONCLUSION, CI_RUN_ID, CI_RUN_ATTEMPT, CI_RUN_URL, CI_HEAD_SHA
+#   CI_CONCLUSION, CI_RUN_ID, CI_RUN_ATTEMPT, CI_RUN_URL, CI_HEAD_SHA, CI_EVENT
 #                           the completed tests run, for `ci` (set by .github/workflows/board.yml)
 
 set -euo pipefail
@@ -299,7 +300,8 @@ normalize_owner() {
 load_fields() {
     declare -gA FIELD_ID=() FIELD_TYPE=() OPTION_ID=()
     local json name id type option
-    json="$(gh project field-list "$BOARD_NUMBER" --owner "$BOARD_OWNER" --limit 100 --format json)"
+    json="$(gh project field-list "$BOARD_NUMBER" --owner "$BOARD_OWNER" --limit 100 --format json)" ||
+        board_unreadable "the fields"
     while IFS="$US" read -r name id type; do
         [[ -z "$name" ]] || {
             FIELD_ID[$name]="$id"
@@ -314,7 +316,7 @@ load_fields() {
 }
 
 ensure_fields() {
-    local name created=0 args
+    local name created=0 args error
     for name in "${FIELDS[@]}"; do
         [[ -z "${FIELD_ID[$name]:-}" ]] || continue
         [[ "$name" != "Phase" || ${#PHASES[@]} -gt 0 ]] || continue
@@ -324,7 +326,11 @@ ensure_fields() {
             Area) args+=(--single-select-options "${BOARD_AREAS// /,}") ;;
         esac
         echo "field   create $name"
-        run gh "${args[@]}" >/dev/null
+        if ! error="$(run gh "${args[@]}" 2>&1 >/dev/null)"; then
+            # Like a field that refuses a write: named, then left out, so that it cannot stop the status sync.
+            warn "could not create the board field \"$name\" (${error//$'\n'/ }); the sync goes on without it (create it in the board settings, or give the token the project scope)"
+            continue
+        fi
         created=1
     done
     if [[ "$created" == 1 && "$DRY_RUN" != 1 ]]; then
@@ -365,7 +371,8 @@ ensure_fields() {
 load_items() {
     declare -gA ITEM_ID=() ITEM_VALUE=()
     local json url id key value
-    json="$(gh project item-list "$BOARD_NUMBER" --owner "$BOARD_OWNER" --limit 1000 --format json)"
+    json="$(gh project item-list "$BOARD_NUMBER" --owner "$BOARD_OWNER" --limit 1000 --format json)" ||
+        board_unreadable "the items"
     while IFS="$US" read -r url id; do
         [[ -z "$url" ]] || ITEM_ID[$url]="$id"
     done <<<"$(jq -r '.items[] | select(.content.url != null) | [.content.url, .id] | join("\u001f")' <<<"$json")"
@@ -376,13 +383,19 @@ load_items() {
         | [$url, (.key | ascii_downcase), (.value | tostring)] | map(gsub("[\n\u001f]"; " ")) | join("\u001f")' <<<"$json")"
 }
 
+# The board is synced after the issues (cmd_sync), so a board that cannot be read (the token's project scope, a wrong
+# number or owner) stops only the board part, and says so.
+board_unreadable() {
+    die "cannot read $1 of board $BOARD_NUMBER of $BOARD_OWNER (gh's message above); the issues, labels and comments are synced, the board is not"
+}
+
 load_board() {
     declare -gA FIELD_ID=() FIELD_TYPE=() FIELD_SKIP=() OPTION_ID=() ITEM_ID=() ITEM_VALUE=()
     [[ -n "$BOARD_NUMBER" ]] || return 0
     [[ -n "$BOARD_OWNER" ]] || die "BOARD_NUMBER needs BOARD_OWNER"
     offline && return 0
     normalize_owner
-    PROJECT_ID="$(gh project view "$BOARD_NUMBER" --owner "$BOARD_OWNER" --format json --jq .id)"
+    PROJECT_ID="$(gh project view "$BOARD_NUMBER" --owner "$BOARD_OWNER" --format json --jq .id)" || board_unreadable "the project"
     load_fields
     ensure_fields
     load_items
@@ -442,9 +455,11 @@ place_on_board() {
         if [[ "$DRY_RUN" == 1 ]]; then
             run gh project item-add "$BOARD_NUMBER" --owner "$BOARD_OWNER" --url "$url"
             item="<new>"
-        else
-            item="$(gh project item-add "$BOARD_NUMBER" --owner "$BOARD_OWNER" --url "$url" --format json --jq .id)"
+        elif item="$(gh project item-add "$BOARD_NUMBER" --owner "$BOARD_OWNER" --url "$url" --format json --jq .id)"; then
             ITEM_ID[$url]="$item"
+        else
+            warn "could not add $url to the board (gh's message above); the next sync tries again"
+            return 0
         fi
     fi
     set_field "$id" "$item" "$url" "Status" "${COLUMN[$status]}"
@@ -563,6 +578,7 @@ sync_task() {
         number="${url##*/}"
         state="OPEN"
         fresh=1
+        ISSUE_URL[$id]="$url"
     else
         state="${ISSUE_STATE[$id]}"
         url="${ISSUE_URL[$id]}"
@@ -593,10 +609,6 @@ sync_task() {
     fi
 
     sync_comments "$id" "$number" "$fresh" "$missing" "$([[ "$status" == "todo" ]] && echo 1 || echo 0)" "$had_blocked"
-
-    if [[ -n "$BOARD_NUMBER" ]]; then
-        place_on_board "$id" "$url" "$status"
-    fi
 }
 
 cmd_sync() {
@@ -614,9 +626,15 @@ cmd_sync() {
     done
 
     load_issues
-    load_board
     for id in "${TASK_IDS[@]}"; do
         sync_task "$id"
+    done
+
+    # The board last: whatever goes wrong there, the issues, labels and comments are already in place.
+    [[ -n "$BOARD_NUMBER" ]] || return 0
+    load_board
+    for id in "${TASK_IDS[@]}"; do
+        place_on_board "$id" "${ISSUE_URL[$id]}" "${TASK_STATUS[$id]}"
     done
 }
 
@@ -789,6 +807,7 @@ cmd_ci() {
     CI_RUN_ID="${CI_RUN_ID:-}"
     CI_RUN_ATTEMPT="${CI_RUN_ATTEMPT:-1}"
     CI_HEAD_SHA="${CI_HEAD_SHA:-}"
+    CI_EVENT="${CI_EVENT:-}"
     [[ -n "$CI_CONCLUSION" && "$CI_RUN_ID" =~ ^[0-9]+$ ]] || die "ci needs CI_CONCLUSION and a numeric CI_RUN_ID"
     CI_RUN_URL="${CI_RUN_URL:-https://github.com/$REPO/actions/runs/$CI_RUN_ID}"
 
@@ -822,15 +841,23 @@ cmd_ci() {
 }
 
 ci_where() {
-    printf '[tests run %s](%s) (attempt %s)' "$CI_RUN_ID" "$CI_RUN_URL" "$CI_RUN_ATTEMPT"
+    printf '[tests run %s](%s) (attempt %s%s)' "$CI_RUN_ID" "$CI_RUN_URL" "$CI_RUN_ATTEMPT" "${CI_EVENT:+, $CI_EVENT}"
     [[ -z "$CI_HEAD_SHA" ]] || printf " at \`%s\`" "${CI_HEAD_SHA:0:7}"
     printf " on \`%s\`" "$BRANCH"
 }
 
+# The jobs of the run attempt that ran, as a JSON array of {name, conclusion} (skipped jobs left out).
+run_jobs() {
+    gh run view "$CI_RUN_ID" --repo "$REPO" --attempt "$CI_RUN_ATTEMPT" --json jobs \
+        --jq '[.jobs[] | select((.conclusion // "") | IN("", "skipped", "neutral") | not) | {name, conclusion}]'
+}
+
+RED_CONCLUSIONS='["failure", "timed_out", "cancelled", "startup_failure"]'
+
 ci_red() {
     load_labels
     ensure_label "$CI_LABEL"
-    local open number fresh=0 existing="" jobs="" marker body url
+    local open number fresh=0 existing="" jobs="" failed="" record="" marker body url
     open="$(open_ci_issues)"
     open="${open%%$'\n'*}"
     if [[ -z "$open" ]]; then
@@ -838,7 +865,7 @@ ci_red() {
         body="$CI_MARKER
 The \`tests\` workflow is red on the integration branch \`$BRANCH\` since $(ci_where).
 
-**Stop the line.** While this issue is open nothing moves to \`done\`: testers do not post \`QA verdict: APPROVED\`, nobody runs \`set-status.sh <Txx> done\` and the integrator merges no task branch. Make the branch green first (fix forward or revert the breaking merge). The board workflow comments every further red run here and closes this issue when the \`tests\` workflow is green again."
+**Stop the line.** While this issue is open nothing moves to \`done\`: testers do not post \`QA verdict: APPROVED\`, nobody runs \`set-status.sh <Txx> done\` and the integrator merges no task branch. Make the branch green first (fix forward or revert the breaking merge). The board workflow comments every further red run here and closes this issue when a green run has run every job that is still red."
         if [[ "$DRY_RUN" == 1 ]]; then
             run gh issue create --repo "$REPO" --title "$CI_TITLE" --body "$body" --label "$CI_LABEL"
             number="<new>"
@@ -852,37 +879,70 @@ The \`tests\` workflow is red on the integration branch \`$BRANCH\` since $(ci_w
     fi
 
     marker="<!-- ci-run:$CI_RUN_ID-$CI_RUN_ATTEMPT -->"
+    # The bodies, decoded by jq: gh's --jq prints arrays and objects HTML-escaped (<!-- as \u003c!--).
     if [[ "$fresh" == 0 ]] && ! offline; then
-        existing="$(comments_of "$number")"
+        existing="$(comments_of "$number" | jq -r '.[].body')"
     fi
     if [[ "$existing" == *"$marker"* ]]; then
         echo "ci      tests run $CI_RUN_ID (attempt $CI_RUN_ATTEMPT) is already on #$number"
         return 0
     fi
-    # The comment matters more than the job names: a failed lookup only loses the list.
-    if ! offline && ! jobs="$(gh run view "$CI_RUN_ID" --repo "$REPO" --attempt "$CI_RUN_ATTEMPT" --json jobs \
-        --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled" or .conclusion == "startup_failure") | .name')"; then
-        warn "could not list the jobs of tests run $CI_RUN_ID"
-        jobs=""
+    # The comment matters more than the job names: a failed lookup only loses the list. The hidden record of every
+    # job's conclusion lets a later green run that did not run some job (a push run has no e2e) leave the line stopped.
+    if ! offline; then
+        if jobs="$(run_jobs)"; then
+            failed="$(jq -r --argjson red "$RED_CONCLUSIONS" '.[] | select(.conclusion | IN($red[])) | .name' <<<"$jobs")"
+            record="<!-- ci-jobs:$(jq -r 'map({(.name): .conclusion}) | add // {} | tojson | @base64' <<<"$jobs") -->"
+        else
+            warn "could not list the jobs of tests run $CI_RUN_ID"
+        fi
     fi
     body="**Red:** $(ci_where)."
-    if [[ -n "$jobs" ]]; then
-        body+=$'\n\n'"Failed jobs:"$'\n'"- ${jobs//$'\n'/$'\n'- }"
+    if [[ -n "$failed" ]]; then
+        body+=$'\n\n'"Failed jobs:"$'\n'"- ${failed//$'\n'/$'\n'- }"
     else
         body+=$'\n\n'"No failed job was listed; see the run."
     fi
+    body+=$'\n\n'"$marker"
+    [[ -z "$record" ]] || body+=$'\n'"$record"
     echo "ci      comment tests run $CI_RUN_ID on #$number"
-    run gh issue comment "$number" --repo "$REPO" --body "$body"$'\n\n'"$marker" >/dev/null
+    run gh issue comment "$number" --repo "$REPO" --body "$body" >/dev/null
 }
 
+# A green run closes the issue when every job is green by its latest record: the job records of the red runs on the
+# issue (oldest first), then this run's jobs. A job that failed before and that this run did not run (the e2e job of
+# a weekly or manual run, which push runs skip) keeps the line stopped, with one comment per such set of jobs: a run
+# by hand (or the next weekly run) that runs it green closes the issue.
 ci_green() {
-    local open number
+    local open number jobs="" comments outstanding marker
     open="$(open_ci_issues)"
     if [[ -z "$open" ]]; then
         echo "ci      the line is clear"
         return 0
     fi
+    if ! offline && ! jobs="$(run_jobs)"; then
+        warn "could not list the jobs of tests run $CI_RUN_ID; it closes the issue on its conclusion alone"
+        jobs=""
+    fi
     for number in $open; do
+        outstanding=""
+        if [[ -n "$jobs" ]]; then
+            comments="$(comments_of "$number")"
+            outstanding="$(jq -r --argjson green "$jobs" --argjson red "$RED_CONCLUSIONS" '
+                [.[].body | capture("<!-- ci-jobs:(?<record>[A-Za-z0-9+/=]+) -->"; "g") | .record | @base64d | fromjson]
+                + [$green | map({(.name): .conclusion}) | add // {}]
+                | add // {} | to_entries[] | select(.value | IN($red[])) | .key' <<<"$comments")"
+        fi
+        if [[ -n "$outstanding" ]]; then
+            marker="<!-- ci-waiting:$(note_hash "$outstanding") -->"
+            if jq -e --arg marker "$marker" 'any(.[]; .body | contains($marker))' <<<"$comments" >/dev/null; then
+                echo "ci      tests run $CI_RUN_ID is green, but #$number still waits for a green run of: ${outstanding//$'\n'/, }"
+                continue
+            fi
+            echo "ci      tests run $CI_RUN_ID is green, but did not run ${outstanding//$'\n'/, }: #$number stays open"
+            run gh issue comment "$number" --repo "$REPO" --body "**Green, but not every red job ran:** $(ci_where) is green, but it did not run ${outstanding//$'\n'/, }, which failed before. The line stays stopped until a run that runs them is green: run the \`tests\` workflow by hand on \`$BRANCH\` (Actions → tests → Run workflow, or MCP \`actions_run_trigger\`), or wait for the weekly run."$'\n\n'"$marker" >/dev/null
+            continue
+        fi
         echo "ci      green again: close #$number"
         run gh issue close "$number" --repo "$REPO" --reason completed \
             --comment "**Green again:** $(ci_where). The line moves again."$'\n\n'"<!-- ci-green:$CI_RUN_ID-$CI_RUN_ATTEMPT -->" >/dev/null

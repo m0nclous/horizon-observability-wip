@@ -113,11 +113,14 @@ that the next task points to. Everything here is export-ignored and will be dele
       their own comments, and every other board write uses the owner's token). Whoever receives the answer records it
       with `--answer "..."` and moves the task back to `in progress` (WIP permitting) or `todo`. Do not guess past an
       open owner question.
-    - **Stop the line.** When the `tests` workflow fails on a push to the integration branch, the board workflow opens
-      "[CI] The integration branch is red" (label `stop-the-line`) and closes it when the branch is green again. While
-      it is open nothing moves to `done`: testers and the integrator check for it via MCP before approving or merging,
-      and the next work is making the branch green (fix forward or revert). Pushes that change only `TASKS.md` and
-      `planning/screenshots/` run no tests; the last run's verdict stands for them.
+    - **Stop the line.** When a run of the `tests` workflow on the integration branch fails (a push, the weekly run or
+      a manual run), the board workflow opens "[CI] The integration branch is red" (label `stop-the-line`). It closes
+      it when a green run has run every job that is still red: a green push run does not clear a red weekly e2e job
+      (it says so once); after the fix, run the `tests` workflow by hand on the integration branch (MCP
+      `actions_run_trigger`) or wait for the weekly run. While the issue is open nothing moves to `done`: testers and
+      the integrator check for it via MCP before approving or merging, and the next work is making the branch green
+      (fix forward or revert). Pushes that change only `TASKS.md` and `planning/screenshots/` run no tests; the last
+      run's verdict stands for them.
     - **One pull request per task.** Task code goes to `wip/Txx-<slug>` on `origin` with a draft PR to the integration
       branch via MCP (`Closes #<issue>`), never straight to the integration branch: only `set-status.sh` commits and
       `integrator:` commits go there directly. Pull requests run a fast CI subset (static, the stable leg
@@ -125,20 +128,26 @@ that the next task points to. Everything here is export-ignored and will be dele
       on the integration branch after the merge. All GitHub writes act as the owner's account, so testers post
       **COMMENT** reviews that start with `QA verdict: APPROVED` or `QA verdict: CHANGES REQUESTED` (GitHub refuses
       APPROVE and REQUEST_CHANGES on a PR of its own author). The integrator merges via MCP (merge commit), or locally
-      with `--no-ff` and a push, only when the task is `done`, the PR checks are green and no `stop-the-line` issue is
-      open.
+      with `--no-ff` in a separate worktree and a push, only when the task is `done`, the PR checks are green and no
+      `stop-the-line` issue is open (`set-status.sh` refuses to publish unpushed commits of the main checkout that are
+      not status changes, so a merge under test there would block every status change).
     - **Dependencies and WIP limits.** `set-status.sh` first brings the main checkout up to date with origin (fetch and
-      fast-forward), so its gates see merged PRs and other sessions' moves; it refuses `in progress`, `testing` and
-      `done` while a dependency (heading tail `(depends on ...)` or the phase's `(all depend on ...)`) is not `done`,
-      and a task entering In Progress at 2 tasks or Testing at 3 (`BOARD_WIP_IN_PROGRESS`, `BOARD_WIP_TESTING`). A QA
-      rejection (`testing` -> `in progress` with `--qa "round N rejected by ..."`) always returns to In Progress.
+      fast-forward), so its gates see merged PRs and other sessions' moves. It refuses starting work (`todo`, or
+      `needs owner` before the task started, -> `in progress` or `testing`) and `done` while a dependency (heading
+      tail `(depends on ...)` or the phase's `(all depend on ...)`) is not `done`; moves inside the work (notes,
+      `in progress` -> `testing`, QA rejections, answers that resume work, reopening) are not gated, so a reopened
+      dependency never locks its dependants. It refuses a task entering In Progress at 2 tasks or Testing at 3
+      (`BOARD_WIP_IN_PROGRESS`, `BOARD_WIP_TESTING`). A QA rejection (`testing` -> `in progress` with
+      `--qa "round N rejected by ..."`) always returns to In Progress.
       `--force --reason "why"` overrides; the commit records what was forced and why; use it rarely. The board labels
       todo tasks `ready` or `blocked` (with one comment naming the missing dependencies): take ready tasks only.
     - **Fields and report.** The board carries Phase, Area (`tools/board/areas.tsv`; add a line for every new task, the
       sync warns otherwise), QA rounds, Started and Finished. The pinned issue "[Board] Flow report" shows WIP against
       the limits, the CI state, open owner questions and per-task QA rounds, start, finish and cycle days with the
-      rejection rate. QA lines say `round N approved by ...` or `round N rejected by ...`: the board counts each
-      distinct round once (rejected when any line of it rejects).
+      rejection rate. QA lines say `round N approved by ...` or `round N rejected by ...` (the verdict is the word
+      right after `round N` or `QA verdict:`): the board counts each distinct round once (rejected when any line of it
+      rejects). Board warnings (a task without an area, a heading or dependency clause the parser cannot read) are
+      annotations of the board run.
     - **Screenshots.** Evidence images go in with `set-status.sh ... --attach <png>` (at most 1 MiB each; committed to
       `planning/screenshots/<Txx>/` and linked from the QA comment by commit, so the links outlive T15's deletion of
       `planning/`). Visual tasks (dashboard: T13, T15, T17, any change of `src/Grafana/**` or `resources/grafana/**`)

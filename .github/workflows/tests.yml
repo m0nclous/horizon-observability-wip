@@ -3,8 +3,8 @@
 # dedupe gate and the performance report on both Grafana versions; non-blocking until T15).
 # Pull requests (one per task, planning/README.md decision 14) run a fast subset: static, tests-pr (the stable leg
 # PHP 8.3 / L13 / phpredis and the lowest leg PHP 8.2 / L11 / predis) and grafana on 13.2.4 only. Pushes to master
-# and claude/** (the merge into the integration branch), the schedule and manual runs keep the full matrix; a red push
-# run of the integration branch stops the line (.github/workflows/board.yml).
+# and claude/** (the merge into the integration branch), the schedule and manual runs keep the full matrix; a red push,
+# scheduled or manual run of the integration branch stops the line (.github/workflows/board.yml).
 # A push that changes only the task list or QA screenshots (tools/board/set-status.sh) runs nothing: the verdict of
 # the last run stands (board.sh ci treats those paths alike: BOARD_ONLY_PATHS).
 name: tests
@@ -53,7 +53,7 @@ jobs:
           - {laravel: '12.*', testbench: '^10.0'}
           - {laravel: '13.*', testbench: '^11.0'}
           # The oldest supported point of every shim, the second client and the other servers.
-          - {php: '8.2', laravel: '^11.23', testbench: '^9.5', stability: prefer-lowest, client: predis, predis: '^2.0.2', redis: 'redis:6.2-alpine'}
+          - &pr-lowest {php: '8.2', laravel: '^11.23', testbench: '^9.5', stability: prefer-lowest, client: predis, predis: '^2.0.2', redis: 'redis:6.2-alpine'}
           - {php: '8.2', laravel: '^12.0', testbench: '^10.0', stability: prefer-lowest, client: phpredis, redis: 'redis:6.2-alpine'}
           - {php: '8.3', laravel: '^13.0', testbench: '^11.0', stability: prefer-lowest, client: phpredis, redis: 'valkey/valkey:7.2-alpine'}
           - {php: '8.4', laravel: '12.*', testbench: '^10.0', stability: prefer-stable, client: predis, predis: '^3.0', redis: 'redis:7.4-alpine'}
@@ -85,7 +85,8 @@ jobs:
       - run: composer show laravel/framework laravel/horizon orchestra/testbench pestphp/pest predis/predis
       - run: vendor/bin/pest --ci --exclude-group=cluster --exclude-group=e2e
 
-  # The pull request subset of the matrix above: the same steps (YAML anchors) on two legs.
+  # The pull request subset of the matrix above: the same steps (YAML anchors) on two legs, the stable leg of the
+  # base product and the lowest L11 leg (an alias of its include line, so the two cannot drift apart).
   tests-pr:
     name: *leg-name
     if: github.event_name == 'pull_request'
@@ -96,7 +97,7 @@ jobs:
       matrix:
         include:
           - {php: '8.3', laravel: '13.*', testbench: '^11.0', stability: prefer-stable, client: phpredis, redis: 'redis:7.4-alpine'}
-          - {php: '8.2', laravel: '^11.23', testbench: '^9.5', stability: prefer-lowest, client: predis, predis: '^2.0.2', redis: 'redis:6.2-alpine'}
+          - *pr-lowest
     services: *leg-services
     env: *leg-env
     steps: *leg-steps
@@ -155,10 +156,15 @@ jobs:
           php-version: '8.4'
           extensions: redis, pcntl, posix, pdo_sqlite, mbstring
           coverage: none
-      # The board tooling (bash, offline: a stub gh, no GitHub API).
-      - name: Board tooling (shellcheck, tools/board/tests/run.sh)
+      # The board tooling (bash, offline: a stub gh, no GitHub API). shellcheck is pinned: the runner's own one
+      # (0.9.0 on ubuntu-24.04) reports other checks than a current one, so CI and a local
+      # `pip install shellcheck-py==0.11.0.1` must agree (tools/board/README.md, Tests).
+      - name: Board tooling (shellcheck 0.11.0, tools/board/tests/run.sh)
         run: |
-          shellcheck -x tools/board/*.sh tools/board/tests/run.sh
+          python3 -m venv "$RUNNER_TEMP/shellcheck"
+          "$RUNNER_TEMP/shellcheck/bin/pip" install --quiet --disable-pip-version-check shellcheck-py==0.11.0.1
+          "$RUNNER_TEMP/shellcheck/bin/shellcheck" --version
+          "$RUNNER_TEMP/shellcheck/bin/shellcheck" -x tools/board/*.sh tools/board/tests/run.sh
           tools/board/tests/run.sh
       - run: composer validate --strict
       - run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress

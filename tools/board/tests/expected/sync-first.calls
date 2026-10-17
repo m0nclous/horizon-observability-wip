@@ -9,6 +9,21 @@ gh label create 'phase: 0' --repo m0nclous/board-fixture --color c5def5 --descri
 gh label create 'phase: B' --repo m0nclous/board-fixture --color c5def5 --description 'Phase B of planning/TASKS.md' --force
 gh label create 'phase: C' --repo m0nclous/board-fixture --color c5def5 --description 'Phase C of planning/TASKS.md' --force
 gh issue list --repo m0nclous/board-fixture --state all --label task --limit 1000 --json number,state,url,title,labels --jq '.[] | [(.number | tostring), .state, .url, .title, ([.labels[].name] | join("\u001e"))] | map(gsub("[\n\u001f]"; " ")) | join("\u001f")'
+gh issue create --repo m0nclous/board-fixture --title '[T00] Bootstrap' --body '<task body>' --label task --label 'phase: 0'
+gh issue close 1 --repo m0nclous/board-fixture --reason completed
+gh issue create --repo m0nclous/board-fixture --title '[T01] Shared contracts' --body '<task body>' --label task --label 'phase: 0'
+gh issue close 2 --repo m0nclous/board-fixture --reason completed
+gh issue comment 2 --repo m0nclous/board-fixture --body '**QA:** 2026-10-03 21:00 UTC: round 1 approved by the spec and adversarial testers\n\n<!-- qa:65c7f0bc2755 -->'
+gh issue create --repo m0nclous/board-fixture --title '[T02] Exposition' --body '<task body>' --label task --label 'phase: B' --label 'in progress'
+gh issue comment 3 --repo m0nclous/board-fixture --body '**QA:** 2026-10-10 09:00 UTC: round 1 rejected by the adversarial tester: the cache key ignores the scope\n\n<!-- qa:8cde9f6fc8e8 -->'
+gh issue create --repo m0nclous/board-fixture --title '[T03] Attempts' --body '<task body>' --label task --label 'phase: B' --label testing
+gh issue create --repo m0nclous/board-fixture --title '[T04] Queue state' --body '<task body>' --label task --label 'phase: B' --label 'needs owner'
+gh issue comment 5 --repo m0nclous/board-fixture --body '**Owner question** for @m0nclous: 2026-10-11 08:30 UTC: Keep the 1 s server cache for the live endpoint?\n\n<!-- owner-question:675c4cc25f6b -->'
+gh issue create --repo m0nclous/board-fixture --title '[T05] Grafana port' --body '<task body>' --label task --label 'phase: B' --label ready
+gh issue create --repo m0nclous/board-fixture --title '[T06] Live backend' --body '<task body>' --label task --label 'phase: C' --label blocked
+gh issue comment 7 --repo m0nclous/board-fixture --body '**Blocked** by T02, T03, T04, T05: this task becomes ready when they are done.\n\n<!-- blocked:T02,T03,T04,T05 -->'
+gh issue create --repo m0nclous/board-fixture --title '[T07] Release' --body '<task body>' --label task --label 'phase: C' --label blocked
+gh issue comment 8 --repo m0nclous/board-fixture --body '**Blocked** by T02, T03, T04, T05, T06: this task becomes ready when they are done.\n\n<!-- blocked:T02,T03,T04,T05,T06 -->'
 gh api user --jq .login
 gh project view 5 --owner @me --format json --jq .id
 gh project field-list 5 --owner @me --limit 100 --format json
@@ -19,16 +34,11 @@ gh project field-create 5 --owner @me --name Started --data-type DATE
 gh project field-create 5 --owner @me --name Finished --data-type DATE
 gh project field-list 5 --owner @me --limit 100 --format json
 gh project item-list 5 --owner @me --limit 1000 --format json
-gh issue create --repo m0nclous/board-fixture --title '[T00] Bootstrap' --body '<task body>' --label task --label 'phase: 0'
-gh issue close 1 --repo m0nclous/board-fixture --reason completed
 gh project item-add 5 --owner @me --url https://github.com/m0nclous/board-fixture/issues/1 --format json --jq .id
 gh project item-edit --id PVTI_106 --project-id PVT_board5 --field-id PVTSSF_status --single-select-option-id st_done
 gh project item-edit --id PVTI_106 --project-id PVT_board5 --field-id PVTSSF_101 --single-select-option-id opt101_1
 gh project item-edit --id PVTI_106 --project-id PVT_board5 --field-id PVTSSF_102 --single-select-option-id opt102_12
 gh project item-edit --id PVTI_106 --project-id PVT_board5 --field-id PVTF_103 --number 0
-gh issue create --repo m0nclous/board-fixture --title '[T01] Shared contracts' --body '<task body>' --label task --label 'phase: 0'
-gh issue close 2 --repo m0nclous/board-fixture --reason completed
-gh issue comment 2 --repo m0nclous/board-fixture --body '**QA:** 2026-10-03 21:00 UTC: round 1 approved by the spec and adversarial testers\n\n<!-- qa:65c7f0bc2755 -->'
 gh project item-add 5 --owner @me --url https://github.com/m0nclous/board-fixture/issues/2 --format json --jq .id
 gh project item-edit --id PVTI_107 --project-id PVT_board5 --field-id PVTSSF_status --single-select-option-id st_done
 gh project item-edit --id PVTI_107 --project-id PVT_board5 --field-id PVTSSF_101 --single-select-option-id opt101_1
@@ -36,43 +46,33 @@ gh project item-edit --id PVTI_107 --project-id PVT_board5 --field-id PVTSSF_102
 gh project item-edit --id PVTI_107 --project-id PVT_board5 --field-id PVTF_103 --number 1
 gh project item-edit --id PVTI_107 --project-id PVT_board5 --field-id PVTF_104 --date 2026-10-01
 gh project item-edit --id PVTI_107 --project-id PVT_board5 --field-id PVTF_105 --date 2026-10-03
-gh issue create --repo m0nclous/board-fixture --title '[T02] Exposition' --body '<task body>' --label task --label 'phase: B' --label 'in progress'
-gh issue comment 3 --repo m0nclous/board-fixture --body '**QA:** 2026-10-10 09:00 UTC: round 1 rejected by the adversarial tester: the cache key ignores the scope\n\n<!-- qa:8cde9f6fc8e8 -->'
 gh project item-add 5 --owner @me --url https://github.com/m0nclous/board-fixture/issues/3 --format json --jq .id
 gh project item-edit --id PVTI_108 --project-id PVT_board5 --field-id PVTSSF_status --single-select-option-id st_progress
 gh project item-edit --id PVTI_108 --project-id PVT_board5 --field-id PVTSSF_101 --single-select-option-id opt101_2
 gh project item-edit --id PVTI_108 --project-id PVT_board5 --field-id PVTSSF_102 --single-select-option-id opt102_1
 gh project item-edit --id PVTI_108 --project-id PVT_board5 --field-id PVTF_103 --number 1
 gh project item-edit --id PVTI_108 --project-id PVT_board5 --field-id PVTF_104 --date 2026-10-09
-gh issue create --repo m0nclous/board-fixture --title '[T03] Attempts' --body '<task body>' --label task --label 'phase: B' --label testing
 gh project item-add 5 --owner @me --url https://github.com/m0nclous/board-fixture/issues/4 --format json --jq .id
 gh project item-edit --id PVTI_109 --project-id PVT_board5 --field-id PVTSSF_status --single-select-option-id st_testing
 gh project item-edit --id PVTI_109 --project-id PVT_board5 --field-id PVTSSF_101 --single-select-option-id opt101_2
 gh project item-edit --id PVTI_109 --project-id PVT_board5 --field-id PVTSSF_102 --single-select-option-id opt102_2
 gh project item-edit --id PVTI_109 --project-id PVT_board5 --field-id PVTF_103 --number 0
 gh project item-edit --id PVTI_109 --project-id PVT_board5 --field-id PVTF_104 --date 2026-10-09
-gh issue create --repo m0nclous/board-fixture --title '[T04] Queue state' --body '<task body>' --label task --label 'phase: B' --label 'needs owner'
-gh issue comment 5 --repo m0nclous/board-fixture --body '**Owner question** for @m0nclous: 2026-10-11 08:30 UTC: Keep the 1 s server cache for the live endpoint?\n\n<!-- owner-question:675c4cc25f6b -->'
 gh project item-add 5 --owner @me --url https://github.com/m0nclous/board-fixture/issues/5 --format json --jq .id
 gh project item-edit --id PVTI_110 --project-id PVT_board5 --field-id PVTSSF_101 --single-select-option-id opt101_2
 gh project item-edit --id PVTI_110 --project-id PVT_board5 --field-id PVTSSF_102 --single-select-option-id opt102_3
 gh project item-edit --id PVTI_110 --project-id PVT_board5 --field-id PVTF_103 --number 0
 gh project item-edit --id PVTI_110 --project-id PVT_board5 --field-id PVTF_104 --date 2026-10-10
-gh issue create --repo m0nclous/board-fixture --title '[T05] Grafana port' --body '<task body>' --label task --label 'phase: B' --label ready
 gh project item-add 5 --owner @me --url https://github.com/m0nclous/board-fixture/issues/6 --format json --jq .id
 gh project item-edit --id PVTI_111 --project-id PVT_board5 --field-id PVTSSF_status --single-select-option-id st_todo
 gh project item-edit --id PVTI_111 --project-id PVT_board5 --field-id PVTSSF_101 --single-select-option-id opt101_2
 gh project item-edit --id PVTI_111 --project-id PVT_board5 --field-id PVTSSF_102 --single-select-option-id opt102_8
 gh project item-edit --id PVTI_111 --project-id PVT_board5 --field-id PVTF_103 --number 0
-gh issue create --repo m0nclous/board-fixture --title '[T06] Live backend' --body '<task body>' --label task --label 'phase: C' --label blocked
-gh issue comment 7 --repo m0nclous/board-fixture --body '**Blocked** by T02, T03, T04, T05: this task becomes ready when they are done.\n\n<!-- blocked:T02,T03,T04,T05 -->'
 gh project item-add 5 --owner @me --url https://github.com/m0nclous/board-fixture/issues/7 --format json --jq .id
 gh project item-edit --id PVTI_112 --project-id PVT_board5 --field-id PVTSSF_status --single-select-option-id st_todo
 gh project item-edit --id PVTI_112 --project-id PVT_board5 --field-id PVTSSF_101 --single-select-option-id opt101_3
 gh project item-edit --id PVTI_112 --project-id PVT_board5 --field-id PVTSSF_102 --single-select-option-id opt102_9
 gh project item-edit --id PVTI_112 --project-id PVT_board5 --field-id PVTF_103 --number 0
-gh issue create --repo m0nclous/board-fixture --title '[T07] Release' --body '<task body>' --label task --label 'phase: C' --label blocked
-gh issue comment 8 --repo m0nclous/board-fixture --body '**Blocked** by T02, T03, T04, T05, T06: this task becomes ready when they are done.\n\n<!-- blocked:T02,T03,T04,T05,T06 -->'
 gh project item-add 5 --owner @me --url https://github.com/m0nclous/board-fixture/issues/8 --format json --jq .id
 gh project item-edit --id PVTI_113 --project-id PVT_board5 --field-id PVTSSF_status --single-select-option-id st_todo
 gh project item-edit --id PVTI_113 --project-id PVT_board5 --field-id PVTSSF_101 --single-select-option-id opt101_3

@@ -9,15 +9,19 @@
 # "QA: <stamp>: text", "Owner question: <stamp>: text" and "Owner answer: <stamp>: text", newest first.
 #
 # Dependency lists: ids (also lowercase), ranges with a hyphen, an en dash or an em dash (spaced or not), "..", "to",
-# "through" or "thru" (T03–T08, T02 – T04, T00 through T02), separated by commas, "and", "&", "+" or "/". Anything
-# else in the clause is reported as a warning, so that a typo cannot silently drop a dependency.
+# "through" or "thru" (T03–T08, T02 – T04, T00 through T02), separated by commas, "and", "&", "+" or "/". The clause
+# words are read in any case ("(Depends on T01)"). Anything else in the clause is reported as a warning, and so is
+# every "### Txx" heading that is not a task heading (no em dash before the status, an unknown status such as `Todo`
+# or `in-progress`), a tail that names an id without a "depends on" clause ("(depend on T01)", "(after T05)") and a
+# dependency clause inside the title: a typo must not silently drop a dependency or a task.
 #
 # awk runs with LC_ALL=C (byte semantics) so mawk, gawk and BSD awk read the em and en dashes the same way.
 
 BOARD_STATUSES="todo|in progress|testing|needs owner|done"
 BOARD_AREAS="exporter attempts queues http batches discovery horizon-ui grafana live ci docs process"
 
-# Prints one tab-separated line per task: id, title, status, phase, dependencies (space-separated ids, may be empty).
+# Prints one line per task, fields separated by US (\x1f, not a whitespace character, so that an empty phase stays a
+# field of its own): id, title, status, phase, dependencies (space-separated ids, may be empty).
 # Warnings (unparsed dependency text) go to stderr.
 board_parse_tasks() {
     local file="$1"
@@ -35,13 +39,15 @@ board_parse_tasks() {
             out = ""
             leftover = ""
             rest = clause
-            sub(/^(all depend|depends) (only )?on/, "", rest)
+            if (match(tolower(rest), /^(all depend|depends) (only )?on/)) {
+                rest = substr(rest, RLENGTH + 1)
+            }
             while (match(rest, /[Tt][0-9]+/)) {
                 leftover = leftover " " substr(rest, 1, RSTART - 1)
                 id = "T" substr(rest, RSTART + 1, RLENGTH - 1)
                 rest = substr(rest, RSTART + RLENGTH)
                 range = ""
-                if (match(rest, /^ *(-|–|—|\.\.) *[Tt][0-9]+/) || match(rest, /^ +(to|through|thru) +[Tt][0-9]+/)) {
+                if (match(rest, /^ *(-|–|—|\.\.) *[Tt][0-9]+/) || match(tolower(rest), /^ +(to|through|thru) +t[0-9]+/)) {
                     range = substr(rest, RSTART, RLENGTH)
                     rest = substr(rest, RSTART + RLENGTH)
                 }
@@ -65,12 +71,26 @@ board_parse_tasks() {
             }
             leftover = leftover " " rest
             gsub(/[,&+\/]/, " ", leftover)
-            gsub(/(^| )and( |$)/, " ", leftover)
-            gsub(/(^| )and( |$)/, " ", leftover)
+            gsub(/(^| )[Aa][Nn][Dd]( |$)/, " ", leftover)
+            gsub(/(^| )[Aa][Nn][Dd]( |$)/, " ", leftover)
             gsub(/[ \t]+/, " ", leftover)
             sub(/^ /, "", leftover)
             sub(/ $/, "", leftover)
             return out
+        }
+        # A heading that looks like a task but that the task rule below does not read ("### T05 Five - `todo`",
+        # "### T06 Six — `Todo`", "## T07 ..."): named, so that a typo does not drop a task from the board unseen.
+        /^#+[ \t]*[Tt][0-9]+([^0-9]|$)/ {
+            if ($0 !~ /^### T[0-9]+ / || match($0, " — `(" statuses ")`") == 0) {
+                heading = $0
+                match(heading, /[Tt][0-9]+/)
+                known = statuses
+                gsub(/\|/, ", ", known)
+                warn("T" substr(heading, RSTART + 1, RLENGTH - 1) ": not a task heading, so the board does not show it (want \"### Txx Title — `status`\" with an em dash and a status of " known "): " heading)
+                if ($0 ~ /^### /) {
+                    next
+                }
+            }
         }
         /^## / {
             phase = ""
@@ -78,11 +98,13 @@ board_parse_tasks() {
             if ($2 == "Phase") {
                 phase = $3
                 sub(/:$/, "", phase)
-                if (match($0, /all depend (only )?on [^;)]*/)) {
+                if (match(tolower($0), /all depend (only )?on [^;)]*/)) {
                     phase_deps = expand(substr($0, RSTART, RLENGTH))
                     if (leftover != "") {
                         warn("phase " phase ": unparsed text in \"" substr($0, RSTART, RLENGTH) "\": " leftover)
                     }
+                } else if (tolower($0) ~ /depend/) {
+                    warn("phase " phase ": a dependency clause that is not \"(all depend on ...)\" is not read: " $0)
                 }
             }
             next
@@ -99,9 +121,9 @@ board_parse_tasks() {
             sub(/^[^`]*`/, "", status)
             sub(/`$/, "", status)
             deps = phase_deps
-            if (match(tail, /depends (only )?on [^;)]*/)) {
+            if (match(tolower(tail), /depends (only )?on [^;)]*/)) {
                 clause = substr(tail, RSTART, RLENGTH)
-                if (clause ~ /everything/) {
+                if (tolower(clause) ~ /everything/) {
                     deps = "*"
                 } else {
                     deps = expand(clause)
@@ -109,6 +131,13 @@ board_parse_tasks() {
                         warn(id ": unparsed text in \"" clause "\": " leftover)
                     }
                 }
+            } else if (tail ~ /[Tt][0-9]+/ || tolower(tail) ~ /depend/) {
+                shown = tail
+                sub(/^[ \t]+/, "", shown)
+                warn(id ": \"" shown "\" names a dependency without a \"(depends on ...)\" clause, so it is not read (the task keeps its phase'"'"'s dependencies)")
+            }
+            if (tolower(title) ~ /depend/ && title ~ /[Tt][0-9]+/) {
+                warn(id ": a dependency clause in the title is not read (put it after the status): " title)
             }
             n++
             ids[n] = id
@@ -137,7 +166,7 @@ board_parse_tasks() {
                     }
                 }
                 sub(/^ /, "", out)
-                printf "%s\t%s\t%s\t%s\t%s\n", ids[i], titles[i], states[i], phases[i], out
+                printf "%s\037%s\037%s\037%s\037%s\n", ids[i], titles[i], states[i], phases[i], out
             }
         }
     ' "$file"
@@ -193,7 +222,7 @@ board_load_tasks() {
     TASK_IDS=()
     # shellcheck disable=SC2034 # read by board.sh and set-status.sh
     declare -gA TASK_TITLE=() TASK_STATUS=() TASK_PHASE=() TASK_DEPS=() TASK_NOTES=()
-    while IFS=$'\t' read -r id title status phase deps; do
+    while IFS=$'\x1f' read -r id title status phase deps; do
         [[ -n "$id" ]] || continue
         if [[ -n "${TASK_STATUS[$id]:-}" ]]; then
             echo "board: warning: $id appears twice in $file; the first heading wins" >&2
@@ -240,14 +269,29 @@ board_ids_with_status() {
     echo "${out[*]}"
 }
 
-# The verdict of a QA text: "rejected" (the whole words "rejected", "changes requested" or "not approved"),
-# "approved" (the whole word "approved") or nothing. Rejected wins when a text says both.
+# The verdict of a QA text: "approved", "rejected" or nothing. It is the word right after the first "round N" (an
+# optional "QA verdict:" between them), else right after "QA verdict:", else the text's first word: "approved", or
+# "rejected", "changes requested" or "not approved". Words further on do not count, so that "round 1 approved ...,
+# no changes requested" or "round 2 approved: the findings that were rejected are fixed" stay approvals.
 board_qa_verdict() {
-    local text="${1,,}"
-    if [[ "$text" =~ (^|[^a-z])(rejected|changes[[:space:]]+requested|not[[:space:]]+approved)([^a-z]|$) ]]; then
-        echo rejected
-    elif [[ "$text" =~ (^|[^a-z])approved([^a-z]|$) ]]; then
-        echo approved
+    local text="${1,,}" rest
+    local verdict='^[^a-z0-9]*(qa[[:space:]]+verdict[^a-z0-9]*)?(approved|rejected|changes[[:space:]]+requested|not[[:space:]]+approved)([^a-z]|$)'
+    if [[ "$text" =~ (^|[^a-z])round[[:space:]]+[0-9]+(.*)$ ]]; then
+        rest="${BASH_REMATCH[2]}"
+        # The rest of the line after the first "round N" only.
+        if [[ "$rest" =~ ^[0-9]*(.*)$ ]]; then
+            rest="${BASH_REMATCH[1]}"
+        fi
+    elif [[ "$text" =~ (^|[^a-z])qa[[:space:]]+verdict(.*)$ ]]; then
+        rest="qa verdict${BASH_REMATCH[2]}"
+    else
+        rest="$text"
+    fi
+    if [[ "$rest" =~ $verdict ]]; then
+        case "${BASH_REMATCH[2]}" in
+            approved) echo approved ;;
+            *) echo rejected ;;
+        esac
     fi
 }
 

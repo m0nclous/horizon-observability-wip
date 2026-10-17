@@ -32,7 +32,13 @@ decision 14 in `planning/README.md` and the flow rules proposed under it (pendin
   **Finished** (last `board: Txx -> done` commit, only while done; a reopened task loses it, a task back in todo
   loses Started). Missing fields are created; the options of a single-select field (a new phase, the **Needs owner**
   column) must be added in the board settings, and the sync names any that are missing. A field of the same name but
-  another type, or one that refuses a write, is skipped with a warning: it cannot stop the status sync.
+  another type, one that cannot be created and one that refuses a write are skipped with a warning, and so is a card
+  that cannot be added (the next sync tries again): they cannot stop the status sync.
+
+The board comes last: issues, labels and comments are synced first, so a board that cannot be read at all (the
+token's `project` scope, a wrong number or owner) leaves them in place and fails the run with a message that says so.
+In the workflow every `board: warning:` line becomes an annotation of the run (a task without an area, a heading or
+clause the parser cannot read, a missing option), so it shows on the run's summary page.
 
 `board.sh report` rewrites the pinned issue **[Board] Flow report** (label `report`): the CI state of the integration
 branch, WIP per column against the limits, the open owner questions, and per task the status (ready or blocked by
@@ -45,9 +51,13 @@ only what would change; without it, it reads nothing).
 
 Dependencies come from the heading tail: `(depends on T02, T03–T08)`, `(depends only on T00; ...)`,
 `(depends on everything)`; a task without one inherits its phase heading's `(all depend on T02; ...)`, and any other
-`## ` heading ends the phase. Lists take ids (any case), ranges with a hyphen, en or em dash (spaced or not), `..`,
-`to`, `through` or `thru`, and the separators `,`, `and`, `&`, `+`, `/`; any other text in the clause up to `;` or `)`
-is reported as a warning (`board.sh list` shows them), so that a typo cannot silently drop a dependency.
+`## ` heading ends the phase. Clause words are read in any case (`(Depends on T01)`). Lists take ids (any case),
+ranges with a hyphen, en or em dash (spaced or not), `..`, `to`, `through` or `thru`, and the separators `,`, `and`,
+`&`, `+`, `/`; any other text in the clause up to `;` or `)` is reported as a warning (`board.sh list` shows them).
+So are a `### Txx` heading that is not a task heading (a hyphen instead of the em dash, `Todo`, `in-progress`: the
+task would be missing from the board and `set-status.sh` would not find it), a tail that names an id without a
+`depends on` clause (`(depend on T01)`, `(after T05)`) and a dependency clause inside the title: a typo must not
+silently drop a dependency or a task.
 
 ## Changing a status
 
@@ -71,13 +81,18 @@ It works in the main checkout (from any worktree, under a lock):
 2. It refuses unless the main checkout is on the integration branch (`BOARD_INTEGRATION_BRANCH`, default
    `claude/hopeful-hawking-njeu3v`): the board reads only that branch.
 3. It fetches the branch and fast-forwards the main checkout, so that the gates read the state on origin (PRs merged
-   on GitHub, other sessions' status changes). Local commits on top of origin are pushed with the status change;
-   local commits while origin moved too are refused ("integrate them first").
+   on GitHub, other sessions' status changes). Its own unpushed commits (`--no-push`) go out with the status change.
+   Any other local commit that origin does not have (an integrator's merge under test, a commit with a `board:`
+   subject that carries code) is refused: the push would publish it. Push such commits yourself when they are ready,
+   or merge in a separate worktree (below). Local commits while origin moved too are refused as well ("integrate
+   them first").
 4. It applies the gates, adds the QA, question or answer line right under the heading
    (`QA: 2026-10-17 11:20 UTC: ...`), commits only that file as `board: Txx -> <status>` and pushes. When the push
-   loses a race with another push, it undoes its commit and starts again from step 3 (the gates run again on the new
-   state), up to three times; any other push failure undoes the commit too and exits 1: nothing changes unless it
-   reached origin.
+   loses a race with another push, it undoes its commit, waits a random 0.1 s to 3 s and starts again from step 3
+   (the gates run again on the new state), up to `BOARD_PUSH_TRIES` (default 10) attempts. Any other failure after
+   the first change (a commit refused by signing, a hook or a missing identity; a push that fails; an interrupt)
+   undoes the attempt too and exits non-zero: HEAD, `TASKS.md` and the screenshots go back to where they were, so
+   the shared main checkout never stays dirty for the next caller.
 
 `--no-push` works offline (no fetch, no push; the gates read the local state, the commit stays local),
 `--dry-run` fetches and prints the diff and the checks (against origin's task list when the checkout is behind) and
@@ -86,7 +101,11 @@ changes nothing. Commits carry no trailers unless given: `--trailer "Key: value"
 
 Gates (`--force --reason "why"` overrides them; the commit records what was forced and why):
 
-- **Dependencies:** `in progress`, `testing` and `done` need every dependency `done`.
+- **Dependencies:** starting work (`todo` -> `in progress` or `testing`, and `needs owner` -> `in progress` or
+  `testing` for a task that had not started before its question) and `done` need every dependency `done`. Moves that
+  keep, continue or return work do not: a note, `in progress` -> `testing`, a QA rejection, an answer that resumes
+  work (the task's last `board:` move before the question was to `in progress`, `testing` or `done`) and reopening a
+  done task. A dependency that is reopened later therefore never locks its dependants in place.
 - **WIP limits:** a task enters In Progress only while fewer than `BOARD_WIP_IN_PROGRESS` (default 2) tasks are
   there, and Testing below `BOARD_WIP_TESTING` (default 3). A QA rejection always returns: `testing` ->
   `in progress` with a `--qa` text that rejects (below) passes over the limit; without one it is gated like any move.
@@ -96,10 +115,13 @@ Gates (`--force --reason "why"` overrides them; the commit records what was forc
 - **Branch:** the main checkout must be on the integration branch.
 
 QA lines say `round N approved by ...` or `round N rejected by ...: findings` (the PR wording
-`round N QA verdict: CHANGES REQUESTED ...` works too). The board counts one QA round per distinct `round N` of a
-task that carries a verdict: rejected when any line of that round says the whole word "rejected", "changes
-requested" or "not approved", otherwise approved when one says "approved". The spec and the adversarial tester may
-write one line each for the same round; lines without `round N` are notes and are not counted.
+`round N QA verdict: CHANGES REQUESTED ...` works too). The verdict is the word right after the first `round N`
+(an optional `QA verdict:` between them), else right after `QA verdict:`, else the first word of the text:
+`approved`, or `rejected`, `changes requested` or `not approved`. Later words do not count, so
+`round 1 approved ..., no changes requested` is an approval; a parenthesis between `round N` and the verdict hides
+the verdict. The board counts one QA round per distinct `round N` of a task that carries a verdict, rejected when
+any line of that round rejects. The spec and the adversarial tester may write one line each for the same round;
+lines without `round N` are notes and are not counted.
 
 ### Screenshots
 
@@ -114,10 +136,17 @@ would change the linked commit.)
 
 ## Stop the line
 
-When the `tests` workflow fails on a push to the integration branch (`claude/hopeful-hawking-njeu3v`, variable
-`INTEGRATION_BRANCH`), the board workflow opens **[CI] The integration branch is red** (label `stop-the-line`) with the
-run link and comments once per further red run with the failed job names; when the branch is green again it closes
-the issue with a comment. Cancelled runs change nothing.
+When a run of the `tests` workflow on the integration branch (`claude/hopeful-hawking-njeu3v`, variable
+`INTEGRATION_BRANCH`) fails, the board workflow opens **[CI] The integration branch is red** (label `stop-the-line`)
+with the run link and comments once per further red run with the failed job names. Push runs, the weekly run and
+manual runs all count; pull request runs have their own checks. Cancelled runs change nothing.
+
+Each red comment records, hidden, the conclusion of every job of its run. A green run closes the issue only when
+every job is green by its latest record, that is when it ran every job that is still red: a push run skips the e2e
+job, so after a red weekly e2e job a green push run leaves the issue open and says once (per set of waiting jobs)
+which jobs it did not run. Run the `tests` workflow by hand on the integration branch (Actions → tests → Run
+workflow, or MCP `actions_run_trigger`) after the fix, or wait for the next weekly run. A green run whose jobs
+cannot be listed closes the issue on its conclusion alone, with a warning.
 
 Pushes that change only `planning/TASKS.md` and `planning/screenshots/**` (status changes) run no tests
 (`paths-ignore` in `tests.yml`), so they neither cost a matrix run nor cancel the run in progress. The verdict of the
@@ -144,7 +173,10 @@ integrator checks it before merging, and everyone helps to make the branch green
    TASKS.md with `set-status.sh ... --qa "round N ..."` as before.
 4. The integrator merges via MCP (merge commit, like `--no-ff`) only when the task is `done`, the PR checks are green
    and no `stop-the-line` issue is open. The full matrix then runs on the integration branch. The next
-   `set-status.sh` call in any main checkout fast-forwards it to the merge.
+   `set-status.sh` call in any main checkout fast-forwards it to the merge. A local merge goes in a separate
+   worktree (`git worktree add --detach ../ho-merge origin/claude/hopeful-hawking-njeu3v`, merge `--no-ff`, run the
+   gates, `git push origin HEAD:claude/hopeful-hawking-njeu3v`), not in the main checkout: there it would block
+   every status change until it is pushed.
 
 ## Setup (once)
 
@@ -160,16 +192,20 @@ integrator checks it before merging, and everyone helps to make the branch green
      the report; agents pass the same values to `set-status.sh` if they differ from 2 and 3).
 4. The stop-the-line job runs on `workflow_run`, which GitHub fires only from the copy of `board.yml` on the
    **default branch**: make the integration branch the default branch (Settings → General) or copy `board.yml` there.
+   Scheduled runs also run only on the default branch, so the weekly full run (with e2e) reaches the integration
+   branch only when it is the default branch.
 5. Make sure Actions are enabled. The sync job asks for `issues: write` for its own `GITHUB_TOKEN` (owner questions
    come from `github-actions[bot]`). Every push to the integration branch that changes `planning/TASKS.md` or
-   `tools/board/` syncs and rewrites the report (pushes to other branches never move cards); the workflow can also be
-   run by hand (Actions → board → Run workflow). The first sync creates the fields Phase, Area, QA rounds, Started and
-   Finished; the first report creates and pins the flow report issue.
+   `tools/board/` syncs and rewrites the report; the workflow can also be run by hand (Actions → board → Run
+   workflow) on the integration branch. Pushes and manual runs of any other branch never move cards. The owner's
+   token is given only to the `board.sh` steps, not to checkout or the workflow as a whole. The first sync creates
+   the fields Phase, Area, QA rounds, Started and Finished; the first report creates and pins the flow report issue.
 
 ## Local use
 
 `board.sh` calls the GitHub API through `gh`; it runs in GitHub Actions or on the owner's machine, not in agent
-sandboxes. `set-status.sh` needs only git.
+sandboxes (it needs bash 4+, gh, git, jq and awk). `set-status.sh` makes no API call; it needs bash 4+, git,
+python3, `flock` (util-linux; on macOS `brew install flock`), `od` and `cmp`, and names a missing one.
 
 ```bash
 gh auth login --scopes project          # once
@@ -187,5 +223,9 @@ a history written by `set-status.sh` itself, a bare origin and, where a case nee
 session) and a stub `gh` (`tests/stub/gh`) that logs every call and keeps a fake GitHub state
 (`tests/fixtures/state.json`). It checks the exact gh calls, issue and board state, file edits and commits for every
 feature above, including idempotency (a second run writes nothing), push races (a pre-push hook lets the other clone
-push first) and the QA findings of each round. The `static` CI job runs it with shellcheck. After an intended change
-of behaviour, `BOARD_TEST_UPDATE=1 tools/board/tests/run.sh` rewrites `tests/expected/`; review that diff like code.
+push first) and the QA findings of each round. The `static` CI job runs it after shellcheck 0.11.0, pinned
+(`pip install shellcheck-py==0.11.0.1` gives the same version locally; the runner's own 0.9.0 reports other checks):
+`shellcheck -x tools/board/*.sh tools/board/tests/run.sh`. The real `TASKS.md` is not checked against `areas.tsv`
+there (a `TASKS.md` change runs no tests, so a missing line would turn the next unrelated push red); the board run
+warns instead. After an intended change of behaviour, `BOARD_TEST_UPDATE=1 tools/board/tests/run.sh` rewrites
+`tests/expected/`; review that diff like code.
