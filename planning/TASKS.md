@@ -446,9 +446,11 @@ and scheduling `queue:prune-batches`; the 10 000-link read cap and that `(other)
 cache can be up to 1 h stale after a deploy without `cache` (T08); re-cache routes after changing the Grafana URL on
 Horizon < 5.45, and run `config:clear` after `composer remove` (T09); Horizon's `next` (6.x) has no Blade sidebar, so the
 link is silently absent there (T09); Laravel 13.26+ `Queue::forward()` (T05); the dev loop, the perf profile
-(`docker/perf/README.md`) and the `variables_order` note (T11); the Horizon floor `^5.29.1`. For the full matrix: the L11
-prefer-lowest leg resolves Laravel 11.39.1 (Pest 3.8 needs collision 8.7), so 11.23–11.39.0 are covered by the shim
-tests only; the 85 % coverage threshold has not been measured yet. Residual risks (T04): on 13.33+ with
+(`docker/perf/README.md`) and the `variables_order` note (T11); the Horizon floor `^5.29.1`. For the full matrix (T18): the L11
+prefer-lowest leg resolves Laravel 11.23.0 with Horizon 5.29.1, predis 2.0.2 and Pest 3.0.0 (the leg pins Pest ^3.0,
+since Pest 3.8 needs collision 8.7 and so Laravel >= 11.39.1; the floor check fails the leg if it moves), so 11.23–11.39.0
+are no longer covered by the shim tests only; the 85 % coverage threshold is measured at 98.0 % (CI runs 39030156036 and
+39040463193). Residual risks (T04): on 13.33+ with
 `killOnTimeout=false` a SIGALRM right after the record `EVAL` opens the breaker for 30 s; predis plus a ready_at or
 batch-link write interrupted by SIGALRM can desync the private client.
 
