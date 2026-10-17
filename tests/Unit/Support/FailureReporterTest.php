@@ -82,6 +82,33 @@ it('logs with the null cache store, throttled in the process only', function ():
     ]);
 });
 
+it('reports locally without touching the cache, throttled in the process', function (): void {
+    // The cache may sit on the Redis that failed: reportLocally() must not wait for it (the breaker, C11).
+    $this->app->instance('cache', new class
+    {
+        public int $calls = 0;
+
+        public function store(): never
+        {
+            $this->calls++;
+
+            throw new LogicException('the cache must not be used');
+        }
+    });
+    $e = new RuntimeException('storage down');
+    $other = new FailureReporter($this->app, fn (): float => $this->time);
+
+    $this->reporter->reportLocally('breaker:attempts', $e);
+    $this->reporter->reportLocally('breaker:attempts', $e);
+    $other->reportLocally('breaker:attempts', $e);
+    $this->time = 300.0;
+    $this->reporter->reportLocally('breaker:attempts', $e);
+
+    expect($this->log->messages('warning'))->toBe(array_fill(0, 3, 'horizon-observability: breaker:attempts failed: RuntimeException: storage down'))
+        ->and($this->log->records[0]['context'])->toBe(['exception' => $e])
+        ->and(app('cache')->calls)->toBe(0);
+});
+
 it('logs the config problems once, and nothing without problems', function (): void {
     $repository = clone $this->app['config'];
     $repository->set('horizon-observability.namespace', '1bad');

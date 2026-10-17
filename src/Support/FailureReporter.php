@@ -19,7 +19,9 @@ use Throwable;
  *
  * - A key logs at most once per {@see self::THROTTLE_SECONDS} per process, and across processes through
  *   `Cache::add()` on the default store. If the cache itself fails, or keeps nothing (the `null` store, whose
- *   `add()` always fails), only the in-process throttle applies.
+ *   `add()` always fails), only the in-process throttle applies. {@see self::reportLocally()} skips the cache for
+ *   failures where the cache may be down too (the package's Redis, which the default store often shares), so the
+ *   line never costs another timeout.
  * - Messages are English and start with `horizon-observability:`; exceptions go into the context as objects.
  * - It never calls `report()`, so nothing reaches Sentry or the exception handler, and it never throws.
  * - The channel is `log_channel` (default channel when null); the logger and the config are resolved per call,
@@ -59,6 +61,22 @@ final class FailureReporter
     public function report(string $key, Throwable $e, array $context = []): void
     {
         if ($this->throttled($key)) {
+            return;
+        }
+
+        $this->log('warning', sprintf('%s%s failed: %s', self::PREFIX, $key, self::describe($e)), ['exception' => $e, ...$context]);
+    }
+
+    /**
+     * {@see self::report()} with the in-process throttle only: no cache round trip. For failures of the package's
+     * Redis and of the cache store itself, where the default cache store may be unreachable as well and
+     * `Cache::add()` would add its own timeout (C11: the circuit breaker's one warning per opening).
+     *
+     * @param  array<string, mixed>  $context
+     */
+    public function reportLocally(string $key, Throwable $e, array $context = []): void
+    {
+        if ($this->throttledLocally($key)) {
             return;
         }
 
@@ -127,13 +145,9 @@ final class FailureReporter
 
     private function throttled(string $key): bool
     {
-        $now = ($this->clock)();
-
-        if (isset($this->logged[$key]) && $now - $this->logged[$key] < self::THROTTLE_SECONDS) {
+        if ($this->throttledLocally($key)) {
             return true;
         }
-
-        $this->logged[$key] = $now;
 
         try {
             /** @var Factory $cache */
@@ -149,6 +163,23 @@ final class FailureReporter
         } catch (Throwable) {
             return false;
         }
+    }
+
+    /**
+     * The in-process half of the throttle: true when the key logged during the last {@see self::THROTTLE_SECONDS};
+     * otherwise the key counts as logged now.
+     */
+    private function throttledLocally(string $key): bool
+    {
+        $now = ($this->clock)();
+
+        if (isset($this->logged[$key]) && $now - $this->logged[$key] < self::THROTTLE_SECONDS) {
+            return true;
+        }
+
+        $this->logged[$key] = $now;
+
+        return false;
     }
 
     /**

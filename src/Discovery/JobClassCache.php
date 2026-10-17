@@ -30,7 +30,8 @@ use Throwable;
  *   marker it leaves behind turns that into one failed scrape per hour instead of every scrape, and a warning names
  *   the remedy. `horizon-observability:cache` and `:clear` drop the marker.
  *
- * A broken file or cache store never fails a scrape: it is logged (throttled) and the next source answers.
+ * A broken file or cache store never fails a scrape: it is logged (throttled; a failing store without another round
+ * trip to it, {@see FailureReporter::reportLocally()}) and the next source answers.
  *
  * @internal
  */
@@ -94,7 +95,7 @@ final readonly class JobClassCache
                 return $cached;
             }
         } catch (Throwable $e) {
-            $this->reporter->report('discovery.cache', $e);
+            $this->reporter->reportLocally('discovery.cache', $e);
             $store = null;
         }
 
@@ -107,7 +108,7 @@ final readonly class JobClassCache
                 return [];
             }
         } catch (Throwable $e) {
-            $this->reporter->report('discovery.cache', $e);
+            $this->reporter->reportLocally('discovery.cache', $e);
             $store = null;
         }
 
@@ -117,7 +118,7 @@ final readonly class JobClassCache
             try {
                 $store?->put($key, $classes, self::TTL_SECONDS);
             } catch (Throwable $e) {
-                $this->reporter->report('discovery.cache', $e);
+                $this->reporter->reportLocally('discovery.cache', $e);
             }
         } finally {
             if ($marked) {
@@ -283,7 +284,7 @@ final readonly class JobClassCache
 
             return $cache->store();
         } catch (Throwable $e) {
-            $this->reporter->report('discovery.cache', $e);
+            $this->reporter->reportLocally('discovery.cache', $e);
 
             return null;
         }
@@ -303,7 +304,7 @@ final readonly class JobClassCache
                 $store?->forget($key);
             }
         } catch (Throwable $e) {
-            $this->reporter->report('discovery.cache', $e);
+            $this->reporter->reportLocally('discovery.cache', $e);
         }
     }
 

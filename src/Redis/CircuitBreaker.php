@@ -13,7 +13,8 @@ use Throwable;
  * `BatchLinks` and `LegacyReadyAt`.
  *
  * - A write that throws (anything: a connection or timeout error, a Lua failure, a missing connection) opens the
- *   breaker for {@see self::COOLDOWN_SECONDS}; one warning is logged per opening.
+ *   breaker for {@see self::COOLDOWN_SECONDS}; one warning is logged per opening, without a cache round trip
+ *   ({@see FailureReporter::reportLocally()}).
  * - While open, writes are skipped; {@see self::attempt()} returns false. Only the {@see self::ATTEMPTS} operation's
  *   skipped or failed writes count as dropped (`exporter_attempts_dropped_total`, "job attempts not recorded"); a
  *   dropped ready_at or batch-link write is not an attempt.
@@ -91,7 +92,9 @@ final class CircuitBreaker
 
             if ($this->openedAt === null) {
                 $this->openedAt = $now;
-                $this->reporter->report('breaker:'.$operation, $e, ['cooldown_seconds' => self::COOLDOWN_SECONDS]);
+                // In-process throttle only: the default cache store often shares the unreachable Redis, and its
+                // add() would cost another timeout on top of the one this opening bounds (C11).
+                $this->reporter->reportLocally('breaker:'.$operation, $e, ['cooldown_seconds' => self::COOLDOWN_SECONDS]);
             }
 
             return false;

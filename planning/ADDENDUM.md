@@ -1378,8 +1378,12 @@ final readonly class JobClassCache
 namespace DF\HorizonObservability\Redis;                                       // integration
 final class CircuitBreaker { public const ATTEMPTS = 'attempts'; }             // the only operation whose drops are counted
 
-namespace DF\HorizonObservability\Support;                                     // integration
-final class FailureReporter { public function configProblems(Config $config): void; }
+namespace DF\HorizonObservability\Support;                                     // integration, phase B review
+final class FailureReporter
+{
+    public function configProblems(Config $config): void;
+    public function reportLocally(string $key, Throwable $e, array $context = []): void; // in-process throttle only, no cache I/O
+}
 ```
 
 New Lua files (headers frozen by their tasks; Appendix D is aligned with them): `record_attempt.lua`, `extremes_read.lua`, `reset_guard.lua` (T04), `queue_state.lua` (T05), `job_details.lua`, `delayed_jobs.lua` (T06). New view: `resources/views/menu-link.blade.php` (T09). Test helpers outside `tests/Support`: `tests/Unit/Metrics/Support/{FakeCollector,FakeClock,ExpositionFixture}` (`FakeCollector::quiet()` gives one quiet fake per collector id), `tests/Fixtures/Attempts/*` (PSR-4 test classes), `tests/Integration/{Batches,Discovery,JobStore}/Support/*`.

@@ -90,6 +90,27 @@ it('unreachable storage costs one timeout per cooldown (C11)', function (): void
         ->and($this->log->messages('warning')[0])->toStartWith('horizon-observability: breaker:attempts failed: ');
 });
 
+it('costs one timeout per cooldown when the default cache store is on the same Redis (C11)', function (): void {
+    // The app's cache shares the hanging server (a common setup): the breaker's warning must not wait for it too.
+    config()->set('database.redis.cache', [...config('database.redis.hanging'), 'timeout' => 3, 'read_timeout' => 3, 'read_write_timeout' => 3]);
+    config()->set('cache.default', 'redis');
+    app('redis')->purge('cache');
+
+    $first = ($this->timed)(static function (): void {
+        expect(Storage::record())->toBeFalse();
+    });
+
+    $this->clock = 31.0;
+    $probe = ($this->timed)(static function (): void {
+        expect(Storage::record())->toBeFalse();
+    });
+
+    expect($first)->toBeLessThan(2.0)
+        ->and($probe)->toBeLessThan(2.0)
+        ->and($this->log->messages('warning'))->toHaveCount(1)
+        ->and($this->log->messages('warning')[0])->toStartWith('horizon-observability: breaker:attempts failed: ');
+});
+
 it('persists the dropped attempts once the storage recovers and logs one info line', function (): void {
     Storage::record();
 
