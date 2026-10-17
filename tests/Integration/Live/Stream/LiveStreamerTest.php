@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Live\Stream\LineProtocol;
 use DF\HorizonObservability\Live\Stream\LiveStreamer;
@@ -17,6 +18,7 @@ use DF\HorizonObservability\Tests\TestCase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Redis\Events\CommandExecuted;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 
@@ -66,7 +68,7 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    CarbonImmutable::setTestNow();
+    LiveState::freeze(null);
 });
 
 function liveStreamer(): LiveStreamer
@@ -107,6 +109,21 @@ it('becomes the leader, pushes the snapshot and records the push time', function
         ->and(RedisKeys::client()->get(($this->raw)($this->keys->liveLeader())))->toContain(':'.getmypid().':');
 
     Http::assertSent(static fn (Request $request): bool => $request->header('Authorization') === ['Bearer '.STREAM_TOKEN]);
+});
+
+it('stamps the push and its bookkeeping with Laravel\'s clock, like the exporter', function (): void {
+    // Laravel's clock 30 s ahead of CarbonImmutable's (see LiveTruthTest): the rows, the snapshot in them and
+    // meta.live_push_at (exported as the push age) all follow Laravel's clock.
+    Date::useCallable(static fn (CarbonInterface $date): CarbonInterface => $date->addSeconds(30));
+
+    try {
+        expect(liveStreamer()->tick())->toBe(LiveStreamer::PUSHED);
+    } finally {
+        Date::useDefault();
+    }
+
+    expect($this->pushes[0]['body'])->toStartWith('tiles tile="pending",key="",caption="Oldest: 47 s '."\u{00B7}".' default",value=5.0,color="red",level=2.0 1792201746123000000')
+        ->and(liveStreamMeta()['live_push_at'] ?? null)->toBe('1792201746.123');
 });
 
 it('backs off 1, 2, 4, 8 s, releases after 5 failed ticks and competes again 10 s later', function (): void {

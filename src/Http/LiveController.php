@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace DF\HorizonObservability\Http;
 
-use Carbon\CarbonImmutable;
 use DF\HorizonObservability\Batches\BatchLinks;
 use DF\HorizonObservability\Horizon\Supervisors;
 use DF\HorizonObservability\Horizon\Topology;
@@ -61,7 +60,7 @@ final readonly class LiveController
                 $filters['jobClasses'],
             );
 
-            return $this->respond(LiveSnapshot::unavailable($scope, (int) floor((float) CarbonImmutable::now()->format('U.u') * 1000), $cache->ttlMs(), [
+            return $this->respond(LiveSnapshot::unavailable($scope, (int) floor((float) now()->format('U.u') * 1000), $cache->ttlMs(), [
                 ['source' => 'scope', 'message' => LiveSnapshotBuilder::errorMessage($e)],
             ])->toArray());
         }

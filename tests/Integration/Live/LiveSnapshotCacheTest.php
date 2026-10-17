@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Carbon\CarbonImmutable;
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Horizon\Topology;
 use DF\HorizonObservability\Live\LiveScope;
@@ -30,7 +29,7 @@ pest()->group('redis');
 const LIVE_CACHE_BUILDS = 'live-cache-test:builds';
 
 beforeEach(function (): void {
-    CarbonImmutable::setTestNow(LiveState::now());
+    LiveState::freeze(LiveState::now());
     LiveState::horizon($this->app);
     LiveState::queues($this->app);
     $this->scope = LiveScope::full(app(Topology::class));
@@ -45,7 +44,7 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    CarbonImmutable::setTestNow();
+    LiveState::freeze(null);
 });
 
 /**
@@ -94,7 +93,7 @@ it('builds on a miss, stores the fresh and the stale copy and releases the lock'
 
 it('answers a hit with one MGET and no build', function (): void {
     liveCache()->get($this->scope);
-    CarbonImmutable::setTestNow(LiveState::now()->addMilliseconds(250));
+    LiveState::freeze(LiveState::now()->addMilliseconds(250));
     $commands = RedisCommands::start($this->app);
     $cache = liveCache();
 
@@ -111,9 +110,9 @@ it('answers a hit with one MGET and no build', function (): void {
 it('decides freshness by Redis expiry, so replicas with clocks 5 s apart share one build', function (): void {
     liveCache()->get($this->scope); // replica A at T
 
-    CarbonImmutable::setTestNow(LiveState::now()->addSeconds(5)); // replica B, clock 5 s ahead
+    LiveState::freeze(LiveState::now()->addSeconds(5)); // replica B, clock 5 s ahead
     $ahead = liveCache()->get($this->scope);
-    CarbonImmutable::setTestNow(LiveState::now()->subSeconds(5)); // replica C, clock 5 s behind
+    LiveState::freeze(LiveState::now()->subSeconds(5)); // replica C, clock 5 s behind
     $behind = liveCache()->get($this->scope);
 
     expect(liveBuildCount())->toBe(1)
@@ -136,7 +135,7 @@ it('serves the stale copy while another request holds the lock', function (): vo
     $client = RedisKeys::client();
     $client->del($this->fresh);
     $client->set($this->lock, 'another-request', 'PX', 2000);
-    CarbonImmutable::setTestNow(LiveState::now()->addSeconds(3));
+    LiveState::freeze(LiveState::now()->addSeconds(3));
     $cache = liveCache(static fn (int $ms): never => throw new LogicException('a stale copy needs no wait'));
 
     $snapshot = $cache->get($this->scope);
@@ -274,7 +273,7 @@ it('makes one build for 50 concurrent requests on 2 replicas whose clocks differ
 
     $pids = Processes::fork(50, function (int $index) use ($start, $results): void {
         // even children are replica A (the test clock), odd ones replica B, 5 s ahead
-        CarbonImmutable::setTestNow(LiveState::now()->addSeconds($index % 2 === 0 ? 0 : 5));
+        LiveState::freeze(LiveState::now()->addSeconds($index % 2 === 0 ? 0 : 5));
 
         while (microtime(true) < $start) {
             usleep(200);
@@ -297,7 +296,7 @@ it('makes one build for 50 concurrent requests on 2 replicas whose clocks differ
 it('rebuilds and stores on refresh() even while the fresh copy lives (the stream leader)', function (): void {
     liveCache()->get($this->scope);
     $old = RedisKeys::client()->get($this->fresh);
-    CarbonImmutable::setTestNow(LiveState::now()->addMilliseconds(400));
+    LiveState::freeze(LiveState::now()->addMilliseconds(400));
     $cache = liveCache();
 
     $snapshot = $cache->refresh($this->scope);

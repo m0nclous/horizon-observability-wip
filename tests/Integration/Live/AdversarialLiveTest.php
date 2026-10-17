@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Carbon\CarbonImmutable;
 use DF\HorizonObservability\Batches\BatchLinks;
 use DF\HorizonObservability\Horizon\Supervisors;
 use DF\HorizonObservability\Horizon\Topology;
@@ -24,11 +23,11 @@ use DF\HorizonObservability\Tests\TestCase;
 pest()->group('redis');
 
 beforeEach(function (): void {
-    CarbonImmutable::setTestNow(LiveState::now());
+    LiveState::freeze(LiveState::now());
 });
 
 afterEach(function (): void {
-    CarbonImmutable::setTestNow();
+    LiveState::freeze(null);
 });
 
 /**

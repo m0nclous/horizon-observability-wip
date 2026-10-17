@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace DF\HorizonObservability\Live;
 
-use Carbon\CarbonImmutable;
 use Closure;
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Redis\Keys;
@@ -232,7 +231,9 @@ final class LiveSnapshotCache
 
     private function build(LiveScope $scope): LiveSnapshot
     {
-        $now = CarbonImmutable::now();
+        // Laravel's clock (Date), like the exporter's ScrapeContext, so Date::use(), travelTo() and Carbon::setTestNow()
+        // move both; on Carbon 2, CarbonImmutable::now() has a test clock of its own.
+        $now = now()->toImmutable();
 
         try {
             return $this->builder->build($scope, $now);
@@ -266,7 +267,7 @@ final class LiveSnapshotCache
 
     private function nowMs(): int
     {
-        return (int) floor((float) CarbonImmutable::now()->format('U.u') * 1000);
+        return (int) floor((float) now()->format('U.u') * 1000);
     }
 
     private function message(Throwable $e): string

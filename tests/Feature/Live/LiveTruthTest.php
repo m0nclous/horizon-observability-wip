@@ -2,12 +2,13 @@
 
 declare(strict_types=1);
 
-use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use DF\HorizonObservability\Redis\Keys;
 use DF\HorizonObservability\Tests\Integration\Live\Support\LiveState;
 use DF\HorizonObservability\Tests\Support\Exposition;
 use DF\HorizonObservability\Tests\Support\RedisKeys;
 use DF\HorizonObservability\Tests\TestCase;
+use Illuminate\Support\Facades\Date;
 
 /*
 | Honest numbers (owner decision 13), T12 QA round 1: on one Redis state, GET {base}/live must show the numbers the
@@ -19,7 +20,7 @@ use DF\HorizonObservability\Tests\TestCase;
 pest()->group('redis');
 
 beforeEach(function (): void {
-    CarbonImmutable::setTestNow(LiveState::now());
+    LiveState::freeze(LiveState::now());
     LiveState::horizon($this->app);
     LiveState::queues($this->app);
     LiveState::attempts();
@@ -27,7 +28,7 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    CarbonImmutable::setTestNow();
+    LiveState::freeze(null);
 });
 
 /**
@@ -124,6 +125,35 @@ it('shows the numbers the exporter exports for the same Redis state', function (
     foreach ($processes as $name => $count) {
         expect($tiles['supervisor:'.$name])->toBe($count);
     }
+});
+
+it('reads the time from Laravel\'s clock like the exporter, so Date handlers and test clocks move both', function (): void {
+    // Laravel's clock 30 s ahead of CarbonImmutable's, on every Carbon version: Date::useCallable() shifts every
+    // date Laravel creates. On Carbon 2, Carbon::setTestNow() and CarbonImmutable::setTestNow() are two such clocks.
+    Date::useCallable(static fn (CarbonInterface $date): CarbonInterface => $date->addSeconds(30));
+
+    try {
+        $metrics = Exposition::parse((string) $this->get('/horizon/observability/metrics')->assertOk()->getContent());
+        $live = $this->getJson('/horizon/observability/live')->assertOk()->json();
+    } finally {
+        Date::useDefault();
+    }
+
+    $oldest = qaTruthSumBy($metrics, 'ho_queue_oldest_pending_job_age_seconds', 'queue');
+    $shown = [];
+
+    foreach ($live['queues'] as $queue) {
+        $shown[$queue['queue']] = (float) $queue['oldest_seconds'];
+    }
+
+    ksort($oldest);
+    ksort($shown);
+
+    // default: the job pushed 17 s before NOW waits 47 s on Laravel's clock, for the exporter and for /live.
+    expect($oldest['default'])->toBe(47.0)
+        ->and($live['generated_at'])->toBe(1792201746123)
+        ->and($live['pending']['caption'])->toBe('Oldest: 47 s '."\u{00B7}".' default')
+        ->and($shown)->toBe(array_map(round(...), array_intersect_key($oldest, $shown)));
 });
 
 it('counts in the ring exactly the attempts the counters count', function (): void {

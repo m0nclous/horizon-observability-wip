@@ -260,7 +260,8 @@ final class LiveStreamer
     public function tick(): string
     {
         $now = ($this->clock)();
-        $wall = CarbonImmutable::now();
+        // Laravel's clock, like the exporter's and the snapshot's (LiveSnapshotCache).
+        $wall = now()->toImmutable();
 
         if (! $this->leader) {
             if (! $this->isDue($this->nextAttemptAt, $now)) {

@@ -146,6 +146,25 @@ it('levels the wait from the exact age and shows it rounded (Addendum R4.2 step 
     'just over twice the limit' => [20.4, 20, 2, 2.04],
 ]);
 
+it('captions the worst wait from the exact age, rounded once, like the off-mode tile (Addendum R4.4)', function (float $age, int $seconds, string $caption) use ($dot): void {
+    $snapshot = LiveSnapshot::compose(exampleScope(), 0, 1000, 1, [], [[
+        'connection' => 'redis', 'queue' => 'default', 'pending' => 1, 'reserved' => 0, 'delayed' => 0, 'delayed_due' => 0,
+        'oldest_seconds' => $age, 'wait_threshold_seconds' => null, 'completed_per_minute' => null, 'failed_per_minute' => null, 'supervisors' => [],
+    ]], null);
+
+    expect($snapshot->pending)->toMatchArray(['oldest_seconds' => $seconds, 'oldest_queue' => 'default', 'caption' => "Oldest: {$caption} {$dot} default"])
+        ->and($snapshot->tiles()[0]['caption'])->toBe("Oldest: {$caption} {$dot} default");
+})->with([
+    // Off mode: `round(age)` s when `0 < age < 120`, `round(age / 60)` min from 120 s, on the exported age.
+    'waits less than half a second' => [0.3, 0, '0 s'],
+    'seconds' => [89.6, 90, '90 s'],
+    'rounds to 120 below the limit' => [119.6, 120, '120 s'],
+    'the limit' => [120.0, 120, '2 min'],
+    '2.49 minutes' => [149.6, 150, '2 min'],
+    '3.495 minutes' => [209.7, 210, '3 min'],
+    '3.5 minutes' => [210.0, 210, '4 min'],
+]);
+
 it('ranks two queues of the same rounded age by the exact age', function (): void {
     $queue = static fn (string $name, int|float $age): array => [
         'connection' => 'redis', 'queue' => $name, 'pending' => 1, 'reserved' => 0, 'delayed' => 0, 'delayed_due' => 0,

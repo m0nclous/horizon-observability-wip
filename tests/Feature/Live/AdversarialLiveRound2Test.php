@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Carbon\CarbonImmutable;
 use DF\HorizonObservability\Live\Captions;
 use DF\HorizonObservability\Redis\Keys;
 use DF\HorizonObservability\Tests\Integration\Live\Support\LiveState;
@@ -20,20 +19,24 @@ use DF\HorizonObservability\Tests\TestCase;
 pest()->group('redis');
 
 beforeEach(function (): void {
-    CarbonImmutable::setTestNow(LiveState::now());
+    LiveState::freeze(LiveState::now());
     $this->app['env'] = 'local'; // every package endpoint is open in local without configuration
 });
 
 afterEach(function (): void {
-    CarbonImmutable::setTestNow();
+    LiveState::freeze(null);
 });
 
 /**
- * The off-mode Pending caption for an exported oldest age (Tiles::pending(): `round(age)` + " s" below 120 s, else
- * `round(age / 60)` + " min", both on the exported value).
+ * The off-mode Pending caption for an exported oldest age (Tiles::pending(): a dash unless `age > 0`, then
+ * `round(age)` + " s" below 120 s, else `round(age / 60)` + " min", both on the exported value).
  */
 function qa2OffModeOldest(float $age, string $queue): string
 {
+    if ($age <= 0) {
+        return 'Oldest: '.Captions::DASH;
+    }
+
     return $age < 120
         ? sprintf('Oldest: %d s %s %s', (int) round($age), Captions::DOT, $queue)
         : sprintf('Oldest: %d min %s %s', (int) round($age / 60), Captions::DOT, $queue);
@@ -69,7 +72,11 @@ it('captions the oldest wait like the off-mode tile, from the exact age', functi
     '149.6 s' => [149.6, 'Oldest: 2 min '.Captions::DOT.' default'],
     // 210 s, then 3.5 min: "4 min" for 3.495 min
     '209.7 s' => [209.7, 'Oldest: 3 min '.Captions::DOT.' default'],
-])->skip('T12 QA round 2 finding 2: the caption is derived from the age rounded to seconds (and the minutes rounded again), so 119.6 s reads "2 min", 149.6 s "3 min" and 209.7 s "4 min" where the off-mode tile reads "120 s", "2 min" and "3 min"; unskip after the fix.');
+    // (T12 round 3) rounds to 0 s, but something waits: the off-mode tile names the queue ("0 s"), not a dash
+    '0.3 s' => [0.3, 'Oldest: 0 s '.Captions::DOT.' default'],
+    '119.4 s' => [119.4, 'Oldest: 119 s '.Captions::DOT.' default'],
+    '150.2 s' => [150.2, 'Oldest: 3 min '.Captions::DOT.' default'],
+]);
 
 it('scopes a supervisor that only horizon.defaults defines by its queues while Horizon is stopped', function (): void {
     // Horizon's ProvisioningPlan merges horizon.defaults into every environment, so `supervisor-extra` starts in

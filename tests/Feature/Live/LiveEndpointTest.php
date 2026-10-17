@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Carbon\CarbonImmutable;
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\HorizonObservability;
 use DF\HorizonObservability\HorizonObservabilityServiceProvider;
@@ -29,7 +28,7 @@ const LIVE_ENDPOINT_TOKEN = 'prometheus-token-0123456789abcdef';
 const LIVE_ENDPOINT_API_TOKEN = 'grafana-api-token-0123456789abcdef';
 
 beforeEach(function (): void {
-    CarbonImmutable::setTestNow(LiveState::now());
+    LiveState::freeze(LiveState::now());
     LiveState::horizon($this->app);
     LiveState::queues($this->app);
     LiveState::attempts();
@@ -37,7 +36,7 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    CarbonImmutable::setTestNow();
+    LiveState::freeze(null);
 });
 
 /**

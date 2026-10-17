@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Carbon\CarbonImmutable;
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Live\Stream\LiveStreamer;
 use DF\HorizonObservability\Redis\Keys;
@@ -43,7 +42,7 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    CarbonImmutable::setTestNow();
+    LiveState::freeze(null);
 });
 
 it('keeps the leader lease between ticks at an interval of 5.5 s (real clock, real lease expiry)', function (): void {

@@ -6,10 +6,11 @@ namespace DF\HorizonObservability\Tests\Integration\Live\Stream\Support;
 
 use Carbon\CarbonImmutable;
 use Closure;
+use DF\HorizonObservability\Tests\Integration\Live\Support\LiveState;
 
 /**
- * A fake monotonic clock for the stream loop, in whole milliseconds (no float drift), that also moves the wall clock
- * (`CarbonImmutable::setTestNow()`) from a start time; sleeping advances both instantly.
+ * A fake monotonic clock for the stream loop, in whole milliseconds (no float drift), that also moves the wall clocks
+ * ({@see LiveState::freeze()}) from a start time; sleeping advances both instantly.
  */
 final class StreamClock
 {
@@ -17,7 +18,7 @@ final class StreamClock
 
     public function __construct(private readonly CarbonImmutable $start)
     {
-        CarbonImmutable::setTestNow($start);
+        LiveState::freeze($start);
     }
 
     /**
@@ -41,7 +42,7 @@ final class StreamClock
     public function advance(float $seconds): void
     {
         $this->elapsedMs += (int) round($seconds * 1000);
-        CarbonImmutable::setTestNow($this->start->addMilliseconds($this->elapsedMs));
+        LiveState::freeze($this->start->addMilliseconds($this->elapsedMs));
     }
 
     /**

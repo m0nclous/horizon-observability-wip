@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Carbon\CarbonImmutable;
 use DF\HorizonObservability\Batches\BatchLinks;
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Horizon\Supervisors;
@@ -32,11 +31,11 @@ use Laravel\Horizon\Repositories\RedisSupervisorRepository;
 pest()->group('redis');
 
 beforeEach(function (): void {
-    CarbonImmutable::setTestNow(LiveState::now());
+    LiveState::freeze(LiveState::now());
 });
 
 afterEach(function (): void {
-    CarbonImmutable::setTestNow();
+    LiveState::freeze(null);
 });
 
 /**

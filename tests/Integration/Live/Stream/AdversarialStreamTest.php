@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Carbon\CarbonImmutable;
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Live\Stream\LiveStreamer;
 use DF\HorizonObservability\Tests\Integration\Live\Stream\Support\StreamClock;
@@ -41,7 +40,7 @@ beforeEach(function (): void {
 });
 
 afterEach(function (): void {
-    CarbonImmutable::setTestNow();
+    LiveState::freeze(null);
 });
 
 function qaStreamer(): LiveStreamer

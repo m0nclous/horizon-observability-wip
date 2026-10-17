@@ -84,8 +84,9 @@ final readonly class LiveSnapshot
      *                                              supervisor's queues (of the selected classes with a Job filter)
      * @param  list<QueueInput>  $queues  queues read successfully; `pending` = ready jobs (`LLEN` + due delayed),
      *                                    `delayed` = not yet due, `oldest_seconds` = the exact age in seconds (0 when
-     *                                    nothing waits): the wait ratio and level use it as is, as the off-mode tile
-     *                                    does with the exported age, and the output shows it rounded
+     *                                    nothing waits): the wait ratio, the level, the worst queue and the caption use
+     *                                    it as is, as the off-mode tile does with the exported age, and the output
+     *                                    fields show it rounded
      * @param  ThroughputInput|null  $throughput  ring counts over the 60 s window (failed = failed + timed_out); null
      *                                            without ring data
      * @param  list<ErrorRow>  $errors
@@ -157,7 +158,9 @@ final readonly class LiveSnapshot
                 'supervisors' => $queue['supervisors'],
             ];
 
-            if ($seconds > 0 && ($worst === null || self::worse($queue, $ratio, $worst, $worstRatio))) {
+            // Something waits when the exact age is above 0, as the off-mode tile's `age > 0` on the exported age:
+            // 0.3 s still names the queue ("Oldest: 0 s").
+            if ($queue['oldest_seconds'] > 0 && ($worst === null || self::worse($queue, $ratio, $worst, $worstRatio))) {
                 $worst = $queue;
                 $worstRatio = $ratio;
             }
@@ -183,7 +186,8 @@ final readonly class LiveSnapshot
                 'wait_ratio' => $worstRatio === null ? null : round($worstRatio, 2),
                 'level' => $level,
                 'color' => Captions::color($level),
-                'caption' => Captions::oldest($seconds, $worst['queue']),
+                // The unit and the number from the exact age, rounded once (119.6 s is "120 s", 149.6 s "2 min").
+                'caption' => Captions::oldestExact((float) $worst['oldest_seconds'], $worst['queue']),
             ];
         }
 

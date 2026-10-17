@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Tests\Integration\Live\Support;
 
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use DF\HorizonObservability\Attempts\AttemptStatus;
 use DF\HorizonObservability\Tests\Fixtures\Attempts\Storage;
 use DF\HorizonObservability\Tests\Support\HorizonState;
 use DF\HorizonObservability\Tests\Support\QueuePayloads;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Redis\Connections\Connection;
+use Illuminate\Support\Carbon;
 
 /**
  * A known live state over the workbench topology (redis: default, slow, reports, mail, sms; waits default 10 s,
@@ -27,6 +29,18 @@ final class LiveState
     public static function now(): CarbonImmutable
     {
         return CarbonImmutable::createFromTimestamp(self::NOW);
+    }
+
+    /**
+     * Freeze the test clocks at `$time`, or unfreeze them with null: Laravel's (`now()`, `Date`), which the package
+     * reads, and CarbonImmutable's, which Horizon's repositories read. They are one clock on Carbon 3 and two on
+     * Carbon 2 (the Laravel 11 lowest leg), where setting only one of them would let the exporter, the live path and
+     * Horizon read different times.
+     */
+    public static function freeze(?CarbonInterface $time): void
+    {
+        Carbon::setTestNow($time);
+        CarbonImmutable::setTestNow($time);
     }
 
     public static function redis(Application $app): Connection
