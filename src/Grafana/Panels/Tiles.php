@@ -185,7 +185,7 @@ final readonly class Tiles
      * the "supervisor-" prefix and maxProcesses ("slow \u{00B7} max 10"), the background the processes over time.
      * With a batch or jobs selected, the workers busy with their jobs. The colour is the pool's utilisation
      * zone at the end of the period ({@see Workers::processesZone()}): thresholds are per panel, so query B
-     * lists the values of the period with a colour by their fraction as value mappings.
+     * gives the last value of each supervisor a colour by its fraction as a value mapping.
      *
      * @param  array{h: int, w: int, x: int, y: int}  $gridPos
      * @return array<string, mixed>
@@ -206,7 +206,13 @@ final readonly class Tiles
             'supervisor-(.+)',
         );
 
-        $colored = Promql::countValues('value', $this->workers->processesValue());
+        // Only the colour of the last point shows (O8): an instant query of the value at the last step of the range
+        // query A. Grafana aligns that step to a multiple of $__interval at or before the end of the period, and so
+        // does a subquery with that step, while an instant query runs at the end itself
+        $colored = Promql::countValues(
+            'value',
+            Promql::range('last_over_time', Promql::paren($this->workers->processesValue()), Promql::INTERVAL.':'.Promql::INTERVAL),
+        );
 
         foreach (self::ZONE_COLORS as $color => $pattern) {
             $colored = Promql::labelReplace($colored, 'color', $color, 'value', $pattern);
@@ -218,7 +224,7 @@ final readonly class Tiles
             $gridPos,
             [
                 $this->common->target('A', $named, instant: false, jobFilter: false, legend: '{{name}} '.Glyph::DOT.' max {{max}}'),
-                $this->common->target('B', $colored, instant: false, format: 'table', jobFilter: false),
+                $this->common->target('B', $colored, format: 'table', jobFilter: false),
             ],
             thresholds: Common::thresholds('green'),
             colorMode: 'background',
