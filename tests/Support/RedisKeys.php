@@ -9,26 +9,39 @@ use Predis\Client;
 /**
  * Raw access to the test Redis without any prefix, for cleanup and assertions on final key names. Uses predis
  * (always installed for development), so it works without the phpredis extension.
+ *
+ * {@see self::delete()} cleans the default database (`REDIS_DB`, 0) and the one of the `cache` connection
+ * (`REDIS_CACHE_DB`, 1), which the tests on the redis cache store write to (scan markers, throttle keys).
  */
 final class RedisKeys
 {
-    public static function client(): Client
+    public static function client(?int $database = null): Client
     {
         return new Client([
             'host' => (string) (getenv('REDIS_HOST') ?: '127.0.0.1'),
             'port' => (int) (getenv('REDIS_PORT') ?: 6379),
-            'database' => (int) (getenv('REDIS_DB') ?: 0),
+            'database' => $database ?? (int) (getenv('REDIS_DB') ?: 0),
         ]);
     }
 
     /**
-     * Every key starting with the prefix, sorted.
+     * The databases the tests write to: the default one and the one of the `cache` connection.
+     *
+     * @return list<int>
+     */
+    public static function databases(): array
+    {
+        return array_values(array_unique([(int) (getenv('REDIS_DB') ?: 0), (int) (getenv('REDIS_CACHE_DB') ?: 1)]));
+    }
+
+    /**
+     * Every key starting with the prefix in one database (the default one without an argument), sorted.
      *
      * @return list<string>
      */
-    public static function all(string $prefix): array
+    public static function all(string $prefix, ?int $database = null): array
     {
-        $client = self::client();
+        $client = self::client($database);
         $pattern = addcslashes($prefix, '*?[]\\').'*';
         $keys = [];
         $cursor = '0';
@@ -47,16 +60,22 @@ final class RedisKeys
     }
 
     /**
-     * Delete every key starting with the prefix; the number deleted.
+     * Delete every key starting with the prefix in every database the tests write to; the number deleted.
      */
     public static function delete(string $prefix): int
     {
-        $keys = self::all($prefix);
+        $deleted = 0;
 
-        foreach (array_chunk($keys, 500) as $chunk) {
-            self::client()->del($chunk);
+        foreach (self::databases() as $database) {
+            $keys = self::all($prefix, $database);
+
+            foreach (array_chunk($keys, 500) as $chunk) {
+                self::client($database)->del($chunk);
+            }
+
+            $deleted += count($keys);
         }
 
-        return count($keys);
+        return $deleted;
     }
 }
