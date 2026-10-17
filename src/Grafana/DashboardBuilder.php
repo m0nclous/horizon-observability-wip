@@ -88,7 +88,7 @@ final readonly class DashboardBuilder
         $promql = $this->options->promql();
         $selection = new Selection($promql);
         $attempts = new Attempts($promql);
-        $workers = new Workers($promql, $selection, $this->options->busyWindow);
+        $workers = new Workers($promql, $selection, $this->options->legacy ? $this->options->busyWindow : Variables::BUSY_WINDOW);
         $waits = new Waits($promql, $selection);
         $batchState = new BatchState($promql);
         $alertState = new AlertState($this->options->alertRuleUidRegex);

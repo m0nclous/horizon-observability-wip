@@ -23,6 +23,11 @@ final readonly class Variables
     public const FILTERS = ['supervisor', 'batch_kind', 'queue', 'job_class', 'supervisor_title', 'batch_title'];
 
     /**
+     * The worker utilisation window as the panels read it (Arch Q5.2: the hidden `busy_window` textbox).
+     */
+    public const BUSY_WINDOW = '$busy_window';
+
+    /**
      * Supervisors and their queues are taken from the last day, so they are known while Horizon is down.
      */
     public const KNOWN_FOR = '1d';
@@ -73,6 +78,9 @@ final readonly class Variables
             // Hidden: the path of the application's job list API (horizon-observability.path), exported like
             // horizon_url; the Infinity URLs are relative to the datasource URL: ${api_path}/jobs/<list>
             $this->options->legacy ? null : $this->info('api_path', 'api_path'),
+            // Hidden: the window of the worker utilisation (Utilization bars, the Supervisor Processes colour), at
+            // least one scrape interval; ?var-busy_window=30s overrides it
+            $this->options->legacy ? null : $this->textbox('busy_window', $this->options->busyWindow),
             // Hidden: the Infinity datasource with the application's job lists, by type: in a production Grafana
             // the datasource is created in the UI and has its own uid
             $this->datasource('app_api', 'yesoreyeram-infinity-datasource', $this->options->infinityDatasourceRegex),
@@ -326,6 +334,23 @@ final readonly class Variables
             'regex' => '/'.$label.'="([^"]+)"/',
             'skipUrlSync' => true,
             'type' => 'query',
+        ];
+    }
+
+    /**
+     * A hidden textbox: a render-time default that the URL can override.
+     *
+     * @return array<string, mixed>
+     */
+    private function textbox(string $name, string $value): array
+    {
+        return [
+            'current' => ['text' => $value, 'value' => $value],
+            'hide' => 2,
+            'name' => $name,
+            'options' => [['selected' => true, 'text' => $value, 'value' => $value]],
+            'query' => $value,
+            'type' => 'textbox',
         ];
     }
 

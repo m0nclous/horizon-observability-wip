@@ -27,7 +27,8 @@ final readonly class DashboardOptions
      * @param  string  $prometheusDatasourceRegex  name regex of the hidden `datasource` variable; empty picks Grafana's default
      * @param  string  $infinityDatasourceRegex  name regex of the hidden `app_api` variable; empty picks the first Infinity datasource
      * @param  string  $jobListUrl  Infinity URL of a job list, `{list}` is replaced by pending, completed, failed or delayed
-     * @param  string  $busyWindow  window of the worker utilisation (legacy `BUSY_WINDOW`), at least one scrape interval
+     * @param  string  $busyWindow  default of the hidden `busy_window` variable, the window of the worker utilisation
+     *                              (legacy `BUSY_WINDOW`, a literal in the pilot), at least one scrape interval
      * @param  string  $refresh  dashboard auto-refresh interval
      * @param  string  $alertRuleUidRegex  `grafana_rule_uid` regex of the Alerts tile and of the alert sound
      * @param  string  $alertFolder  folder of the alert rule group

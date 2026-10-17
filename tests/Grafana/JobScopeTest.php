@@ -76,7 +76,7 @@ it('defines the hidden prometheus_job variable with All as .+', function (): voi
         'type' => 'query',
     ])->and(array_keys($variables))->toBe([
         'datasource', 'prometheus_job', 'supervisor', 'batch_kind', 'queue', 'job_class', 'supervisor_title',
-        'batch_title', 'horizon_url', 'tts_url', 'api_path', 'app_api',
+        'batch_title', 'horizon_url', 'tts_url', 'api_path', 'busy_window', 'app_api',
     ]);
 });
 
