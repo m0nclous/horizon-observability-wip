@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Grafana\Queries;
 
 use DF\HorizonObservability\Grafana\Promql;
+use DF\HorizonObservability\Metrics\Metric;
 
 /**
  * Exact attempt counts from the `queue_jobs_total` counter.
@@ -40,11 +41,11 @@ final readonly class Attempts
      */
     public function delta(string $statuses, string $window): string
     {
-        $selector = $this->selector($statuses);
-        $now = $this->sum($selector);
+        $status = [Promql::re('status', $statuses)];
+        $now = $this->sum($this->promql->selector(Metric::JobsTotal, ...$status));
         $start = Promql::paren(Promql::either(
-            $this->sum(Promql::range('last_over_time', $selector, self::START_LOOKBACK, offset: $window)),
-            $this->sum(Promql::range('min_over_time', $selector, $window)),
+            $this->sum($this->promql->over('last_over_time', Metric::JobsTotal, self::START_LOOKBACK, $status, offset: $window)),
+            $this->sum($this->promql->over('min_over_time', Metric::JobsTotal, $window, $status)),
         ));
 
         return $this->clampedDifference($now, $start);
@@ -61,20 +62,20 @@ final readonly class Attempts
      */
     public function perStep(string $statuses): string
     {
-        $selector = $this->selector($statuses);
+        $status = [Promql::re('status', $statuses)];
         $nextStep = '-'.Promql::INTERVAL;
 
         $stepEnd = Promql::paren(Promql::either(
-            $this->sum(Promql::range('last_over_time', $selector, Promql::INTERVAL, offset: $nextStep)),
-            $this->sum(Promql::offset($selector, $nextStep)),
+            $this->sum($this->promql->over('last_over_time', Metric::JobsTotal, Promql::INTERVAL, $status, offset: $nextStep)),
+            $this->sum($this->promql->shifted(Metric::JobsTotal, $status, offset: $nextStep)),
         ));
         $stepStart = Promql::paren(Promql::either(
-            $this->sum(Promql::range('last_over_time', $selector, Promql::INTERVAL)),
-            $this->sum($selector),
+            $this->sum($this->promql->over('last_over_time', Metric::JobsTotal, Promql::INTERVAL, $status)),
+            $this->sum($this->promql->selector(Metric::JobsTotal, ...$status)),
         ));
-        $stepFirst = $this->sum(Promql::range('min_over_time', $selector, Promql::INTERVAL, offset: $nextStep));
-        $periodEnd = $this->sum(Promql::at($selector, Promql::TO_SECONDS));
-        $periodStart = $this->sum(Promql::range('last_over_time', $selector, self::START_LOOKBACK, at: Promql::FROM_SECONDS));
+        $stepFirst = $this->sum($this->promql->over('min_over_time', Metric::JobsTotal, Promql::INTERVAL, $status, offset: $nextStep));
+        $periodEnd = $this->sum($this->promql->shifted(Metric::JobsTotal, $status, at: Promql::TO_SECONDS));
+        $periodStart = $this->sum($this->promql->over('last_over_time', Metric::JobsTotal, self::START_LOOKBACK, $status, at: Promql::FROM_SECONDS));
 
         $later = Promql::paren(Promql::either(
             Promql::paren($stepEnd.' <= '.$periodEnd),
@@ -100,11 +101,6 @@ final readonly class Attempts
             Promql::paren($end.' - '.$start).' >= 0',
             Promql::paren($end.' < '.$start),
         ));
-    }
-
-    private function selector(string $statuses): string
-    {
-        return $this->promql->selector('queue_jobs_total', Promql::re('status', $statuses));
     }
 
     private function sum(string $expr): string

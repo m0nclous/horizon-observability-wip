@@ -14,6 +14,7 @@ use DF\HorizonObservability\Grafana\Queries\Selection;
 use DF\HorizonObservability\Grafana\Queries\Waits;
 use DF\HorizonObservability\Grafana\Queries\Workers;
 use DF\HorizonObservability\Grafana\Thresholds;
+use DF\HorizonObservability\Metrics\Metric;
 
 /**
  * The stat tiles of the Overview row.
@@ -116,10 +117,9 @@ final readonly class Tiles
      */
     private function horizon(array $gridPos): array
     {
-        $status = $this->promql->selector('horizon_status');
         $band = Promql::either(
-            Promql::min(Promql::range('min_over_time', $status, Promql::INTERVAL)),
-            Promql::min($status),
+            Promql::min($this->promql->over('min_over_time', Metric::HorizonStatus, Promql::INTERVAL)),
+            Promql::min($this->promql->selector(Metric::HorizonStatus)),
             'vector('.self::STATUS_NO_METRICS.')',
         );
 
@@ -193,7 +193,7 @@ final readonly class Tiles
     {
         $maxProcesses = Promql::countValues(
             'max',
-            Promql::max($this->promql->selector('horizon_supervisor_max_processes'), 'supervisor'),
+            Promql::max($this->promql->selector(Metric::SupervisorMaxProcesses), 'supervisor'),
             'supervisor',
         );
         $value = Promql::binary(Promql::paren($this->workers->processesValue()), '*', $maxProcesses, on: ['supervisor'], groupLeft: ['max']);
@@ -244,8 +244,8 @@ final readonly class Tiles
     private function pending(array $gridPos): array
     {
         $pending = $this->selection->byJobSelection(
-            Promql::sum($this->promql->selector('queue_pending_jobs')),
-            Promql::sum($this->promql->selector('queue_jobs_pending')).' or '.$this->selection->zeroIfMetrics(),
+            Promql::sum($this->promql->selector(Metric::QueuePendingJobs)),
+            Promql::sum($this->promql->selector(Metric::QueueJobsPending)).' or '.$this->selection->zeroIfMetrics(),
         );
 
         $limit = Waits::SECONDS_TEXT_LIMIT;
@@ -332,7 +332,7 @@ final readonly class Tiles
     private function delayed(array $gridPos): array
     {
         $delayed = $this->selection->byJobSelection(
-            Promql::sum($this->promql->selector('queue_delayed_jobs')).' - '.Promql::sum($this->promql->selector('queue_delayed_due_jobs')),
+            Promql::sum($this->promql->selector(Metric::QueueDelayedJobs)).' - '.Promql::sum($this->promql->selector(Metric::QueueDelayedDueJobs)),
         );
 
         return Common::stat(

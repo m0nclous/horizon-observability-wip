@@ -6,6 +6,7 @@ namespace DF\HorizonObservability\Grafana\Queries;
 
 use DF\HorizonObservability\Grafana\Promql;
 use DF\HorizonObservability\Grafana\Thresholds;
+use DF\HorizonObservability\Metrics\Metric;
 
 /**
  * How long pending jobs wait, relative to the `horizon.waits` limit of their queue.
@@ -32,7 +33,7 @@ final readonly class Waits
         return Promql::binary(
             Promql::max($this->promql->oldestAge(), 'queue'),
             '/',
-            Promql::max($this->promql->selector('horizon_wait_threshold_seconds'), 'queue'),
+            Promql::max($this->promql->selector(Metric::WaitThreshold), 'queue'),
             on: ['queue'],
         );
     }
@@ -95,7 +96,7 @@ final readonly class Waits
      */
     public function queueWaitLimit(): string
     {
-        return Promql::max($this->promql->selector('horizon_wait_threshold_seconds', Promql::re('queue', '$queue')), 'queue');
+        return Promql::max($this->promql->selector(Metric::WaitThreshold, Promql::re('queue', '$queue')), 'queue');
     }
 
     /**
@@ -104,9 +105,9 @@ final readonly class Waits
      */
     public function waitP95(): string
     {
-        $buckets = $this->promql->selector('queue_job_wait_seconds_bucket', Promql::re('queue', '$queue'));
+        $buckets = $this->promql->over('increase', Metric::JobWait, Promql::RANGE, [Promql::re('queue', '$queue')], series: 'bucket');
 
-        return Promql::paren(Promql::call('histogram_quantile', '0.95', Promql::sum(Promql::range('increase', $buckets, Promql::RANGE), 'queue', 'le')).' >= 0');
+        return Promql::paren(Promql::call('histogram_quantile', '0.95', Promql::sum($buckets, 'queue', 'le')).' >= 0');
     }
 
     /**

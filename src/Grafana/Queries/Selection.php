@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Grafana\Queries;
 
 use DF\HorizonObservability\Grafana\Promql;
+use DF\HorizonObservability\Metrics\Metric;
 
 /**
  * What the dashboard filters (Supervisor, Batch, Queue, Job) select, and the row sets most panels join on.
@@ -34,7 +35,7 @@ final readonly class Selection
      */
     public function queues(): string
     {
-        return Promql::group($this->promql->selector('queue_pending_jobs'), 'queue');
+        return Promql::group($this->promql->selector(Metric::QueuePendingJobs), 'queue');
     }
 
     /**
@@ -42,7 +43,7 @@ final readonly class Selection
      */
     public function zeroIfMetrics(): string
     {
-        return 'on () 0 * '.Promql::group($this->promql->selector('horizon_status'));
+        return 'on () 0 * '.Promql::group($this->promql->selector(Metric::HorizonStatus));
     }
 
     /**
@@ -51,7 +52,7 @@ final readonly class Selection
      */
     public function batchFiltered(string $expr, string $label): string
     {
-        $classes = $this->promql->selector('queue_batch_job_classes', Promql::re('batch', '$batch_kind'));
+        $classes = $this->promql->selector(Metric::BatchJobClasses, Promql::re('batch', '$batch_kind'));
 
         return Promql::paren(Promql::either(
             Promql::andOn(Promql::paren($expr), Promql::group($classes, $label), $label),

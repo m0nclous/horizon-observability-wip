@@ -6,6 +6,7 @@ namespace DF\HorizonObservability\Grafana\Queries;
 
 use DF\HorizonObservability\Grafana\Promql;
 use DF\HorizonObservability\Grafana\Thresholds;
+use DF\HorizonObservability\Metrics\Metric;
 
 /**
  * Worker processes, supervisor pools and their utilisation.
@@ -42,7 +43,7 @@ final readonly class Workers
      */
     public function horizonRunning(): string
     {
-        return Promql::paren(Promql::min($this->promql->selector('horizon_status')).' >= bool 1');
+        return Promql::paren(Promql::min($this->promql->selector(Metric::HorizonStatus)).' >= bool 1');
     }
 
     /**
@@ -50,7 +51,7 @@ final readonly class Workers
      */
     public function horizonStoppedAtEnd(): string
     {
-        $status = Promql::min(Promql::at($this->promql->selector('horizon_status'), Promql::TO_SECONDS));
+        $status = Promql::min($this->promql->shifted(Metric::HorizonStatus, [], at: Promql::TO_SECONDS));
 
         return Promql::paren(Promql::either(Promql::paren($status.' < bool 1'), 'vector(0)'));
     }
@@ -64,9 +65,9 @@ final readonly class Workers
         $anyQueue = Promql::re('queue', '.+');
 
         return Promql::paren(Promql::binary(
-            Promql::sum(Promql::range('sum_over_time', $this->promql->selector('queue_jobs_reserved', $anyQueue), $this->busyWindow), 'queue'),
+            Promql::sum($this->promql->over('sum_over_time', Metric::QueueJobsReserved, $this->busyWindow, [$anyQueue]), 'queue'),
             '/',
-            Promql::max(Promql::range('count_over_time', $this->promql->queueProcesses($anyQueue), $this->busyWindow), 'queue'),
+            Promql::max($this->promql->queueProcesses([$anyQueue], 'count_over_time', $this->busyWindow), 'queue'),
             on: ['queue'],
         ));
     }
@@ -76,7 +77,7 @@ final readonly class Workers
      */
     public function supervisorQueues(): string
     {
-        return Promql::group($this->promql->selector('horizon_supervisor_processes'), 'supervisor', 'queue');
+        return Promql::group($this->promql->selector(Metric::SupervisorProcesses), 'supervisor', 'queue');
     }
 
     /**
@@ -86,7 +87,7 @@ final readonly class Workers
     {
         $busy = Promql::sum(Promql::binary($this->supervisorQueues(), '*', $this->queueBusy(), on: ['queue'], groupLeft: []), 'supervisor');
         $idle = '0 * '.Promql::group($this->supervisorQueues(), 'supervisor');
-        $capacity = Promql::max($this->promql->selector('horizon_supervisor_max_processes'), 'supervisor').' > 0';
+        $capacity = Promql::max($this->promql->selector(Metric::SupervisorMaxProcesses), 'supervisor').' > 0';
 
         return Promql::call(
             'clamp_max',
@@ -127,7 +128,7 @@ final readonly class Workers
         );
         $zone = Promql::orOn(
             $above(Thresholds::LOAD_WARNING_PERCENT).' + '.$above(Thresholds::LOAD_CRITICAL_PERCENT),
-            '0 * '.Promql::group($this->promql->selector('horizon_supervisor_processes'), 'supervisor'),
+            '0 * '.Promql::group($this->promql->selector(Metric::SupervisorProcesses), 'supervisor'),
             'supervisor',
         );
 
@@ -146,8 +147,8 @@ final readonly class Workers
     public function processesValue(): string
     {
         $selected = [Promql::re('supervisor', '$supervisor'), Promql::re('queue', '$queue')];
-        $processes = $this->promql->selector('horizon_supervisor_processes', ...$selected);
-        $reserved = Promql::sum($this->promql->selector('queue_jobs_reserved', Promql::re('job_class', '$job_class')), 'queue');
+        $processes = $this->promql->selector(Metric::SupervisorProcesses, ...$selected);
+        $reserved = Promql::sum($this->promql->selector(Metric::QueueJobsReserved, Promql::re('job_class', '$job_class')), 'queue');
 
         $value = $this->selection->byJobSelection(
             Promql::sum($processes, 'supervisor'),
@@ -168,8 +169,8 @@ final readonly class Workers
      */
     public function workerLimit(): string
     {
-        $queues = Promql::group($this->promql->selector('horizon_supervisor_processes', Promql::re('queue', '$queue')), 'supervisor');
+        $queues = Promql::group($this->promql->selector(Metric::SupervisorProcesses, Promql::re('queue', '$queue')), 'supervisor');
 
-        return Promql::max(Promql::binary($this->promql->selector('horizon_supervisor_max_processes'), '*', $queues, on: ['supervisor'], groupLeft: []));
+        return Promql::max(Promql::binary($this->promql->selector(Metric::SupervisorMaxProcesses), '*', $queues, on: ['supervisor'], groupLeft: []));
     }
 }

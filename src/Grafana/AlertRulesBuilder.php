@@ -7,6 +7,7 @@ namespace DF\HorizonObservability\Grafana;
 use DF\HorizonObservability\Grafana\Queries\Attempts;
 use DF\HorizonObservability\Grafana\Queries\Selection;
 use DF\HorizonObservability\Grafana\Queries\Waits;
+use DF\HorizonObservability\Metrics\Metric;
 use LogicException;
 
 /**
@@ -49,10 +50,10 @@ final readonly class AlertRulesBuilder
         $legacy = $this->options->legacy;
         // One alert per application (scrape job) and queue; the pilot had no job scope
         $by = static fn (string ...$labels): array => $legacy ? array_values($labels) : ['job', ...array_values($labels)];
-        $status = $promql->selector('horizon_status');
+        $status = $promql->selector(Metric::HorizonStatus);
         $window = Thresholds::FAILURE_WINDOW_MINUTES.'m';
         $attemptsIn = fn (string $statuses): string => Promql::sum(
-            Promql::range('increase', $promql->selector('queue_jobs_total', Promql::re('status', $statuses)), $window),
+            $promql->over('increase', Metric::JobsTotal, $window, [Promql::re('status', $statuses)]),
             ...$by('queue'),
         );
         $job = $legacy ? '' : ' ({{ $labels.job }})';
@@ -67,8 +68,8 @@ final readonly class AlertRulesBuilder
                 $this->below(1),
                 noData: 'Alerting',
                 summary: $legacy
-                    ? 'Prometheus has no '.$promql->metric('horizon_status').', /metrics of the app is not scraped'
-                    : 'Prometheus has no '.$promql->metric('horizon_status').': the metrics endpoint of the application is not scraped',
+                    ? 'Prometheus has no '.$promql->name(Metric::HorizonStatus).', /metrics of the app is not scraped'
+                    : 'Prometheus has no '.$promql->name(Metric::HorizonStatus).': the metrics endpoint of the application is not scraped',
                 panelId: PanelRegistry::idOf($dashboard, 'Horizon'),
             ),
             // As the red Horizon tile: paused or not running. Without metrics No queue metrics fires instead.
@@ -89,7 +90,7 @@ final readonly class AlertRulesBuilder
                 $legacy ? (new Waits($promql, new Selection($promql)))->ratio() : Promql::binary(
                     Promql::max($promql->oldestAge(), ...$by('queue')),
                     '/',
-                    Promql::max($promql->selector('horizon_wait_threshold_seconds'), ...$by('queue')),
+                    Promql::max($promql->selector(Metric::WaitThreshold), ...$by('queue')),
                     on: $by('queue'),
                 ),
                 ['type' => 'gt', 'params' => [Thresholds::WAIT_CRITICAL_FACTOR]],

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace DF\HorizonObservability\Grafana;
 
+use DF\HorizonObservability\Metrics\Metric;
+
 /**
  * PromQL text builders.
  *
@@ -13,12 +15,14 @@ namespace DF\HorizonObservability\Grafana;
  * passed as PromQL text; label values, replacements and regexes as plain values, which {@see quote()} escapes.
  *
  * An instance knows the metric prefix and applies the dashboard filters to finished expressions
- * ({@see filtered()}). Every vector selector of a package family is written by {@see selector()}; {@see metric()}
- * gives the bare name only where a name is needed as text (a `__name__` regex, an alert summary).
+ * ({@see filtered()}). Every selector of a package family is written by {@see selector()}, {@see shifted()} or
+ * {@see over()} from a catalog case (Metrics\Metric); {@see name()} gives the bare name only where a name is
+ * needed as text (a `label_values()` query, an alert summary).
  *
  * Every package selector carries the job scope first (Arch Q5.6 step 4): `job=~"$prometheus_job"` in the
- * dashboard, the rendered job regex in the alert rules. The replica dedupe wrappers (step 10) belong in
- * {@see selector()} as well, the one place every package selector comes from.
+ * dashboard, the rendered job regex in the alert rules. With the replica dedupe (step 10) every package selector,
+ * or the range function around it, sits in `max by (job, <the family's catalog labels>[, le]) (...)`, so two
+ * replicas scraped under one job count once.
  *
  * @internal
  */
@@ -91,20 +95,63 @@ final readonly class Promql
      * @param  bool  $legacy  the pilot's family names (TEMPORARY, {@see DashboardOptions::$legacy})
      * @param  string|null  $jobRegex  the `job` regex every package selector is scoped to: {@see JOB_VARIABLE} in the
      *                                 dashboard, the rendered regex in the alert rules; null scopes nothing (the pilot)
+     * @param  bool  $dedupe  wrap every package selector in `max by (job, <labels>)` (Arch Q5.6 step 10)
      */
-    public function __construct(private string $prefix, public bool $legacy = false, private ?string $jobRegex = null)
-    {
+    public function __construct(
+        private string $prefix,
+        public bool $legacy = false,
+        private ?string $jobRegex = null,
+        private bool $dedupe = false,
+    ) {
         $this->queueMetrics = $this->names(self::QUEUE_FAMILIES);
         $this->jobMetrics = $this->names(self::JOB_FAMILIES);
     }
 
     /**
-     * The full metric name of a family, e.g. `queue_jobs_total` -> `office_queue_jobs_total`. Use
-     * {@see selector()} for a vector selector.
+     * The full name of a family, or of one series of a histogram (`bucket`, `sum` or `count`), e.g.
+     * `ho_queue_job_duration_seconds_bucket`. Use {@see selector()} and {@see over()} for selectors.
      */
-    public function metric(string $family): string
+    public function name(Metric $metric, string $series = ''): string
     {
-        return $this->prefix.$family;
+        return $this->prefix.$metric->value.($series === '' ? '' : '_'.$series);
+    }
+
+    /**
+     * A package selector as an instant vector: `ho_queue_pending_jobs{job=~"$prometheus_job", queue="x"}`, wrapped
+     * in the replica dedupe `max by (job, connection, queue) (...)` (Arch Q1.5, Q5.6 step 10). Two replicas of the
+     * application export the same storage under different `instance` labels; the dedupe keeps one of them.
+     */
+    public function selector(Metric $metric, string ...$matchers): string
+    {
+        return $this->package($metric, '', array_values($matchers));
+    }
+
+    /**
+     * A package selector shifted in time: `x offset 5m`, `x @ ${__to:date:seconds}`, deduplicated around it.
+     *
+     * @param  list<string>  $matchers
+     */
+    public function shifted(Metric $metric, array $matchers, ?string $offset = null, ?string $at = null): string
+    {
+        return $this->package($metric, '', $matchers, offset: $offset, at: $at);
+    }
+
+    /**
+     * A range-vector function of a package selector, `max_over_time(x[5m] offset 1h @ t)`, deduplicated around the
+     * call; $series picks a histogram series (`bucket` adds `le` to the dedupe labels).
+     *
+     * @param  list<string>  $matchers
+     */
+    public function over(
+        string $function,
+        Metric $metric,
+        string $window,
+        array $matchers = [],
+        ?string $offset = null,
+        ?string $at = null,
+        string $series = '',
+    ): string {
+        return $this->package($metric, $series, $matchers, $function, $window, $offset, $at);
     }
 
     /**
@@ -112,36 +159,79 @@ final readonly class Promql
      */
     public function oldestAge(string ...$matchers): string
     {
-        return $this->selector($this->legacy ? 'queue_oldest_pending_job_age' : 'queue_oldest_pending_job_age_seconds', ...$matchers);
+        return $this->legacy
+            ? self::vector($this->prefix.'queue_oldest_pending_job_age', ...$matchers)
+            : $this->selector(Metric::QueueOldestPendingJobAge, ...$matchers);
     }
 
     /**
      * Worker processes per queue: `horizon_supervisor_processes` per (supervisor, queue), which replaces the
      * pilot's `horizon_current_processes` per queue (Arch Q5.2, Q5.6 step 3). Both come from the supervisors'
-     * process maps with the same pooled queue label, so their sums and sample counts per queue are equal.
-     */
-    public function queueProcesses(string ...$matchers): string
-    {
-        return $this->selector($this->legacy ? 'horizon_current_processes' : 'horizon_supervisor_processes', ...$matchers);
-    }
-
-    /**
-     * A vector selector of a package family: `office_queue_jobs_total{status=~"failed"}`, or the bare name
-     * without matchers.
-     */
-    public function selector(string $family, string ...$matchers): string
-    {
-        return self::vector($this->metric($family), ...$this->scoped($matchers));
-    }
-
-    /**
-     * A selector of several package families by `__name__`: `{__name__=~"ho_a|ho_b", job=~"$prometheus_job"}`.
+     * process maps with the same pooled queue label, so their sums and sample counts per queue are equal. With
+     * $function and $window, a range function of it.
      *
-     * @param  list<string>  $families
+     * @param  list<string>  $matchers
+     */
+    public function queueProcesses(array $matchers = [], ?string $function = null, ?string $window = null): string
+    {
+        if (! $this->legacy) {
+            return $this->package(Metric::SupervisorProcesses, '', $matchers, $function, $window);
+        }
+
+        $selector = self::vector($this->prefix.'horizon_current_processes', ...$matchers);
+
+        return $function === null || $window === null ? $selector : self::range($function, $selector, $window);
+    }
+
+    /**
+     * @param  list<string>  $matchers
+     */
+    private function package(
+        Metric $metric,
+        string $series,
+        array $matchers,
+        ?string $function = null,
+        ?string $window = null,
+        ?string $offset = null,
+        ?string $at = null,
+    ): string {
+        $selector = self::vector($this->name($metric, $series), ...$this->scoped($matchers));
+
+        if ($function !== null && $window !== null) {
+            $selector = self::range($function, $selector, $window, $offset, $at);
+        } else {
+            $selector = $offset === null ? $selector : self::offset($selector, $offset);
+            $selector = $at === null ? $selector : self::at($selector, $at);
+        }
+
+        if (! $this->dedupe) {
+            return $selector;
+        }
+
+        return self::max($selector, ...self::dedupeLabels($metric, $series));
+    }
+
+    /**
+     * The labels the replica dedupe keeps: `job` and the family's catalog labels, plus `le` for histogram buckets.
+     *
+     * @return list<string>
+     */
+    public static function dedupeLabels(Metric $metric, string $series = ''): array
+    {
+        return ['job', ...$metric->labels(), ...($series === 'bucket' ? ['le'] : [])];
+    }
+
+    /**
+     * A selector of several package families by `__name__`: `{__name__=~"ho_a|ho_b", job=~"$prometheus_job"}`. Only
+     * for `group` and `count` aggregations, which do not depend on the number of replicas.
+     *
+     * @param  list<Metric>  $families
      */
     public function anyOf(array $families, string ...$matchers): string
     {
-        return self::vector('', self::re('__name__', implode('|', array_map($this->metric(...), $families))), ...$this->scoped($matchers));
+        $names = array_map(fn (Metric $metric): string => $this->name($metric), $families);
+
+        return self::vector('', self::re('__name__', implode('|', $names)), ...$this->scoped($matchers));
     }
 
     /**
@@ -425,6 +515,6 @@ final readonly class Promql
      */
     private function names(array $families): array
     {
-        return array_fill_keys(array_map($this->metric(...), $families), true);
+        return array_fill_keys(array_map(fn (string $family): string => $this->prefix.$family, $families), true);
     }
 }

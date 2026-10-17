@@ -12,6 +12,7 @@ use DF\HorizonObservability\Grafana\Queries\Selection;
 use DF\HorizonObservability\Grafana\Queries\Waits;
 use DF\HorizonObservability\Grafana\Queries\Workers;
 use DF\HorizonObservability\Grafana\Variables;
+use DF\HorizonObservability\Metrics\Metric;
 use stdClass;
 
 /**
@@ -118,7 +119,7 @@ final readonly class Queues
         $queues = $this->selection->queues();
         $range = Promql::RANGE;
         $knownQueues = Promql::group(
-            Promql::range('last_over_time', $this->promql->selector('horizon_supervisor_processes', Promql::re('supervisor', '$supervisor_title')), Variables::KNOWN_FOR),
+            $this->promql->over('last_over_time', Metric::SupervisorProcesses, Variables::KNOWN_FOR, [Promql::re('supervisor', '$supervisor_title')]),
             'queue',
         );
         // Only the queues of the supervisor this copy of the table is repeated for
@@ -139,28 +140,28 @@ final readonly class Queues
             // Pending, Processes, Delayed and Oldest wait are per whole queue, or with a batch or jobs selected
             // per their classes: waiting and busy workers; delayed jobs and ages have no classes (a dash).
             'B' => $this->selection->byJobSelection(
-                Promql::sum($this->promql->selector('queue_pending_jobs'), 'queue'),
-                $this->orZero(Promql::sum($this->promql->selector('queue_jobs_pending'), 'queue')),
+                Promql::sum($this->promql->selector(Metric::QueuePendingJobs), 'queue'),
+                $this->orZero(Promql::sum($this->promql->selector(Metric::QueueJobsPending), 'queue')),
             ),
             'C' => $this->orZero(Promql::sum($this->attempts->delta(Attempts::COMPLETED, $range), 'queue')),
             // Running processes: 0 while Horizon is paused or stopped, as on the Supervisor Processes tile
             'D' => $this->selection->byJobSelection(
                 $this->orZero(Promql::binary(
                     // The Queue filter is explicit: the processes family is not one of the queue-filtered ones
-                    Promql::sum($this->promql->queueProcesses(Promql::re('queue', '$queue')), 'queue'),
+                    Promql::sum($this->promql->queueProcesses([Promql::re('queue', '$queue')]), 'queue'),
                     '*',
                     $this->workers->horizonRunning(),
                     on: [],
                     groupLeft: [],
                 )),
-                $this->orZero(Promql::sum($this->promql->selector('queue_jobs_reserved'), 'queue')),
+                $this->orZero(Promql::sum($this->promql->selector(Metric::QueueJobsReserved), 'queue')),
             ),
             'E' => $this->orZero(Promql::sum($this->attempts->delta(Attempts::FAILED, $range), 'queue')),
             'F' => $this->selection->byJobSelection($this->oldestCell()),
             // As the Delayed tile: not due yet
             'G' => $this->selection->byJobSelection($this->orZero(Promql::paren(
-                Promql::sum($this->promql->selector('queue_delayed_jobs'), 'queue')
-                .' - '.Promql::sum($this->promql->selector('queue_delayed_due_jobs'), 'queue'),
+                Promql::sum($this->promql->selector(Metric::QueueDelayedJobs), 'queue')
+                .' - '.Promql::sum($this->promql->selector(Metric::QueueDelayedDueJobs), 'queue'),
             ))),
             'H' => $this->orZero(Promql::sum($this->attempts->delta(Attempts::RETRIED, $range), 'queue')),
             'I' => $this->orZero(Promql::sum($this->attempts->delta(Attempts::TIMED_OUT, $range), 'queue')),
