@@ -46,11 +46,17 @@ final readonly class DockerStack
     public const DASHBOARD_UID = 'horizon-observability';
 
     /**
+     * How long Grafana waits for Prometheus' first scrape of the app before it starts anyway.
+     */
+    public const FIRST_SCRAPE_WAIT_SECONDS = 60;
+
+    /**
      * @param  string  $project  Docker Compose project name
      * @param  string  $job  Prometheus job name (the dashboard's prometheus_job)
      * @param  AppUrl  $app  the app as the containers reach it, e.g. http://host.docker.internal:8000
      * @param  string  $apiPath  the endpoints' base path, e.g. /horizon/observability
      * @param  string  $grafana  Grafana major, a key of {@see self::GRAFANA_IMAGES}
+     * @param  string  $metricPrefix  the metric name prefix of the app, e.g. `ho_`
      *
      * @throws InvalidArgumentException for an unsupported Grafana major
      */
@@ -60,6 +66,7 @@ final readonly class DockerStack
         public AppUrl $app,
         public string $apiPath,
         public string $grafana = '13',
+        public string $metricPrefix = 'ho_',
     ) {
         if (! isset(self::GRAFANA_IMAGES[$grafana])) {
             throw new InvalidArgumentException('--grafana must be 12 or 13.');
@@ -103,6 +110,7 @@ final readonly class DockerStack
         $app = $this->app->toString();
         $dashboard = '/etc/grafana/dashboards/horizon-observability/'.self::DASHBOARD_UID.'.json';
         $missing = 'set HORIZON_OBSERVABILITY_TOKEN in .env (php artisan horizon-observability:install)';
+        $wait = self::FIRST_SCRAPE_WAIT_SECONDS;
 
         return <<<YAML
             # Local Prometheus and Grafana for Horizon Observability, written by
@@ -138,6 +146,14 @@ final readonly class DockerStack
               grafana:
                 image: {$grafana}
                 depends_on: [prometheus]
+                # The dashboard reads its hidden variables (the job, the API path) from Prometheus when it loads, so
+                # Grafana starts once Prometheus has scraped the app (or after {$wait} s).
+                entrypoint: [/bin/sh, -c]
+                command:
+                  - >-
+                    for i in \$\$(seq 1 {$wait}); do
+                    wget -qO- 'http://prometheus:9090/api/v1/query?query=count({$this->metricPrefix}horizon_info)' 2>/dev/null
+                    | grep -q '"value"' && break; sleep 1; done; exec /run.sh
                 extra_hosts: ['host.docker.internal:host-gateway']
                 environment:
                   GF_SECURITY_ADMIN_PASSWORD: admin

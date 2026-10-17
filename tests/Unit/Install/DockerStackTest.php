@@ -45,6 +45,17 @@ it('runs Prometheus and Grafana of the chosen major, local only', function (stri
         ->and($compose['services']['prometheus']['command'][0])->toContain('--web.enable-remote-write-receiver');
 })->with([['12', 'grafana/grafana:12.4.13'], ['13', 'grafana/grafana:13.2.4']]);
 
+it('starts Grafana once Prometheus has scraped the app, so the dashboard variables load with data', function (): void {
+    $grafana = Yaml::parse(dockerStack()->files()[DockerStack::COMPOSE_FILE])['services']['grafana'];
+    $office = Yaml::parse((new DockerStack('p', 'j', AppUrl::parse('http://app'), '/h/o', '13', 'office_'))->files()[DockerStack::COMPOSE_FILE]);
+
+    expect($grafana['entrypoint'])->toBe(['/bin/sh', '-c'])
+        ->and($grafana['command'][0])->toContain('for i in $$(seq 1 60)')
+        ->toContain('http://prometheus:9090/api/v1/query?query=count(ho_horizon_info)')
+        ->toEndWith('exec /run.sh')
+        ->and($office['services']['grafana']['command'][0])->toContain('count(office_horizon_info)');
+});
+
 it('rejects an unsupported Grafana', function (): void {
     expect(static fn (): DockerStack => dockerStack('11'))->toThrow(InvalidArgumentException::class, '--grafana must be 12 or 13.');
 });

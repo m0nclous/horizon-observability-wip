@@ -106,7 +106,8 @@ final class InstallCommand extends Command
         $apiPath = RoutePath::apiPath($config);
 
         if ($docker) {
-            $this->docker($files, new DockerStack($this->projectName($config), $job, $app, $apiPath, $grafana), $token);
+            $prefix = $this->laravel->make(Config::class)->prefix();
+            $this->docker($files, new DockerStack($this->projectName($config), $job, $app, $apiPath, $grafana, $prefix), $token);
         }
 
         $grafanaUrl = $docker ? self::DEFAULT_GRAFANA_URL : $this->grafanaBase();
