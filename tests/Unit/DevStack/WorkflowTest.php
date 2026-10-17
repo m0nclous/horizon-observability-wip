@@ -106,6 +106,21 @@ it('runs the suite without the cluster and e2e groups on every leg', function ()
         ->and(implode("\n", $steps))->toContain('composer update --${{ matrix.stability }} --prefer-dist');
 });
 
+it('resolves the legs past the advisory block of Composer without turning off its malware block (T18 QA)', function (): void {
+    $steps = workflow('tests.yml')['jobs']['tests']['steps'];
+    $resolve = array_values(array_filter($steps, static fn (array $step): bool => ($step['name'] ?? null) === 'Resolve the leg'))[0] ?? [];
+    $env = array_map(strval(...), $resolve['env'] ?? []);
+    $narrow = ($env['COMPOSER_POLICY_ADVISORIES_BLOCK'] ?? null) === '0'
+        || str_contains((string) ($resolve['run'] ?? ''), 'composer config audit.block-insecure false');
+
+    // Composer 2.10 maps COMPOSER_NO_BLOCKING and COMPOSER_NO_SECURITY_BLOCKING to PolicyConfig::withBlockingDisabled(),
+    // which also disables the malware list (on by default) for every package the leg installs, the prefer-stable legs
+    // included. COMPOSER_POLICY_ADVISORIES_BLOCK=0 (2.10) or audit.block-insecure (2.9 and 2.10) lifts the advisories only.
+    expect($env)->not->toHaveKey('COMPOSER_NO_BLOCKING')
+        ->and($env)->not->toHaveKey('COMPOSER_NO_SECURITY_BLOCKING')
+        ->and($narrow)->toBeTrue();
+});
+
 it('checks the Grafana assets and the e2e flow on Grafana 12.4.13 and 13.2.4', function (string $job): void {
     $definition = workflow('tests.yml')['jobs'][$job];
 
