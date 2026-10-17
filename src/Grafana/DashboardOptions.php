@@ -63,7 +63,6 @@ final readonly class DashboardOptions
         public string $alertDatasourceUid = self::DATASOURCE_PLACEHOLDER,
         public ?string $alertSoundScript = null,
         public LiveMode $live = LiveMode::Off,
-        public GrafanaVersion $grafana = GrafanaVersion::Grafana13,
         public ?string $job = null,
         public bool $dedupe = false,
         public bool $legacy = false,
