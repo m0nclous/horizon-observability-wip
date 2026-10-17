@@ -1246,9 +1246,9 @@ final readonly class Diagnostics { public function __construct(Container $contai
 1. **Fail closed without sentinels** (Q3 `token`, `api_token`, `allowed_ips`). The lists hold only valid entries; `Config::requiresToken()` and `requiresIp()` stay true when the setting was given but every entry was invalid, so nothing matches. `AccessPolicy` (T03) must use them (and `tokensFor()`), not `!== []`. This replaces "the list stays non-empty" of the Q3 table.
 2. **Boot-time flags** use `Config::flag()` (`FILTER_NULL_ON_FAILURE`): an unparsable `enabled`, `live.enabled`, `collectors.attempts` or `available_during_maintenance` keeps its default instead of becoming false. The route file uses the same cast.
 3. **Extra validation:** `namespace` of underscores only falls back to `ho` (a trailing `_` is stripped silently); `path` also rejects `}` (`RoutePath::normalize()` applies the same rule at boot); `log_channel` must exist in `logging.channels`; `live.stream.grafana_url` entries lose a trailing slash.
-4. **Config problems** are logged once, on the first resolution of the `Config` singleton (an `afterResolving` hook), through `FailureReporter::warnOnce('config.problems')`.
+4. **Config problems** are logged once, on the first resolution of the `Config` singleton (an `afterResolving` hook), through `FailureReporter::warnOnce('config.problems')`. *Changed in the phase B integration (C2.5 item 2): the hook logs in the console only; over HTTP the authorised scrape logs them.*
 5. **Wait thresholds:** `Topology::waitThreshold()` is Horizon's effective value (default 60 s, like `LongWaitDetected` and `horizon_wait_threshold_seconds`; null only when the entry is 0). R4.4 says `wait_threshold_seconds` is null "when the queue has no horizon.waits entry"; T12 uses `waitThreshold()` so poll colours equal the off-mode colours. **Integrator decision (2026-10-17): `waitThreshold()` wins over the literal R4.4 wording; R4.4 `wait_threshold_seconds` is null only when the waits entry is 0.**
-6. **Circuit breaker** opens on any `Throwable` of the write (a missing connection, a Lua failure or a bug cost at most one failure per cooldown), not only on Redis exceptions.
+6. **Circuit breaker** opens on any `Throwable` of the write (a missing connection, a Lua failure or a bug cost at most one failure per cooldown), not only on Redis exceptions. *Phase B (C2.5 item 3): only the `attempts` operation's drops are counted.*
 7. **Live snapshot model:** `compose()` derives every level, colour and caption; the worst queue is the highest wait ratio (a queue without a threshold ranks below any ratio), then the older age, then the name. `horizon.status` is null with caption `Live unavailable` when Horizon's state cannot be read. Per-queue `delayed` is not yet due and `pending` is ready (`LLEN` + due), so the totals are their sums. A failed queue is listed in `errors` only.
 8. **Payload parity:** an absent or non-numeric `attempts` counts as a first attempt; a non-integer `createdAt` or `delay` counts as absent (`tests/Fixtures/payloads.php`, 13 cases, also for T05's `ReadinessParityTest`).
 9. **Job-list filters:** `var-x` without `=` is the value `''` (a filter that matches nothing); `+` decodes to a space; a value that is not UTF-8, a bad `limit`, a negative period or `from > to` gives 422.
@@ -1259,7 +1259,145 @@ final readonly class Diagnostics { public function __construct(Container $contai
 14. **Not created in T02** (owned elsewhere): `resources/lua/*.lua` (T04, T05, T06, T12), `resources/views/menu-link.blade.php` (T09), `resources/grafana/**` (T13). The provider tolerates their absence.
 15. **Queue connection to Redis connection** (review): `Topology::redisConnection($queueConnection)` is the one mapping the queue readers use (`queue.connections.<name>.connection`, or `default` when unset, as Laravel's and Horizon's Redis connectors resolve it; null for a missing connection or a non-`redis` driver, whose queues are skipped). `QueueInspector` (T05), `DelayedJobStore` (T06) and `LiveSnapshotBuilder` (T12) pass its result to `RedisClients::reader()` instead of reading `queue.connections` themselves (the arch rule keeps `config()` out of their namespaces).
 
+### C2.4 Public additions in phase B (T03–T09, recorded at the integration, 2026-10-17)
+
+Additions only: no C/C′/C2.1/C2.2 signature changed (each review compared them). `final readonly` instead of `final` on a container-resolved class is not a signature change. Constructors of container-resolved classes stay unfrozen; the ones listed here are what tests and later tasks build by hand.
+
+```php
+namespace DF\HorizonObservability\Metrics;                                     // T03
+final readonly class Exporter
+{
+    public const BUDGET = 8.0; public const MIN_BUDGET = 1.0; public const TIMEOUT_MARGIN = 0.5;
+    public const DEFAULT_SCRAPE_TIMEOUT = 9.0; public const TIMEOUT_HEADER = 'X-Prometheus-Scrape-Timeout-Seconds';
+    public const COLLECTORS = [/* id => collector class, Config::COLLECTORS order */]; public const UNKNOWN_VERSION = 'unknown';
+    /** @param array<string, Collector> $collectors replace the container's, for tests */
+    public function __construct(Container $container, ?Closure $clock = null, array $collectors = []);
+    public static function budget(Request $request): float;                   // from X-Prometheus-Scrape-Timeout-Seconds
+}
+final class TextFormat
+{
+    public static function escapeHelp(string $help): string; public static function escapeLabel(string $value): string;
+    public static function number(int|float $value): string; public static function le(string $bound): string;
+}
+final class HistogramSnapshot                                                  // T04
+{
+    public const INF = '+Inf';
+    public static function bucket(float $value, array $bounds): string; public static function label(float $bound): string;
+    public static function labels(array $bounds): string;
+}
+
+namespace DF\HorizonObservability\Http;                                        // T03, T06
+final class AccessPolicy                                                       // not readonly: a static WeakMap throttles its log lines
+{
+    public const ENDPOINTS = ['metrics', 'api']; public const TOKEN_ENV = 'HORIZON_OBSERVABILITY_TOKEN';
+    public function __construct(Config $config, Application $app, FailureReporter $reporter, ?Closure $clock = null);
+    // mode(): 'callback', 'token', 'token + IPs', 'IPs', 'metrics: token; api: api_token', 'open (local, no token)',
+    // 'locked (set HORIZON_OBSERVABILITY_TOKEN)', or '… (none valid: nothing passes)' (for T14 check/about)
+}
+final readonly class JobListController { public const JSON_FLAGS = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE; public const UNAVAILABLE = 'Job list unavailable.'; }
+final class JobRows
+{
+    public static function horizon(JobList $list, array $row, ExceptionMode $mode): array; public static function delayed(array $row): array;
+    public static function milliseconds(?float $seconds): ?int; public static function runtime(?float $start, ?float $end): ?float;
+}
+final class ExceptionSummary { public const MAX_BYTES = 1000; }
+// Middleware: Authorize (final readonly) public const CHALLENGE = 'Bearer realm="horizon-observability"', constructor (AccessPolicy);
+// ForceJson public const ACCEPT = 'application/json'.
+// InjectGrafanaLink (T09, final readonly): constructor (Container); constants SIDEBAR, ITEM_END, SIDEBAR_ENDS, ROUTE ('horizon.index'),
+// VIEW ('horizon-observability::menu-link'); public static function insert(string $html, string $item): ?string.
+
+namespace DF\HorizonObservability\Attempts;                                    // T04
+final class AttemptState { public function recordsWait(): bool; public function elapsedSeconds(): float; }
+final readonly class AttemptStore
+{
+    public const EXTREMES_TTL_SECONDS = 300; public const EXTREMES_READ_BUCKETS = 10; public const CLASS_IDLE_SECONDS = 2592000;
+    public function reader(): Connection; public function counters(): array; public function jobClasses(): array;
+    public function extremes(CarbonImmutable $now): array; public function meta(): array; public function forget(array $fields): int;
+}
+final readonly class LegacyReadyAt { public const EXTRA_TTL_SECONDS = 86400; }
+
+namespace DF\HorizonObservability\Collectors;
+final readonly class AttemptsCollector { public const FORGET_LIMIT = 1000; }   // T04
+final readonly class HorizonCollector { public const TOPOLOGY = 'horizon.topology.queues'; public const SUPERVISORS = 'horizon.supervisors'; } // T05: ScrapeContext memo keys
+final readonly class QueueCollector { public const CLASS_LIMIT = 100; }        // T05
+final readonly class BatchesCollector { public const MAX_KINDS = 100; public const MAX_BATCHES_PER_KIND = 200; public const MAX_BATCHES = 2000; } // T07
+final readonly class JobClassesCollector { public function __construct(JobClassCache $cache); } // T08
+
+namespace DF\HorizonObservability\Horizon;                                     // T05, T06
+final readonly class HorizonUrl { public function __construct(Repository $config, ?Config $settings = null); public function apiPath(): string; }
+final readonly class JobStore { public const CONNECTION = 'horizon'; public const CHUNK = 500; public const SCAN_LIMIT = 10000; public const DETAILS_CHUNK = 100; }
+
+namespace DF\HorizonObservability\Queues;                                      // T05, T06
+final readonly class QueueInspector
+{
+    public const SCRIPT = 'queue_state'; public const RESERVED_SCAN_LIMIT = 1000; public const RESERVED_MAX_BYTES = 16777216;
+    public const MAX_BYTES = 16777216; public const LIVE_SCAN_LIMIT = 20; public const LIVE_MAX_BYTES = 1048576;
+    public function __construct(RedisClients $clients, Lua $lua, Topology $topology, Config $config, ?bool $clusterHashTags = null); // null = detect
+    public static function tagsClusterQueues(string $class): bool;            // RedisQueue::getQueueRedisKey() exists (Laravel 13)
+    public function supports(string $connection): bool;                       // cross-task (T12): call before inspect()/live()
+    public function queueKey(string $connection, string $queue): string;      // cross-task (T06, T12): 'queues:<q>' or 'queues:{<q>}'
+}
+final readonly class QueueSnapshot { public function unscannedPending(): int; public function unscannedReserved(): int; }
+final class UnsupportedTopology extends RuntimeException { public static function clusterQueue(string $connection, string $queue, string $redisConnection): self; }
+final readonly class DelayedJobStore                                           // T06; the QueueInspector dependency since the integration
+{
+    public const CHUNK = 500; public const SCAN_LIMIT = 10000; public const MAX_BYTES = 8388608;
+    public function __construct(RedisClients $clients, Lua $lua, Topology $topology, FailureReporter $reporter, QueueInspector $inspector);
+}
+
+namespace DF\HorizonObservability\Batches;                                     // T07
+final class BatchKind { public const HEX_TOKEN_MIN_LENGTH = 6; }
+final class BatchReader                                                        // not a singleton: a static WeakMap per database manager memoises detection
+{
+    public const RUNNING_WINDOW_SECONDS = 604800; public const CLOSED_WINDOW_SECONDS = 3600; public const LIMIT = 5000;
+    public const DETECTION_TTL_SECONDS = 600; public const DEFAULT_TABLE = 'job_batches'; public const COLUMNS = [/* 8 columns */];
+    public static function snapshot(object|array $row, BatchKind $kind): BatchSnapshot;
+    public static function status(int $total, int $pending, int $failed, ?int $finishedAt, ?int $cancelledAt): BatchStatus;
+    public function driver(): string; public function connectionName(): string; public function table(): string; // for T14
+    // available() throws when the database cannot be reached (the exporter counts it as a batches failure)
+}
+final class BatchLinks
+{
+    public const TTL_SECONDS = 604800; public const REFRESH_SECONDS = 3600; public const MEMO_LIMIT = 1000; public const MAX_LINKS = 10000;
+    public function __construct(?Container $container = null);
+    /** @return list<array{link: BatchLink, seenAt: int}> */ public function recent(CarbonImmutable $now): array;
+    public function prune(CarbonImmutable $now): int;
+}
+
+namespace DF\HorizonObservability\Discovery;                                   // T08
+final class JobClassFinder { public const MAX_FILE_BYTES = 524288; public static function declaredClass(string $source, string $basename): ?string; }
+final readonly class JobClassCache
+{
+    public const FILE = 'cache/horizon-observability.php'; public const VERSION = 1; public const TTL_SECONDS = 3600;
+    public const KEY_PREFIX = 'horizon-observability:job-classes:v1:'; public const SCAN_SUFFIX = ':scan'; public const STALE_SCAN_SECONDS = 60;
+    public function __construct(Application $app, JobClassFinder $finder, FailureReporter $reporter);
+    public function generatedAt(): ?int;                                       // for T14 check/about
+    public static function key(array $paths): string;
+}
+
+namespace DF\HorizonObservability\Redis;                                       // integration
+final class CircuitBreaker { public const ATTEMPTS = 'attempts'; }             // the only operation whose drops are counted
+
+namespace DF\HorizonObservability\Support;                                     // integration
+final class FailureReporter { public function configProblems(Config $config): void; }
+```
+
+New Lua files (headers frozen by their tasks; Appendix D is aligned with them): `record_attempt.lua`, `extremes_read.lua`, `reset_guard.lua` (T04), `queue_state.lua` (T05), `job_details.lua`, `delayed_jobs.lua` (T06). New view: `resources/views/menu-link.blade.php` (T09). Test helpers outside `tests/Support`: `tests/Unit/Metrics/Support/{FakeCollector,FakeClock,ExpositionFixture}` (`FakeCollector::quiet()` gives one quiet fake per collector id), `tests/Fixtures/Attempts/*` (PSR-4 test classes), `tests/Integration/{Batches,Discovery,JobStore}/Support/*`.
+
+### C2.5 Decisions taken in the phase B integration (2026-10-17)
+
+1. **Floors:** `laravel/horizon ^5.29.1` (5.22.0–5.29.0 declare `RedisQueue::pop($queue = null)`, a fatal error with Laravel ≥ 11.27.0; Arch 0.4, Q8 risks); dev and suggest `predis/predis ^2.0.2 || ^3.0` (Laravel 11's own floor; 2.0.0 raises PHP 8.2 deprecations). The L11 prefer-lowest leg resolves Laravel 11.39.1, because Pest 3.8 needs collision 8.7.
+2. **Config problems** are logged by the provider hook in the console only (commands, workers); over HTTP `Exporter::scrape()` logs them through `FailureReporter::configProblems()`. A denied request resolves the snapshot but does no cache I/O for it (Arch Q2.4; `AuthorizationTest` runs as a web server with a config problem).
+3. **Dropped attempts:** `CircuitBreaker` counts drops of the `ATTEMPTS` operation only, so `exporter_attempts_dropped_total` no longer counts ready_at and batch-link writes; the recovery info line still reports every dropped write.
+4. **`FailureReporter` with the `null` cache store** (whose `add()` always fails) falls back to the in-process throttle instead of logging nothing.
+5. **Maintenance exception:** the four job lists by name (`jobs/pending`, `completed`, `failed`, `delayed`) instead of `jobs/*`; an unknown list answers 503.
+6. **Cluster queue keys:** `DelayedJobStore` builds its key with `QueueInspector::queueKey()`, like the queue state; T12's live snapshot must do the same (and call `supports()` first).
+7. **Live self-metrics:** one implementation, `AttemptsCollector` (both series absent until `meta.live_push_at` exists; failures before the first push show up with it). `LiveSelfMetricsTest` scrapes the real collector.
+8. **Test environment:** `Tests\Support\Apps::DEFAULTS` (array cache, in-memory `testing` database also for batches and failed jobs, a fixed `app.key`) apply to every test app; `testbench.yaml` has no `laravel: '@testbench'` (testbench-core 9.x lacks the alias); `phpunit.xml.dist` sets `memory_limit=1G`; `RunsWorker` passes `--memory=4096`; `LogRecorder::channel()` drops Laravel's `deprecations` channel; `--exclude-group` is repeated per group (PHPUnit 10+ takes one group per option). The ArchTest "workbench classes are final" exempts only the two abstract discovery fixtures.
+
 ## Appendix D′. Lua contract changes
+
+**Phase B alignment (2026-10-17):** the headers of `resources/lua/*.lua` are the source of the contracts; Arch Appendix D was aligned with them in place: `record_attempt` deletes a passed `ready_at` key even without `startedAt` and returns the effective class; `extremes_read` returns the values as stored around `'\x1e'`; `reset_guard` also `HDEL`s `meta.dropped` and `meta.live_push_failures` on a changed `run_id` and is a no-op when `INFO` fails; `queue_state` caps the reserved scan at 16 MB and reads a payload with a duplicated key through cjson; `job_details` takes `max_exception_bytes = 0` for "not read"; `delayed_jobs` takes `max_bytes` and returns `{read, more, row…}`, under the cluster-aware key. `job_details` and `delayed_jobs` look for each key in the first and last 4 KB first.
 
 **`record_attempt.lua`** (WP2):
 - **KEYS:**

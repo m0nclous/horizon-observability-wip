@@ -1146,13 +1146,13 @@ There is no toggle: a reset to 0 is always handled correctly by `rate()` and `in
 |---|---|
 | Job start | 0 Redis calls |
 | Job end | 1 `EVAL` (about 10–14 commands inside, plus 2 for the live ring buffer when `live.enabled`, Addendum R4.5), O(1) |
-| Dispatch | Modern stack: at most 1 `ZADD` per (kind, connection, queue, class) per hour per process, for batched jobs only. Legacy stack: +1 `SET` per delayed dispatch. Both through the breaker. |
+| Dispatch | Modern stack: at most 1 `ZADD` per (kind, connection, queue, class) per hour per process, for batched jobs only, plus 1 `ZREMRANGEBYSCORE` prune on the first link write of each hour per process (phase B). Legacy stack: +1 `SET` per delayed dispatch. Both through the breaker. |
 | Scrape `horizon` | the Horizon master and supervisor repository reads |
-| Scrape `queues` | 1 `EVAL` per queue: `LLEN`, `LRANGE` ≤ `queue_scan_limit` (and ≤ 16 MB), `ZRANGE` reserved ≤ 1000 (`ZCARD` beyond), `ZCARD`/`ZCOUNT` delayed, `ZRANGEBYSCORE … LIMIT 0 1` |
-| Scrape `attempts` | 1 guard `EVAL` + 5 `HGETALL` (counters, histograms) + 1 `extremes_read` `EVAL` (20 `HGETALL` inside, Addendum R3.4) + at most 1000 `HDEL`, bounded by `max_job_classes` × queues |
+| Scrape `queues` | 1 `EVAL` per queue: `LLEN`, `LRANGE` ≤ `queue_scan_limit` (and ≤ 16 MB), `ZRANGE` reserved ≤ 1000 and ≤ 16 MB (`ZCARD` beyond; the byte cap since the T05 review), `ZCARD`/`ZCOUNT` delayed, `ZRANGEBYSCORE … LIMIT 0 1` |
+| Scrape `attempts` | 1 guard `EVAL` + 5 `HGETALL` (counters, histograms) + 1 `extremes_read` `EVAL` (20 `HGETALL` inside, Addendum R3.4) + 1 `HGETALL meta` + 1 `ZRANGE job_classes`, i.e. 9 commands, + lazy `HDEL`s of at most 1000 fields of classes no longer in the class set, bounded by `max_job_classes` × queues (measured in T04; the scrape never prunes the class set, only `record_attempt` does when it is full) |
 | Scrape `job_classes` | a cache file read |
-| Scrape `batches` | 2 SQL queries with `LIMIT` and 1 `ZRANGE` |
-| Job-list request | ≤ 20 chunked `ZRANGE` calls (10 000 / 500), light `HMGET`s, ≤ 10 detail `EVAL`s |
+| Scrape `batches` | 2 SQL queries with `LIMIT 5000` (plus 1 table check per 10 minutes in auto mode), 1 `ZRANGE` of at most the 10 000 most recently seen links and 1 `ZREMRANGEBYSCORE` prune |
+| Job-list request | Horizon lists: ≤ 20 `ZRANGEBYSCORE` calls (10 000 ids / 500; only the first read is cut to the page, later reads take whole chunks), pipelined light `HMGET`s, ≤ 10 `job_details` `EVAL`s (100 hashes each, final page only). Delayed list: ≤ 20 `delayed_jobs` `EVAL`s per queue, each ≤ 500 entries and ≤ 8 MB of payload (T06 review). An empty filter: 0 commands (C13). |
 | Live snapshot (Addendum R4.2) | cache hit: 1 `MGET`; build: Q + 5 round trips (Q = queues in scope), at most 1 build per `cache_ttl` per scope across all replicas |
 
 ### Rationale
@@ -2436,14 +2436,14 @@ All keys are passed in `KEYS[]`; scripts never build key names. Time is passed i
   1. Class admission: refresh `ZSCORE`; otherwise `ZCARD` < max → `ZADD`; otherwise prune `ZREMRANGEBYSCORE -inf (now-ttl` and retry; otherwise use the overflow label.
   2. `HINCRBY attempts <c␟q␟j␟status> 1`.
   3. If there is a duration: `HINCRBY` its bucket, `HINCRBYFLOAT` the sum, compare-and-set min/max, `EXPIRE` both extremes keys.
-  4. If `startedAt` is present: `ready = max(readyAt, GET ready_at)` then `DEL ready_at`; `wait = max(0, startedAt - ready)`; bucket via the bounds; `HINCRBY`/`HINCRBYFLOAT`.
+  4. If `startedAt` is present: `ready = max(readyAt, GET ready_at)` then `DEL ready_at`; `wait = max(0, startedAt - ready)`; bucket via the bounds; `HINCRBY`/`HINCRBYFLOAT`. A passed `ready_at` key is deleted even without `startedAt` (phase B).
   5. If dropped > 0: `HINCRBY meta dropped N`.
   6. If `ring_ttl > 0` (Addendum R4.5): `HINCRBY ring <c␟q␟status> 1` and `EXPIRE ring ring_ttl`.
 - **Returns:** the effective job_class.
 
 **`extremes_read.lua`** (WP2, Addendum D′)
 - **KEYS:** the 10 min keys (current 15-second bucket and the 9 previous ones), then the 10 max keys.
-- **Returns:** `{min_pairs…, '\x1e', max_pairs…}` with `field, value` pairs merged by `min` and `max`. Missing keys are skipped.
+- **Returns:** `{min_pairs…, '\x1e', max_pairs…}` with `field, value` pairs merged by `min` and `max`, the values as stored (no float formatting). Missing keys are skipped.
 
 **`reset_guard.lua`** (WP2)
 - **KEYS:** `meta`, then the counter keys (`attempts`, the duration and wait hashes).
@@ -2451,24 +2451,28 @@ All keys are passed in `KEYS[]`; scripts never build key names. Time is passed i
 - **Behaviour:** reads `run_id` from `redis.call('INFO','server')`.
   - missing meta → `HSET meta run_id`, return 0;
   - equal → return 0;
-  - different → `DEL` the counter keys, `HSET meta run_id reset_at`, return 1.
+  - different → `DEL` the counter keys, `HDEL meta dropped live_push_failures` (the counter fields of meta, so a restore does not double-count them; phase B), `HSET meta run_id reset_at`, return 1;
+  - `INFO` fails (e.g. denied by an ACL) or has no `run_id` → no-op, return 0.
 
 **`queue_state.lua`** (WP3)
 - **KEYS:** `queues:<q>`, `queues:<q>:reserved`, `queues:<q>:delayed`.
 - **ARGV:** now, scan_limit, reserved_scan_limit (1000), max_bytes (16777216), mode (`full`, or `live` for the live snapshot; Addendum D′).
 - **Returns:** `{ pending_len, reserved_total, delayed_total, delayed_due, earliest_due_score|false, first_fresh_ready_at|false, scanned, pending_pairs{name,count…}, reserved_pairs{name,count…} }`.
 - **`live` mode:** the readiness scan stops at `min(scan_limit, 20)` items and at `max_bytes` (1 MB from the builder); `pending_pairs` is empty; `reserved_pairs` only when `reserved_scan_limit > 0` (a Job or Batch filter is active).
-- **Field extraction:** plain `string.find` (no patterns, because cjson reorders keys after a retry) of the top-level `"displayName":"`, `"attempts":`, `"pushedAt":` (string or number), `"createdAt":` and `"delay":`. `delay:null` means no delay.
+- **Field extraction:** plain `string.find` (no patterns, because cjson reorders keys after a retry) of the top-level `"displayName":"`, `"attempts":`, `"pushedAt":` (string or number), `"createdAt":` and `"delay":`. `delay:null` means no delay. A key that occurs more than once in a payload (a string job's data, a payload hook) is read from the payload decoded with cjson instead (phase B).
+- **Reply details (phase B):** `first_fresh_ready_at` is a `%.17g` string (PHP reads the exact double); `displayName` in the pairs is the raw JSON string content (PHP decodes it before `JobClassLabel::normalize()`); the reserved scan stops at `reserved_scan_limit` members and at 16 MB (the payload that reaches the cap is included); `scan_limit` 0 = head only.
 
 **`job_details.lua`** (WP4)
 - **KEYS:** up to 100 Horizon job hashes.
-- **ARGV:** max_exception_bytes (1000).
+- **ARGV:** max_exception_bytes (1000; **0 = the exception is not read**, for `exceptions = none`).
 - **Returns:** per key, `{attempts from payload or false, first exception line cut to the byte cap or false}`.
+- `"attempts":` is looked for in the first and the last 4 KB of the payload before the whole payload (phase B).
 
 **`delayed_jobs.lua`** (WP4)
-- **KEYS:** `queues:<q>:delayed`.
-- **ARGV:** now, offset, count.
-- **Returns:** light rows `{uuid, displayName, attempts, pushedAt|false, score}` for not-yet-due entries, ascending by score.
+- **KEYS:** `queues:<q>:delayed`, or `queues:{<q>}:delayed` on a cluster connection with first-class cluster queues (the key `QueueInspector::queueKey()` builds; phase B).
+- **ARGV:** now, offset, count (≤ 500), max_bytes (optional byte budget of the call, 8 MB from `DelayedJobStore`; missing or 0 = none; the script always reads at least one entry and stops after the one that reaches the budget).
+- **Returns:** `{read, more, row, row, …}`: `read` = zset entries consumed (the next call starts at `offset + read`), `more` = 0 when no further not-yet-due entry exists; rows `{uuid, displayName, attempts, pushedAt|false, score}` for not-yet-due entries whose payload is a JSON object, ascending by score, `uuid` and `displayName` as raw JSON string content (phase B).
+- Entries are fetched 25 at a time inside the script; each key is looked for in the first and the last 4 KB of a payload before the whole payload (phase B).
 
 **`ring_read.lua`** (WP-L1, Addendum D′)
 - **KEYS:** the 12 complete 5-second bucket keys before the current one.
