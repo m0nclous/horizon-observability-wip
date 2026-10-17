@@ -300,7 +300,7 @@ loopback-only ports, a per-event concurrency group, PHP 8.5 and 128M portability
 reproduce exactly, wall times +12–30 % on the shared host), `bootstrap-live.sh` idempotent; integrator-request 1739346
 (normalized composer.json) accepted; the coverage threshold (85 %) was not measured locally.
 
-### T12 WP-L1 + WP-L2 Live backend — `in progress` (depends on T02, T03, T04, T05, T11)
+### T12 WP-L1 + WP-L2 Live backend — `testing` (depends on T02, T03, T04, T05, T11)
 Add §R4, §Q9′. One task: WP-L1, then WP-L2. Live snapshot service, `GET {base}/live` controller with ~1 s stampede-safe
 cache, `horizon-observability:stream` command (Grafana Live push, leader lock, backoff). The config keys, the route and
 `Live/{LiveScope,LiveSnapshot,Captions}` come from T02. Coordinate the ring buffer contract with T04; the snapshot needs
