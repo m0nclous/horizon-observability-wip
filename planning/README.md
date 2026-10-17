@@ -50,7 +50,7 @@ that the next task points to. Everything here is export-ignored and will be dele
    - `stream` is the only sub-5 s mode (live panels update independently of the dashboard refresh); it runs as a
      long-lived process (supervisor/systemd) on any number of replicas, one leader via the Redis lock.
 
-   Look deviations of the live modes (ADDENDUM R4.1), **pending owner acceptance**; `--live=off` keeps today's look exactly:
+   Look deviations of the live modes (ADDENDUM R4.1), **accepted by the owner on 2026-10-17**; `--live=off` keeps today's look exactly:
    - #3 Supervisor Processes loses its per-supervisor sparkline in poll and stream modes (the supervisor count is
      dynamic, and no stock transformation can merge a live row into each Prometheus series);
    - #2 Pending loses its sparkline in stream mode (Mixed cannot carry a stream, ADDENDUM R4.8);
