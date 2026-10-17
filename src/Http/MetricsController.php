@@ -9,9 +9,10 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * `GET|HEAD {base}/metrics`: Prometheus text format 0.0.4, always 200 once authorised (Arch Q1, Q2.1).
+ * `GET|HEAD {base}/metrics`: Prometheus text format 0.0.4, always 200 once authorised (Arch Q1, Q2.1), never cached.
  *
- * Stub (T02): the exporter's (empty) output. Owned by T03 (WP1).
+ * A HEAD request gets the same status and headers without running the collectors, so an uptime check costs no
+ * Redis or DB work.
  *
  * @internal
  */
@@ -21,7 +22,7 @@ final class MetricsController
 
     public function __invoke(Request $request, Exporter $exporter): Response
     {
-        return new Response($exporter->scrape($request), 200, [
+        return new Response($request->isMethod('HEAD') ? '' : $exporter->scrape($request), 200, [
             'Content-Type' => self::CONTENT_TYPE,
             'Cache-Control' => 'no-store',
         ]);

@@ -1,0 +1,182 @@
+# HELP ho_horizon_status Horizon status: 1 running, 0 paused (at least one master supervisor paused), -1 no master supervisor.
+# TYPE ho_horizon_status gauge
+ho_horizon_status 1
+# HELP ho_horizon_supervisor_processes Worker processes of a Horizon supervisor per queue; balance=false supervisors report their pooled queue list.
+# TYPE ho_horizon_supervisor_processes gauge
+ho_horizon_supervisor_processes{supervisor="supervisor-default",queue="default"} 3
+ho_horizon_supervisor_processes{supervisor="supervisor-pool",queue="mail,sms"} 2
+ho_horizon_supervisor_processes{supervisor="supervisor-slow",queue="reports"} 1
+ho_horizon_supervisor_processes{supervisor="supervisor-slow",queue="slow"} 1
+# HELP ho_horizon_supervisor_min_processes Configured minimum worker processes of a Horizon supervisor.
+# TYPE ho_horizon_supervisor_min_processes gauge
+ho_horizon_supervisor_min_processes{supervisor="supervisor-default"} 1
+ho_horizon_supervisor_min_processes{supervisor="supervisor-pool"} 1
+ho_horizon_supervisor_min_processes{supervisor="supervisor-slow"} 1
+# HELP ho_horizon_supervisor_max_processes Configured maximum worker processes of a Horizon supervisor.
+# TYPE ho_horizon_supervisor_max_processes gauge
+ho_horizon_supervisor_max_processes{supervisor="supervisor-default"} 3
+ho_horizon_supervisor_max_processes{supervisor="supervisor-pool"} 2
+ho_horizon_supervisor_max_processes{supervisor="supervisor-slow"} 2
+# HELP ho_horizon_supervisor_info Horizon supervisor settings; always 1.
+# TYPE ho_horizon_supervisor_info gauge
+ho_horizon_supervisor_info{supervisor="supervisor-default",balance="auto",connection="redis"} 1
+ho_horizon_supervisor_info{supervisor="supervisor-pool",balance="off",connection="redis"} 1
+ho_horizon_supervisor_info{supervisor="supervisor-slow",balance="auto",connection="redis"} 1
+# HELP ho_horizon_wait_threshold_seconds Long-wait threshold of a queue from horizon.waits, seconds.
+# TYPE ho_horizon_wait_threshold_seconds gauge
+ho_horizon_wait_threshold_seconds{connection="redis",queue="default"} 10
+ho_horizon_wait_threshold_seconds{connection="redis",queue="reports"} 60
+ho_horizon_wait_threshold_seconds{connection="redis",queue="slow"} 30
+# HELP ho_horizon_info Links for the Grafana dashboard: Horizon URL, job-list API path and text-to-speech URL; always 1.
+# TYPE ho_horizon_info gauge
+ho_horizon_info{url="http://localhost:8000/horizon",api_path="/horizon/observability",tts_url="browser"} 1
+# HELP ho_queue_pending_jobs Jobs ready to run and waiting for a worker, including delayed jobs that are already due.
+# TYPE ho_queue_pending_jobs gauge
+ho_queue_pending_jobs{connection="redis",queue="default"} 7
+ho_queue_pending_jobs{connection="redis",queue="slow"} 0
+# HELP ho_queue_delayed_jobs Delayed jobs (dispatched or released with a delay), including due ones; see queue_delayed_due_jobs.
+# TYPE ho_queue_delayed_jobs gauge
+ho_queue_delayed_jobs{connection="redis",queue="default"} 2
+ho_queue_delayed_jobs{connection="redis",queue="slow"} 0
+# HELP ho_queue_delayed_due_jobs Delayed jobs whose delay has expired but that have not been moved to the queue yet.
+# TYPE ho_queue_delayed_due_jobs gauge
+ho_queue_delayed_due_jobs{connection="redis",queue="default"} 1
+ho_queue_delayed_due_jobs{connection="redis",queue="slow"} 0
+# HELP ho_queue_oldest_pending_job_age_seconds Seconds the oldest ready first-attempt job has waited since it became available; 0 when nothing is waiting.
+# TYPE ho_queue_oldest_pending_job_age_seconds gauge
+ho_queue_oldest_pending_job_age_seconds{connection="redis",queue="default"} 17.25
+ho_queue_oldest_pending_job_age_seconds{connection="redis",queue="slow"} 0
+# HELP ho_queue_jobs_pending Ready jobs per job class in the scanned head of the queue; (unscanned) counts the rest.
+# TYPE ho_queue_jobs_pending gauge
+ho_queue_jobs_pending{connection="redis",queue="default",job_class="(unknown)"} 1
+ho_queue_jobs_pending{connection="redis",queue="default",job_class="(unscanned)"} 1
+ho_queue_jobs_pending{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice"} 4
+ho_queue_jobs_pending{connection="redis",queue="default",job_class="Closure (routes/web.php)"} 1
+# HELP ho_queue_jobs_reserved Jobs currently reserved by workers per job class.
+# TYPE ho_queue_jobs_reserved gauge
+ho_queue_jobs_reserved{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice"} 2
+# HELP ho_queue_jobs_total Finished job attempts by outcome: completed, released, retried, failed, timed_out.
+# TYPE ho_queue_jobs_total counter
+ho_queue_jobs_total{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",status="completed"} 40
+ho_queue_jobs_total{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",status="failed"} 1
+ho_queue_jobs_total{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",status="released"} 0
+ho_queue_jobs_total{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",status="retried"} 1
+ho_queue_jobs_total{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",status="timed_out"} 0
+# HELP ho_queue_job_duration_seconds Duration of job attempts, seconds.
+# TYPE ho_queue_job_duration_seconds histogram
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="0.05"} 3
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="0.1"} 13
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="0.25"} 25
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="0.5"} 33
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="1"} 38
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="2.5"} 41
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="5"} 42
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="10"} 42
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="30"} 42
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="60"} 42
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="120"} 42
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="300"} 42
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="600"} 42
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="1800"} 42
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="3600"} 42
+ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="+Inf"} 42
+ho_queue_job_duration_seconds_sum{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice"} 17.375
+ho_queue_job_duration_seconds_count{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice"} 42
+# HELP ho_queue_job_wait_seconds Seconds a job waited in the queue before its first attempt started.
+# TYPE ho_queue_job_wait_seconds histogram
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="0.05"} 20
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="0.1"} 29
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="0.25"} 35
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="0.5"} 35
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="1"} 39
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="2.5"} 39
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="5"} 39
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="10"} 41
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="30"} 41
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="60"} 42
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="120"} 42
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="300"} 42
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="600"} 42
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="1800"} 42
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="3600"} 42
+ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="+Inf"} 43
+ho_queue_job_wait_seconds_sum{connection="redis",queue="default"} 312.5
+ho_queue_job_wait_seconds_count{connection="redis",queue="default"} 43
+# HELP ho_queue_job_duration_min_seconds Shortest job attempt during the last 150 seconds, seconds.
+# TYPE ho_queue_job_duration_min_seconds gauge
+ho_queue_job_duration_min_seconds{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice"} 0.042
+# HELP ho_queue_job_duration_max_seconds Longest job attempt during the last 150 seconds, seconds.
+# TYPE ho_queue_job_duration_max_seconds gauge
+ho_queue_job_duration_max_seconds{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice"} 4.75
+# HELP ho_exporter_attempts_dropped_total Job attempts not recorded because the metrics Redis was unavailable.
+# TYPE ho_exporter_attempts_dropped_total counter
+ho_exporter_attempts_dropped_total 0
+# HELP ho_exporter_live_push_timestamp_seconds Time of the last successful Grafana Live push of the live overview, Unix seconds.
+# TYPE ho_exporter_live_push_timestamp_seconds gauge
+ho_exporter_live_push_timestamp_seconds 1792201716.123
+# HELP ho_exporter_live_push_failures_total Failed Grafana Live pushes of the live overview.
+# TYPE ho_exporter_live_push_failures_total counter
+ho_exporter_live_push_failures_total 2
+# HELP ho_queue_job_classes Queueable job classes found in the application code; always 1.
+# TYPE ho_queue_job_classes gauge
+ho_queue_job_classes{job_class="App\\Jobs\\SendInvoice"} 1
+ho_queue_job_classes{job_class="App\\Mail\\WelcomeMail"} 1
+ho_queue_job_classes{job_class="App\\Notifications\\InvoicePaid"} 1
+# HELP ho_queue_batches_running Running job batches per batch kind.
+# TYPE ho_queue_batches_running gauge
+ho_queue_batches_running{batch="export"} 1
+# HELP ho_queue_batch_jobs Jobs of running batches per batch kind and state: total, pending, failed.
+# TYPE ho_queue_batch_jobs gauge
+ho_queue_batch_jobs{batch="export",state="failed"} 2
+ho_queue_batch_jobs{batch="export",state="pending"} 40
+ho_queue_batch_jobs{batch="export",state="total"} 100
+# HELP ho_queue_batch_oldest_age_seconds Age of the oldest running batch of a kind, seconds.
+# TYPE ho_queue_batch_oldest_age_seconds gauge
+ho_queue_batch_oldest_age_seconds{batch="export"} 125
+# HELP ho_queue_batch_job_counts Jobs of a recent batch per state: total, pending, failed.
+# TYPE ho_queue_batch_job_counts gauge
+ho_queue_batch_job_counts{batch="export",name="export-2026-10-17",state="failed"} 2
+ho_queue_batch_job_counts{batch="export",name="export-2026-10-17",state="pending"} 40
+ho_queue_batch_job_counts{batch="export",name="export-2026-10-17",state="total"} 100
+ho_queue_batch_job_counts{batch="import",name="import-users",state="failed"} 0
+ho_queue_batch_job_counts{batch="import",name="import-users",state="pending"} 0
+ho_queue_batch_job_counts{batch="import",name="import-users",state="total"} 10
+# HELP ho_queue_batch_created_timestamp_seconds Creation time of a recent batch, Unix seconds.
+# TYPE ho_queue_batch_created_timestamp_seconds gauge
+ho_queue_batch_created_timestamp_seconds{batch="export",name="export-2026-10-17"} 1792201591
+ho_queue_batch_created_timestamp_seconds{batch="import",name="import-users"} 1792200000
+# HELP ho_queue_batch_closed_timestamp_seconds Finish or cancel time of a recent batch, Unix seconds.
+# TYPE ho_queue_batch_closed_timestamp_seconds gauge
+ho_queue_batch_closed_timestamp_seconds{batch="import",name="import-users"} 1792200420
+# HELP ho_queue_batch_job_classes Queues and job classes seen in batches of a kind during the last 7 days; always 1.
+# TYPE ho_queue_batch_job_classes gauge
+ho_queue_batch_job_classes{batch="export",queue="default",job_class="App\\Jobs\\ExportChunk"} 1
+ho_queue_batch_job_classes{batch="import",queue="slow",job_class="App\\Jobs\\ImportUser"} 1
+# HELP ho_queue_batch_info Queues and connections of a batch kind; always 1.
+# TYPE ho_queue_batch_info gauge
+ho_queue_batch_info{batch="export",queue="default",connection="redis"} 1
+ho_queue_batch_info{batch="import",queue="slow",connection="redis"} 1
+# HELP ho_queue_batch_progress Progress of a recent batch, percent of processed jobs.
+# TYPE ho_queue_batch_progress gauge
+ho_queue_batch_progress{batch="export",name="export-2026-10-17",status="Running",id="9f3c1e2a-5b7d-4c1e-8f00-123456789abc"} 58
+ho_queue_batch_progress{batch="import",name="import-users",status="Finished",id="0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"} 100
+# HELP ho_exporter_collector_success Whether the last run of a metrics collector succeeded: 1 or 0.
+# TYPE ho_exporter_collector_success gauge
+ho_exporter_collector_success{collector="attempts"} 1
+ho_exporter_collector_success{collector="batches"} 1
+ho_exporter_collector_success{collector="horizon"} 1
+ho_exporter_collector_success{collector="job_classes"} 1
+ho_exporter_collector_success{collector="queues"} 1
+# HELP ho_exporter_collector_duration_seconds Duration of the last run of a metrics collector, seconds.
+# TYPE ho_exporter_collector_duration_seconds gauge
+ho_exporter_collector_duration_seconds{collector="attempts"} 0.0375
+ho_exporter_collector_duration_seconds{collector="batches"} 0.125
+ho_exporter_collector_duration_seconds{collector="horizon"} 0.0125
+ho_exporter_collector_duration_seconds{collector="job_classes"} 0.0005
+ho_exporter_collector_duration_seconds{collector="queues"} 0.25
+# HELP ho_exporter_build_info Versions of the package, PHP, Laravel, Horizon and the Redis client; always 1.
+# TYPE ho_exporter_build_info gauge
+ho_exporter_build_info{version="0.1.0",php="PHP_VERSION",laravel="12.40.0",horizon="5.50.1",redis_client="predis 3.0.0"} 1
+# HELP ho_exporter_config_problems Number of invalid configuration values replaced by defaults; see php artisan horizon-observability:check.
+# TYPE ho_exporter_config_problems gauge
+ho_exporter_config_problems 0
