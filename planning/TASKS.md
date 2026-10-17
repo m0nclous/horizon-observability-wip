@@ -405,6 +405,9 @@ problems); report whether the Grafana link is active (valid URL and the middlewa
 ServiceProviderTest "runs the other command stubs successfully" still runs install, check and flush: adapt it when they
 become real (T08 removed cache and clear).
 
+T14 addition (phase B review): `check` warns when the default cache store or the batching DB connection has no
+connect/read timeout (a hung store can cost a scrape its budget), and the README says so (T15).
+
 ### T15 WP11 Integration, docs, release — `todo` (depends on everything)
 README (English: install, config, Prometheus scrape job at 10 s, Grafana 12/13 setup, live modes, security), UPGRADE.md
 (office migration, Arch Appendix G, namespace `office`), CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, `art/` screenshots,
@@ -432,3 +435,23 @@ prefer-lowest leg resolves Laravel 11.39.1 (Pest 3.8 needs collision 8.7), so 11
 tests only; the 85 % coverage threshold has not been measured yet. Residual risks (T04): on 13.33+ with
 `killOnTimeout=false` a SIGALRM right after the record `EVAL` opens the breaker for 30 s; predis plus a ready_at or
 batch-link write interrupted by SIGALRM can desync the private client.
+
+## Phase D: honesty (owner decision 13)
+
+### T16 Exporter truth tests — `todo` (depends on T03–T08, T12)
+Scenario engine in `tests/Truth/` (scenario DSL: queues, jobs with outcomes, durations, delays, batches; a deterministic
+clock where possible; real worker via RunsWorker) + expected-value model. Truth tests per metric family of the catalog
+(Appendix B/B′): exact equality with the scenario's expected values; invariants; cross-check with Horizon's JobRepository/
+SupervisorRepository/MasterSupervisorRepository; scrape-interval invariance of increase() (simulated scrapes at 5/10/60 s);
+Redis restart reset; sync/deferred/background exclusion. Coverage gate: a test fails if a catalog family has no truth test.
+Acceptance: green on phpredis and predis; each family listed in a coverage table in the test README.
+
+### T17 Dashboard truth tests — `todo` (depends on T13, T16, T11)
+Pipeline: T16 scenarios → workbench app → real Prometheus (dev stack, 10 s scrape, or promtool backfill of recorded
+expositions for determinism) → Grafana 12.4.13 and 13.2.4 → for every panel/target of the rendered dashboard (off, poll,
+stream) evaluate through `/api/ds/query` with interpolated variables and compare with the expected values from the
+scenario model (tile values, captions, colours/levels, table cells, series points within a tolerance only where
+Prometheus extrapolation is documented). Cases: All vs each filter, empty state, counter reset, 2 replicas, scrape 5/10/60 s,
+range 15 m / 1 h / 6 h. Playwright DOM check of tile texts. CI job `dashboard-truth` on changes to `src/Grafana/**`,
+collectors, Lua, `composer.json`, plus weekly. Coverage gate: every panel id and target refId has at least one truth case.
+T13 acceptance addition: every WP8B/8C/8D step keeps T17 green (T13 may start T17's harness early).
