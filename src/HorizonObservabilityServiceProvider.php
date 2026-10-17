@@ -17,6 +17,7 @@ use DF\HorizonObservability\Console\InstallCommand;
 use DF\HorizonObservability\Console\StreamCommand;
 use DF\HorizonObservability\Discovery\JobClassCache;
 use DF\HorizonObservability\Horizon\Topology;
+use DF\HorizonObservability\Http\JobList;
 use DF\HorizonObservability\Http\Middleware\InjectGrafanaLink;
 use DF\HorizonObservability\Http\RoutePath;
 use DF\HorizonObservability\Redis\CircuitBreaker;
@@ -181,14 +182,15 @@ final class HorizonObservabilityServiceProvider extends ServiceProvider
     }
 
     /**
-     * Paths `PreventRequestsDuringMaintenance` lets through (Arch Q2.4, Addendum R4.3).
+     * Paths `PreventRequestsDuringMaintenance` lets through (Arch Q2.4, Addendum R4.3). The four job lists are named,
+     * not `jobs/*`, so an unknown list name still answers 503 instead of reaching Horizon's catch-all.
      *
      * @return list<string>
      */
     public static function maintenanceExceptions(Repository $config): array
     {
         $base = RoutePath::base($config);
-        $paths = [$base.'/metrics', $base.'/jobs/*'];
+        $paths = [$base.'/metrics', ...array_map(static fn (JobList $list): string => $base.'/jobs/'.$list->value, JobList::cases())];
 
         if (Config::flag($config->get('horizon-observability.live.enabled', true), true)) {
             $paths[] = $base.'/live';

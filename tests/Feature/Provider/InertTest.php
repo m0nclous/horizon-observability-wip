@@ -100,7 +100,7 @@ it('wires everything when enabled', function (array $providers): void {
 
     expect($state['routes'])->toBe(['horizon-observability.metrics', 'horizon-observability.jobs', 'horizon-observability.live'])
         ->and($state['listeners'])->toBe($listeners)
-        ->and($state['maintenance'])->toBe(['horizon/observability/metrics', 'horizon/observability/jobs/*', 'horizon/observability/live']);
+        ->and($state['maintenance'])->toBe(['horizon/observability/metrics', 'horizon/observability/jobs/pending', 'horizon/observability/jobs/completed', 'horizon/observability/jobs/failed', 'horizon/observability/jobs/delayed', 'horizon/observability/live']);
 })->with('provider orders');
 
 it('skips the listeners of disabled collectors and the maintenance exception on opt-out', function (): void {
@@ -154,5 +154,5 @@ it('leaves /live out of the maintenance exception when live is disabled', functi
         'horizon-observability.path' => 'metrics/horizon',
     ], static fn (Application $app): array => (new PreventRequestsDuringMaintenance($app))->getExcludedPaths());
 
-    expect($paths)->toBe(['metrics/horizon/metrics', 'metrics/horizon/jobs/*']);
+    expect($paths)->toBe(['metrics/horizon/metrics', 'metrics/horizon/jobs/pending', 'metrics/horizon/jobs/completed', 'metrics/horizon/jobs/failed', 'metrics/horizon/jobs/delayed']);
 });

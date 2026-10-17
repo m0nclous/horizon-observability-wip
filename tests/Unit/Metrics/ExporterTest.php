@@ -370,7 +370,7 @@ it('exports the number of config problems', function (): void {
 
 it('logs the config problems on a scrape served over HTTP', function (): void {
     // Over HTTP the provider leaves the warning to the (authorised) scrape: denied requests stay free of cache I/O.
-    (fn () => $this->isRunningInConsole = false)->call($this->app);
+    (fn (): false => $this->isRunningInConsole = false)->call($this->app);
     $log = exporterTestLog();
     exporterTestConfig(['namespace' => '1bad']);
     app(Config::class);

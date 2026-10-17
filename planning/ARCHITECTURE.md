@@ -419,7 +419,7 @@ The configured middleware is attached **per route, after `Authorize`**, not as g
   - Authenticated work is bounded: `limit` ≤ 1000, internal scan caps, an empty resolved filter returns immediately (C13), and the scrape budget applies.
   - A default limit keyed by token or IP would be shared by every Grafana viewer, since Infinity queries come from the Grafana server, and would blank the tables during incidents.
   - Recipe: `'middleware' => ['throttle:600,1']`. It runs after `Authorize`.
-- **Maintenance mode.** When `available_during_maintenance` is true (the default), `boot()` calls `PreventRequestsDuringMaintenance::except(["$base/metrics", "$base/jobs/*", "$base/live"])` (`$base/live` from Addendum R4.3), so queue visibility survives `php artisan down`. `HorizonObservability::flushState()` resets it in tests.
+- **Maintenance mode.** When `available_during_maintenance` is true (the default), `boot()` calls `PreventRequestsDuringMaintenance::except(["$base/metrics", "$base/jobs/pending", "$base/jobs/completed", "$base/jobs/failed", "$base/jobs/delayed", "$base/live"])` (`$base/live` from Addendum R4.3; the four lists are named instead of `$base/jobs/*` since the phase B integration, so an unknown list name answers 503 rather than reaching Horizon's catch-all), so queue visibility survives `php artisan down`. `HorizonObservability::flushState()` resets it in tests.
 
 #### 2.5 What clients send
 

@@ -66,10 +66,13 @@ it('keeps the endpoints reachable during maintenance', function (): void {
 
     $this->get('/horizon/observability/metrics', ['Authorization' => 'Bearer '.MAINTENANCE_MODE_TEST_TOKEN])->assertOk();
     // The job lists and /live are reachable too: the request gets as far as Authorize (401, not 503).
-    $this->get('/horizon/observability/jobs/pending')->assertUnauthorized();
-    $this->get('/horizon/observability/jobs/delayed')->assertUnauthorized();
+    foreach (['pending', 'completed', 'failed', 'delayed'] as $list) {
+        $this->get('/horizon/observability/jobs/'.$list)->assertUnauthorized();
+    }
+
     $this->get('/horizon/observability/live')->assertUnauthorized();
-    // Everything else is down, including Horizon itself.
+    // Everything else is down, including Horizon itself and an unknown list name (Horizon's catch-all).
+    $this->get('/horizon/observability/jobs/nope')->assertStatus(503);
     $this->get('/horizon/dashboard')->assertStatus(503);
     $this->get('/horizon/metrics')->assertStatus(503);
 });

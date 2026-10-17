@@ -278,7 +278,7 @@ it('causes no cache write when unauthenticated', function (array $config, ?Closu
         },
         // A web server, not the console: the provider then leaves the config-problems warning to the scrape.
         static function (Application $app): void {
-            (fn () => $this->isRunningInConsole = false)->call($app);
+            (fn (): false => $this->isRunningInConsole = false)->call($app);
         },
     );
 
