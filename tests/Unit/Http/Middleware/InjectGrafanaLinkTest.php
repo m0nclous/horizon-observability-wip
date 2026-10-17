@@ -299,6 +299,9 @@ it('passes the page through and logs once when rendering fails', function (): vo
 });
 
 it('passes the page through when even the failure report fails', function (): void {
+    // Forgotten first: before Laravel 11.34, bind() of a resolved abstract rebuilt it at once (Container::rebound()),
+    // so the throwing binding threw here, on Laravel 11.23.
+    unset($this->app[Config::class], $this->app[FailureReporter::class]);
     $this->app->bind(Config::class, static fn (): never => throw new LogicException('broken container'));
     $this->app->bind(FailureReporter::class, static fn (): never => throw new LogicException('broken container'));
     $layout = menuLinkLayouts()['installed Horizon'][0];

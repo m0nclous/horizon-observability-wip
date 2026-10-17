@@ -72,6 +72,18 @@ it('records a released attempt without a wait', function (): void {
         ->and(Storage::exists($this->keys->waitBuckets()))->toBeFalse();
 });
 
+it('records the wait of a payload whose attempts is not finite, as the queue reader counts it (T18 QA round 2)', function (string $attempts): void {
+    // json_decode() reads 1e999 as INF; (int) and queue_state.lua truncate it to 0, a first attempt.
+    $job = FakeRedisJob::raw('{"uuid":"u-inf","displayName":"App\\\\Jobs\\\\SendInvoice","job":"Illuminate\\\\Queue\\\\CallQueuedHandler@call","data":{"commandName":"App\\\\Jobs\\\\SendInvoice","command":"x"},"id":"u-inf","attempts":'.$attempts.',"pushedAt":"1700000098.5"}');
+
+    event(new JobProcessing('redis', $job));
+    event(Events::attempted($job));
+
+    expect(Storage::hash($this->keys->attempts()))->toBe(['redis|default|App\\Jobs\\SendInvoice|completed' => '1'])
+        ->and(Storage::hash($this->keys->waitBuckets()))->toBe(['redis|default|2.5' => '1'])
+        ->and(Storage::hash($this->keys->waitSum()))->toBe(['redis|default' => '2']);
+})->with(['1e999' => ['1e999'], '-1e999' => ['-1e999'], '"1e999"' => ['"1e999"']]);
+
 it('records an exception with a retry as retried', function (): void {
     $job = ($this->job)();
 

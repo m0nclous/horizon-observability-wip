@@ -20,8 +20,9 @@ use Orchestra\Testbench\TestCase as Orchestra;
  *   Redis test on predis.
  * - Every key of a test process lives under {@see self::redisPrefix()} (`hot_<pid>:`): the queue connection prefix
  *   and Horizon's prefix (hence the package storage on the `horizon` connection) both start with it.
- * - Tests in the `redis` or `cluster` group start and end with no key under that prefix. Only those keys are
- *   deleted (`SCAN` + `DEL`), never `FLUSHDB`, so a shared Redis server is safe.
+ * - Tests in the `redis` or `cluster` group start and end with no key under that prefix, in the default database
+ *   and in the one of the `cache` connection ({@see RedisKeys::databases()}). Only those keys are deleted (`SCAN` +
+ *   `DEL`), never `FLUSHDB`, so a shared Redis server is safe.
  * - The package's static state is reset after every test.
  * - The environment does not depend on the workbench ({@see Support\Apps::DEFAULTS}): the array cache, the in-memory
  *   `testing` database (also for batches and failed jobs) and a fixed `app.key`, whether or not `composer build`

@@ -53,3 +53,16 @@ it('reads rows as objects or arrays and keeps the raw name', function (): void {
     expect(BatchReader::snapshot($row, new BatchKind))->toEqual($expected)
         ->and(BatchReader::snapshot((object) $row, new BatchKind))->toEqual($expected);
 });
+
+it('reads a corrupt number past the integer range as missing instead of wrapping it (PHP 8.5, T18)', function (): void {
+    // (int) 1e30 wraps on PHP 8.2-8.4 and warns on 8.5 (failOnWarning), which would fail the whole collector.
+    $snapshot = BatchReader::snapshot([
+        'id' => 'b', 'name' => 'n', 'total_jobs' => 1e30, 'pending_jobs' => '1e30', 'failed_jobs' => '2',
+        'created_at' => '1700000000.9', 'finished_at' => -1e30, 'cancelled_at' => 1700000100.5,
+    ], new BatchKind);
+
+    expect([$snapshot->total, $snapshot->pending, $snapshot->failed, $snapshot->createdAt, $snapshot->closedAt])
+        ->toBe([0, 0, 2, 1700000000, 1700000100])
+        ->and(BatchReader::snapshot(['id' => 'b', 'total_jobs' => 1, 'pending_jobs' => PHP_INT_MIN, 'failed_jobs' => 0, 'created_at' => 1], new BatchKind)->progress)
+        ->toBe(0);
+});
