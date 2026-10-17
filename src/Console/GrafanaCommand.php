@@ -41,6 +41,7 @@ final class GrafanaCommand extends Command
         {--job= : Prometheus job (scrape job of the package endpoint) the dashboard selects by default and the alert rules are scoped to; empty = all jobs}
         {--folder=Horizon : Grafana folder of the alert rules}
         {--datasource-uid= : Uid of the Prometheus datasource of the alert rules (default: ${HORIZON_OBSERVABILITY_PROMETHEUS_UID}, interpolated by Grafana)}
+        {--health-rules : Add the opt-in health rules: a failing metrics collector, and more than one scraped target per job}
         {--prometheus-datasource= : Name regex of the Prometheus datasource (default: Grafana\'s default datasource)}
         {--infinity-datasource= : Name regex of the Infinity datasource of the job lists (default: the first one)}';
 
@@ -151,6 +152,7 @@ final class GrafanaCommand extends Command
             alertFolder: $folder,
             alertDatasourceUid: $datasource === '' ? DashboardOptions::DATASOURCE_PLACEHOLDER : $datasource,
             job: $job === '' ? null : $job,
+            healthRules: $this->option('health-rules') === true,
         );
     }
 

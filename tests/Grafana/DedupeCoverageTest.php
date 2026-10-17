@@ -190,11 +190,12 @@ it('finds selectors outside the wrapper', function (string $expr, int $problems)
 ]);
 
 it('wraps the selectors of every alert rule and of a pinned job', function (): void {
-    $options = new DashboardOptions(job: 'app', uid: 'queues');
+    $options = new DashboardOptions(uid: 'queues', job: 'app', healthRules: true);
     $problems = [];
 
     foreach (Rendered::expressions((new DashboardBuilder($options))->build(), (new AlertRulesBuilder($options))->build()) as $where => $expr) {
-        if (! str_starts_with($expr, 'label_values(')) {
+        // The duplicates rule counts the replicas on purpose (Arch Q1.5)
+        if (! str_starts_with($expr, 'label_values(') && $where !== 'rule queues-duplicates A') {
             array_push($problems, ...array_map(static fn (string $problem): string => $where.': '.$problem, undeduplicated($expr)));
         }
     }

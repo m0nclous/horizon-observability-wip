@@ -46,6 +46,7 @@ final readonly class DashboardOptions
      *                            (`--job`); null selects all jobs
      * @param  bool  $dedupe  wrap every package selector in the replica dedupe `max by (job, <labels>)` (Arch Q5.6
      *                        step 10); off only for the pilot
+     * @param  bool  $healthRules  add the opt-in health rules `<uid>-collector` and `<uid>-duplicates` (Arch Q1.5)
      * @param  bool  $legacy  render what the pilot rendered where WP8B changed the output (metric names, ...);
      *                        TEMPORARY, set by {@see LegacyProfile} only and deleted with it at the end of WP8B
      */
@@ -66,6 +67,7 @@ final readonly class DashboardOptions
         public LiveMode $live = LiveMode::Off,
         public ?string $job = null,
         public bool $dedupe = true,
+        public bool $healthRules = false,
         public bool $legacy = false,
     ) {}
 

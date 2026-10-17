@@ -127,6 +127,15 @@ final readonly class Promql
     }
 
     /**
+     * A package selector without the replica dedupe, for the one rule that counts the replicas (the opt-in
+     * duplicates rule, Arch Q1.5).
+     */
+    public function replicas(Metric $metric, string ...$matchers): string
+    {
+        return self::vector($this->name($metric), ...$this->scoped(array_values($matchers)));
+    }
+
+    /**
      * A package selector shifted in time: `x offset 5m`, `x @ ${__to:date:seconds}`, deduplicated around it.
      *
      * @param  list<string>  $matchers

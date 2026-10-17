@@ -41,6 +41,15 @@ final readonly class AlertRulesBuilder
     public const CORE_RULES = ['no-metrics', 'down', 'long-wait', 'failures'];
 
     /**
+     * The uid suffixes of the opt-in health rules (Arch Q1.5).
+     */
+    public const HEALTH_RULES = ['collector', 'duplicates'];
+
+    private const COLLECTOR_FOR = '15m';
+
+    private const DUPLICATES_FOR = '10m';
+
+    /**
      * @return array{apiVersion: int, groups: list<array<string, mixed>>}
      */
     public function build(): array
@@ -117,6 +126,10 @@ final readonly class AlertRulesBuilder
             ),
         ];
 
+        if ($this->options->healthRules) {
+            array_push($rules, ...$this->healthRules($promql, PanelRegistry::idOf($dashboard, 'Horizon')));
+        }
+
         return ['apiVersion' => 1, 'groups' => [[
             'orgId' => self::ORG_ID,
             'name' => self::GROUP,
@@ -124,6 +137,41 @@ final readonly class AlertRulesBuilder
             'interval' => Thresholds::ALERT_INTERVAL,
             'rules' => $rules,
         ]]];
+    }
+
+    /**
+     * The opt-in health rules (`--health-rules`, Arch Q1.5): a collector that keeps failing, and more than one
+     * scraped target per job (per-pod scraping), which the dedupe hides from the panels. Neither is in the Alerts
+     * tile: they are about the exporter, not the queues.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function healthRules(Promql $promql, int $panelId): array
+    {
+        return [
+            // Auto-disabled collectors emit no success series, so they never fire
+            $this->rule(
+                'collector',
+                'Metrics collector failing',
+                Promql::min($promql->selector(Metric::CollectorSuccess), 'job', 'collector'),
+                $this->below(1),
+                noData: 'OK',
+                summary: 'The {{ $labels.collector }} collector of {{ $labels.job }} fails; run php artisan horizon-observability:check',
+                panelId: $panelId,
+                for: self::COLLECTOR_FOR,
+            ),
+            // Counts the replicas on purpose, so the only selector without the dedupe
+            $this->rule(
+                'duplicates',
+                'Duplicate metrics exporters',
+                Promql::count($promql->replicas(Metric::HorizonStatus), 'job'),
+                ['type' => 'gt', 'params' => [1]],
+                noData: 'OK',
+                summary: '{{ $values.A.Value }} targets of {{ $labels.job }} export the same metrics; scrape one target per application',
+                panelId: $panelId,
+                for: self::DUPLICATES_FOR,
+            ),
+        ];
     }
 
     /**
@@ -150,6 +198,7 @@ final readonly class AlertRulesBuilder
         string $summary,
         int $panelId,
         int $lookbackSeconds = Thresholds::ALERT_LOOKBACK_SECONDS,
+        string $for = Thresholds::ALERT_FOR,
     ): array {
         $uid = $this->options->uid.'-'.$suffix;
 
@@ -189,7 +238,7 @@ final readonly class AlertRulesBuilder
             ],
             'noDataState' => $noData,
             'execErrState' => 'Error',
-            'for' => Thresholds::ALERT_FOR,
+            'for' => $for,
             'annotations' => [
                 'summary' => $summary,
                 '__dashboardUid__' => $this->options->uid,
