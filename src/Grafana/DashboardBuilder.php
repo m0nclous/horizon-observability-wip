@@ -39,6 +39,11 @@ final readonly class DashboardBuilder
      */
     private const SCHEMA_VERSION = 42;
 
+    /**
+     * The oldest supported Grafana (owner decision 4).
+     */
+    public const MIN_GRAFANA = '12.3.0';
+
     public function __construct(private DashboardOptions $options) {}
 
     /**
@@ -48,7 +53,7 @@ final readonly class DashboardBuilder
     {
         $this->assertSupported();
 
-        return [
+        $dashboard = [
             'annotations' => ['list' => [[
                 'builtIn' => 1,
                 'datasource' => ['type' => 'grafana', 'uid' => '-- Grafana --'],
@@ -77,6 +82,28 @@ final readonly class DashboardBuilder
             'title' => $this->options->title,
             'uid' => $this->options->uid,
             'version' => 1,
+        ];
+
+        // What the dashboard needs, for Grafana's import (Arch Q5.2); file provisioning ignores it
+        return $this->options->legacy ? $dashboard : ['__requires' => self::requires(), ...$dashboard];
+    }
+
+    /**
+     * Grafana, the datasources and the panels the dashboard uses, with the minimum versions that render it: Grafana
+     * 12.3 (Business Text 6.3.0 needs it), Infinity 4.1.1 and Business Text 6.3.0 (owner decision 4).
+     *
+     * @return list<array{type: string, id: string, name: string, version: string}>
+     */
+    public static function requires(): array
+    {
+        return [
+            ['type' => 'grafana', 'id' => 'grafana', 'name' => 'Grafana', 'version' => self::MIN_GRAFANA],
+            ['type' => 'datasource', 'id' => 'prometheus', 'name' => 'Prometheus', 'version' => '1.0.0'],
+            ['type' => 'datasource', 'id' => 'yesoreyeram-infinity-datasource', 'name' => 'Infinity', 'version' => '4.1.1'],
+            ['type' => 'panel', 'id' => 'marcusolsson-dynamictext-panel', 'name' => 'Business Text', 'version' => '6.3.0'],
+            ['type' => 'panel', 'id' => 'stat', 'name' => 'Stat', 'version' => ''],
+            ['type' => 'panel', 'id' => 'table', 'name' => 'Table', 'version' => ''],
+            ['type' => 'panel', 'id' => 'timeseries', 'name' => 'Time series', 'version' => ''],
         ];
     }
 
