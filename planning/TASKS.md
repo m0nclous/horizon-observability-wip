@@ -137,7 +137,7 @@ PHP 8.2 locally; the 11.23/5.22 facts used were checked upstream). What later ta
 
 ## Phase B: parallel work packages (all depend on T02; T10 only on T00)
 
-### T03 WP1 Exposition and access — `todo`
+### T03 WP1 Exposition and access — `in progress`
 Arch Q1, Q2.3–2.5, Q9 table. Own text renderer (format 0.0.4, real histograms), exporter with per-collector isolation and
 scrape-timeout budget, self-metrics, `MetricsController`, `AccessPolicy`, `Authorize`/`ForceJson` middleware.
 Addendum (Add §Q9′ WP1): self-metric names `<ns>_exporter_*`; the live self-metrics are read from `meta` (Add §R4.11;
@@ -147,7 +147,7 @@ rotation, api_token, IPs, callback, maintenance exception; C3, C4, C5-endpoint).
 `ho_exporter_*`; the live series are absent until `meta.live_push_at` exists. promtool check:
 `docker run --rm -i --entrypoint promtool quay.io/prometheus/prometheus:v3.15.0 check metrics < tests/Fixtures/exposition/<file>.txt`.
 
-### T04 WP2 Attempts — `todo`
+### T04 WP2 Attempts — `in progress`
 Arch Q6.2–6.6, 6.8, 6.10, Q9 table. `AttemptTracker` (WeakMap, RedisJob after JobProcessing only, Laravel 11.23/12/13
 shims), `AttemptStore` (one EVAL per attempt, private short-timeout client, circuit breaker), `CounterResetGuard`,
 `LegacyReadyAt` folded into the EVAL, `HistogramSnapshot`, `AttemptsCollector`, Lua `record_attempt`/`reset_guard`.
@@ -161,7 +161,7 @@ recorded at `t` is exported by simulated scrapes at `t + 0…135 s` and not afte
 S ∈ {5, 10, 15, 30, 45, 60} s and deviations up to ±7.5 s asserts at least two exporting scrapes (Add §R3.4); ring test
 (N attempts in known buckets give the exact window counts); a disabled live mode writes no ring key.
 
-### T05 WP3 Horizon and queue state — `todo`
+### T05 WP3 Horizon and queue state — `in progress`
 Arch Q6.3, Q9 table. `HorizonCollector`, `QueueCollector`, `HorizonUrl`, `QueueInspector`/`QueueSnapshot`,
 Lua `queue_state`, readiness parity with `PayloadClock`.
 Addendum (Add §Q9′ WP3, §D′): `queue_state.lua` live mode (ARGV `mode` = `full` or `live`) and `QueueInspector::live()`;
@@ -169,22 +169,22 @@ T12 needs it.
 Acceptance: Arch Q9 WP3 row (C5, C8, C14-metrics, C17) incl. `horizon_info{url,api_path,tts_url}`. Addendum: parity
 test unchanged; live mode scans at most 20 items and 1 MB per queue; reserved pairs only on request.
 
-### T06 WP4 Job lists — `todo`
+### T06 WP4 Job lists — `in progress`
 Arch Q2, Q9 table. `JobListController`, `JobListService`, `JobRows`, `ExceptionSummary`, `Horizon/JobStore`,
 `Queues/DelayedJobStore`, Lua `job_details`/`delayed_jobs`.
 Acceptance: Arch Q9 WP4 row (JSON fields/units identical to legacy, C13 empty filter = 0 Redis commands, C14, 422s).
 The legacy code is not runnable: write the expected JSON snapshots by hand from
 `legacy/src/Http/Resources/Horizon{Pending,Completed,Failed,Delayed}JobResource.php` and the Arch Q2.1 field table.
 
-### T07 WP5 Batches — `todo`
+### T07 WP5 Batches — `in progress`
 Arch Q6.7, Q9 table. `BatchKind`, `BatchReader` (two bounded queries), `BatchLinks`, `BatchesCollector`.
 Acceptance: Arch Q9 WP5 row (C1, C9-batches, C15; DynamoDB/missing table detection).
 
-### T08 WP6 Job-class discovery — `todo`
+### T08 WP6 Job-class discovery — `in progress`
 Arch Q6.9, Q9 table. `Discovery/*`, `JobClassesCollector`, `CacheCommand`/`ClearCommand`, workbench discovery fixtures.
 Acceptance: Arch Q9 WP6 row (C22; `optimize` hook iff Laravel >= 11.27.1).
 
-### T09 WP7 Horizon menu link — `todo`
+### T09 WP7 Horizon menu link — `in progress`
 Arch Q7, Q9 table. `InjectGrafanaLink` middleware + `menu-link.blade.php`.
 Acceptance: link right after "Dashboard" on Horizon 5.22 … latest; absent without URL; JSON untouched (C16 rendering).
 
@@ -198,7 +198,7 @@ The Python reference reproduces the golden: `python3 -I legacy/grafana/generate_
 Progress (2026-10-17, f8bd16d): M1 byte-identical (sha256 equals the Python output), M2 `===` the parsed YAML; seams in `DashboardOptions` (live/job/dedupe rejected until T13); dead `STATUS_EXPR`/`batches_table` not ported; lowest legs: deferred to CI.
 Review (2026-10-17, 3b430d6): `Json` floats now exactly Python `repr()` and independent of the `precision` ini; every selector via `Promql::selector()` (T13 job/dedupe seam); gates re-run, also on PHP 8.2.34.
 
-### T11 WP9 Dev stack, CI, load simulation — `todo`
+### T11 WP9 Dev stack, CI, load simulation — `in progress`
 Arch Q8.2–8.5, Q9 table. `docker-compose.yml` (Redis, Prometheus with remote-write receiver, Grafana with Infinity +
 Business Text plugins and provisioning, `GRAFANA_IMAGE` switch for **12.4.13 / 13.2.4**), `docker/**`, `.github/**`
 (matrix PHP × Laravel 11/12/13 × lowest/stable × phpredis/predis × Redis/Valkey + cluster leg; static, grafana, dist,
