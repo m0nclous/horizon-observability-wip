@@ -19,6 +19,8 @@
 #   APP_PORT, GRAFANA_PORT, PROMETHEUS_PORT   8000, 3000, 9090
 #   PLAYWRIGHT_DIR   this checkout       the directory whose node_modules holds playwright
 #   COMPOSER_NO_DEV  0                   1 installs the Laravel app without its dev packages
+#   E2E_COMPOSE_FILE                     an extra compose file for the stack, e.g. a sandbox CA for Grafana's plugin
+#                                        downloads (never needed on a normal machine or in CI)
 # Needs PHP 8.3+ with the redis extension, Composer, Docker with compose, Redis on 127.0.0.1:6379 (the app's default)
 # and Node 20+ with Playwright (npm i --no-save playwright@1.56.1 && npx playwright install chromium).
 set -euo pipefail
@@ -45,6 +47,11 @@ playwright=${PLAYWRIGHT_DIR:-$root}
 app="$work/app"
 logs="$work/logs"
 pids=()
+compose=(docker compose -f docker-compose.observability.yml)
+
+if [ -n "${E2E_COMPOSE_FILE:-}" ]; then
+  compose+=(-f "$E2E_COMPOSE_FILE")
+fi
 
 mkdir -p "$logs"
 
@@ -59,8 +66,8 @@ cleanup() {
     echo "--- horizon log"; tail -n 40 "$logs/horizon.log" 2>/dev/null
     echo "--- laravel log"; tail -n 40 "$app/storage/logs/laravel.log" 2>/dev/null
     if [ -f "$app/docker-compose.observability.yml" ]; then
-      (cd "$app" && docker compose -f docker-compose.observability.yml ps)
-      (cd "$app" && docker compose -f docker-compose.observability.yml logs --tail 60 grafana prometheus)
+      (cd "$app" && "${compose[@]}" ps)
+      (cd "$app" && "${compose[@]}" logs --tail 60 grafana prometheus)
       curl -s "http://localhost:$PROMETHEUS_PORT/api/v1/targets" | head -c 2000; echo
     fi
   fi
@@ -69,7 +76,7 @@ cleanup() {
   wait 2>/dev/null
 
   if [ -f "$app/docker-compose.observability.yml" ]; then
-    (cd "$app" && docker compose -f docker-compose.observability.yml down -v --remove-orphans >/dev/null 2>&1)
+    (cd "$app" && "${compose[@]}" down -v --remove-orphans >/dev/null 2>&1)
   fi
 
   if [ "$keep" -eq 0 ] && [ -z "${WORK_DIR:-}" ]; then
@@ -130,7 +137,7 @@ php artisan serve --host=0.0.0.0 --port="$app_port" > "$logs/serve.log" 2>&1 &
 pids+=($!)
 php artisan horizon > "$logs/horizon.log" 2>&1 &
 pids+=($!)
-docker compose -f docker-compose.observability.yml up -d
+"${compose[@]}" up -d
 
 log "Quick start 3: open http://localhost:$GRAFANA_PORT"
 remaining=$(( budget - ($(date +%s) - quickstart) ))
