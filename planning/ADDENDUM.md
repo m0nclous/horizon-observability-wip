@@ -1013,6 +1013,250 @@ final class LiveStreamer { /** @param \Closure(): bool $shouldStop */ public fun
 - `Http\JobListQuery` gains the static `filtersFromRequest()` shown above.
 - `Config\Config` gains the six live properties (A′).
 
+## Appendix C2. Signatures frozen in T02
+
+T02 (WP0b) landed the contracts of Appendix C and C′ and the public signatures below, which those appendices did not give. **Later tasks may add methods, but must not change these.** "Cross-task" marks a signature another task calls; the others belong to the stub's owner, who may add optional trailing parameters before the first caller exists. Constructors of container-resolved classes are not frozen: owners add dependencies freely (see the boot rule below).
+
+### C2.1 Implemented in full
+
+```php
+namespace DF\HorizonObservability\Config;
+
+final readonly class Config
+{
+    // Appendix C constructor, with #[\SensitiveParameter] on $tokens, $apiTokens and $liveToken (A′);
+    // the six live properties follow $ttsUrl (config-file order).
+    public const DEFAULT_NAMESPACE = 'ho'; public const DEFAULT_REDIS_CONNECTION = 'horizon';
+    public const MIN_TOKEN_LENGTH = 16; public const DEFAULT_BUCKETS = [/* Appendix A */];
+    public const COLLECTORS = ['horizon', 'queues', 'attempts', 'job_classes', 'batches'];   // exporter order
+    // ... the other defaults and bounds of Q3/A′ as constants
+    public static function flag(mixed $value, bool $default): bool;          // boot-time cast (provider, route file)
+    /** @return list<string> */ public function tokensFor(string $endpoint): array;   // 'metrics' | 'api'
+    public function requiresToken(string $endpoint): bool;                  // cross-task (T03)
+    public function requiresIp(): bool;                                      // cross-task (T03)
+    public function hasProblem(string $path): bool;
+    public function __debugInfo(): array;                                    // secrets redacted
+}
+
+namespace DF\HorizonObservability\Metrics;
+
+enum Metric: string { public const SELF = 'self'; /** @return list<self> */ public static function ofCollector(string $collector): array; }
+final class Labels { public const MAX_BYTES = 200; public const ELLIPSIS = '...'; }
+final class ScrapeContext { public function __construct(CarbonImmutable $now, float $budgetSeconds, ?\Closure $clock = null); } // (Closure(): float) monotonic seconds, for tests
+
+namespace DF\HorizonObservability\Redis;
+
+final readonly class Keys
+{
+    public const ROOT = '{horizon-observability}:v1:'; public const SEPARATOR = "\x1f";
+    public const EXTREMES_BUCKET_SECONDS = 15; public const RING_BUCKET_SECONDS = 5;            // cross-task (T04, T12)
+    public function root(): string;
+    public function pattern(): string;                                       // root.'*' for flush (T14)
+    public static function field(string ...$values): string;                 // cross-task: hash fields (T04, T07, T12)
+    /** @return list<string> */ public static function splitField(string $field): array;
+    // all(): counterKeys() + job_classes, meta, batch_links, live:leader, live:window:delayed
+}
+final class RedisScriptFailed extends \RuntimeException { public function __construct(public readonly string $script, string $reason, ?\Throwable $previous = null); }
+final class Lua
+{
+    public function __construct(?string $directory = null);                 // default resources/lua
+    public function source(string $script): string;                          // RedisScriptFailed when the file is missing
+    public static function argument(string|int|float $value): string;       // ARGV form: floats via var_export
+    // eval(): nil reply => null on both clients; error => RedisScriptFailed; connection errors unchanged
+}
+final class RedisClients
+{
+    public const STORAGE = 'horizon-observability:storage'; public const READER = 'horizon-observability:reader:'; // private connection names
+    public function __construct(\Illuminate\Contracts\Foundation\Application $app);
+    public function storageConnection(): string;                             // redis.connection
+}
+final class CircuitBreaker { public const COOLDOWN_SECONDS = 30.0; public function __construct(FailureReporter $reporter, ?\Closure $clock = null); }
+
+namespace DF\HorizonObservability\Support;
+
+final class FailureReporter
+{
+    public const THROTTLE_SECONDS = 300; public const PREFIX = 'horizon-observability: ';
+    public function __construct(\Illuminate\Contracts\Container\Container $container, ?\Closure $clock = null);
+    public function info(string $message, array $context = []): void;       // unthrottled (breaker recovery)
+    public static function describe(\Throwable $e): string;                 // "ShortClass: first line", <= 500 bytes
+}
+final class Versions
+{
+    public const PACKAGE = 'sushi-market/horizon-observability';
+    public function __construct(Repository $config, ?string $laravel = null, ?\Closure $normalized = null, ?\Closure $pretty = null);
+    public function php(): string;
+    public static function hasOptimize(string $class): bool;
+    // horizon()/package(): pretty version without a leading v; redisClient(): "phpredis 6.0.2" | "predis 3.7.0"
+}
+
+namespace DF\HorizonObservability\Horizon;
+
+final readonly class Topology
+{
+    public const DEFAULT_WAIT_SECONDS = 60;
+    /** @return list<array{connection: string, queue: string}> */ public function queues(): array;     // cross-task (T05, T12)
+    /** @return array<string, int> "connection:queue" => seconds */ public function waits(): array;
+    public function waitThreshold(string $connection, string $queue): ?int;  // cross-task (T05, T12)
+}
+final readonly class SupervisorSnapshot { public function totalProcesses(): int; }
+final readonly class Supervisors
+{
+    public static function snapshot(object $record): ?SupervisorSnapshot;   // a repository record
+    public static function balance(mixed $balance): string;                  // auto | simple | off
+}
+
+namespace DF\HorizonObservability\Http;
+
+final class RoutePath { public const SEGMENT = 'observability'; public static function normalize(mixed $path): ?string; }
+enum JobList: string { public function horizonPath(string $id): ?string; }  // null for delayed
+final readonly class JobListQuery { public const DEFAULT_LIMIT = 500; public const MAX_LIMIT = 1000; public const ALL = '$__all'; }
+final class JobRows { /** @return list<string> */ public static function fields(JobList $list): array; } // cross-task (T06, T13): the Q2.1 table
+
+namespace DF\HorizonObservability\Live;
+
+final readonly class LiveScope { /** @return list<string> */ public function queueNames(): array; }
+final readonly class LiveSnapshot
+{
+    public const WINDOW_SECONDS = 60; public const BUCKET_SECONDS = 5;
+    public const JSON_FLAGS = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR;
+    // properties mirror the JSON parts: generatedAt (ms), ageMs, ttlMs, scope, horizon, pending, delayed, reserved,
+    // throughput, supervisors, queues, errors (array shapes in the class docblock)
+    public static function compose(LiveScope $scope, int $generatedAtMs, int $ttlMs, ?int $horizonStatus,
+                                   array $supervisors, array $queues, ?array $throughput, array $errors = []): self; // cross-task (T12)
+    public static function empty(LiveScope $scope, int $generatedAtMs, int $ttlMs): self;
+    public static function unavailable(LiveScope $scope, int $generatedAtMs, int $ttlMs, array $errors): self;      // cross-task (T12)
+    public static function fromArray(array $data): self;                     // \UnexpectedValueException unless schema v1
+    public function withAge(int $ageMs): self;
+    public function toJson(): string;
+}
+final class Captions
+{
+    public const SECONDS_TEXT_LIMIT = 120; public const GREEN = 'green'; public const YELLOW = 'yellow'; public const RED = 'red';
+    public const TEXT = 'text'; public const UNAVAILABLE = 'Live unavailable'; public const DOT = "\u{00B7}"; public const DASH = "\u{2014}";
+    public static function display(string $supervisor): string;             // strips "supervisor-" when something follows
+    public static function horizon(int $status): string;                    // Running | Paused | Stopped
+    public static function horizonLevel(int $status): int;                  // 0 running, else 2
+}
+final readonly class AttemptRing
+{
+    public const TTL_SECONDS = 180; public const WINDOW_BUCKETS = 12;
+    // key() and ttl() are implemented (the writer's contract for T04); window() is T12's
+}
+
+namespace DF\HorizonObservability\Queues;
+
+final readonly class QueueSnapshot                                           // data class implemented in full; cross-task (T05, T12)
+{
+    public function __construct(string $connection, string $queue, int $length, int $reserved, int $delayed, int $delayedDue,
+                                ?float $earliestDueAt, ?float $firstFreshReadyAt, int $scanned,
+                                array $pendingByClass = [], array $reservedByClass = []);
+    public static function empty(string $connection, string $queue): self;
+    public function pending(): int;                                          // length + delayedDue (queue_pending_jobs)
+    public function delayedNotDue(): int;
+    public function oldestAgeSeconds(float $now): ?float;                    // C8: 0 when nothing is ready, null when unknown
+}
+
+namespace DF\HorizonObservability;
+
+final class HorizonObservabilityServiceProvider
+{
+    /** @return list<string> */ public static function packageCommands(): array;   // the 7 commands; grafana once its class exists
+    /** @return list<string> */ public static function maintenanceExceptions(Repository $config): array;
+}
+```
+
+### C2.2 Stubs (final signatures; bodies are safe no-ops)
+
+```php
+namespace DF\HorizonObservability\Metrics;
+final class Exporter { public function scrape(Request $request): string; }                        // '' (T03)
+final class TextFormat { public function render(iterable $families, string $prefix): string; }    // '' (T03)
+final class HistogramSnapshot { public static function cumulative(array $stored, array $bounds): array; } // ['+Inf' => sum] (T04)
+
+namespace DF\HorizonObservability\Collectors;
+// HorizonCollector, QueueCollector (T05), AttemptsCollector (T04), JobClassesCollector (T08), BatchesCollector (T07):
+// name() returns the id, collect() returns [].
+
+namespace DF\HorizonObservability\Horizon;
+final readonly class HorizonUrl { public function __construct(Repository $config); public function url(): string; }  // (T05)
+final class JobStore { public function rows(JobListQuery $query, ?array $queues, ?array $jobClasses): array; }        // [] (T06)
+
+namespace DF\HorizonObservability\Queues;
+final class QueueInspector                                                   // (T05)
+{
+    public function inspect(string $connection, string $queue, CarbonImmutable $now): QueueSnapshot;
+    public function live(string $connection, string $queue, CarbonImmutable $now, bool $reservedByClass): QueueSnapshot; // cross-task (T12)
+}
+final class DelayedJobStore { public function rows(array $queues, ?array $jobClasses, int $limit, CarbonImmutable $now): array; } // (T06)
+
+namespace DF\HorizonObservability\Attempts;
+final class AttemptOutcome { /* Arch Q6.2 verbatim, implemented; tests are T04's */ }
+final class AttemptState                                                     // (T04)
+{
+    public bool $finished = false; public bool $noDuration = false;
+    public function __construct(public readonly int $startedNs, public readonly float $startedAt, public readonly ?float $readyAt,
+                                public readonly ?string $uuid, public readonly ?string $legacyKey);
+}
+final class AttemptTracker                                                   // (T04) listeners are no-ops
+{
+    /** @return array<class-string, string> */ public function subscribe(Dispatcher $events): array;
+    public function onProcessing(JobProcessing $event): void; public function onExceptionOccurred(JobExceptionOccurred $event): void;
+    public function onAttempted(JobAttempted $event): void; public function onTimedOut(JobTimedOut $event): void;
+}
+final class AttemptStore { public function record(string $connection, string $queue, string $jobClass, AttemptStatus $status,
+    ?float $durationSeconds, ?float $startedAt, ?float $readyAt, ?string $uuid, CarbonImmutable $now): bool; } // false (T04)
+final class CounterResetGuard { public function check(CarbonImmutable $now): bool; }                       // false (T04)
+final class LegacyReadyAt { public function onQueued(JobQueued $event): void; }                            // no-op (T04)
+
+namespace DF\HorizonObservability\Batches;
+final class BatchKind { public function resolve(?string $name, string $id): string; public static function normalize(?string $name): string; } // hook or trim (T07)
+final class BatchReader { public function available(): bool; public function read(CarbonImmutable $now): array; }  // false, [] (T07)
+// BatchLinks: Appendix C; onQueued no-op, all() [], forKinds() ['queues' => [], 'jobs' => []] (T07)
+
+namespace DF\HorizonObservability\Discovery;
+final class JobClassFinder { public function find(array $paths): array; }                                  // [] (T08)
+final class JobClassCache { public function classes(): array; public function path(): string; public function write(): int; public function clear(): bool; } // (T08)
+
+namespace DF\HorizonObservability\Http;
+final class AccessPolicy { public function decide(Request $request, string $endpoint): AccessDecision; public function mode(): string; } // Forbidden, 'locked' (T03)
+final class MetricsController { public const CONTENT_TYPE = 'text/plain; version=0.0.4; charset=utf-8'; public function __invoke(Request $request, Exporter $exporter): Response; } // (T03)
+final class JobListController { public function __invoke(Request $request, string $list): JsonResponse; }      // {"data":[]} (T06)
+final class JobListService { public function rows(JobListQuery $query): array; }                               // [] (T06)
+final class ExceptionSummary { public static function summarize(?string $exception, ExceptionMode $mode): ?string; } // first line (T06)
+final class LiveController { public function __invoke(Request $request, LiveSnapshotCache $cache, Topology $topology,
+                                                      Supervisors $supervisors, BatchLinks $links): JsonResponse; } // (T12)
+// Middleware: Authorize::handle(Request, Closure, string $endpoint = 'metrics') always 403 (T03); ForceJson sets Accept (T03);
+// InjectGrafanaLink passes through (T09).
+
+namespace DF\HorizonObservability\Live;
+// LiveSnapshotBuilder(Config): build() returns LiveSnapshot::empty() (T12); LiveSnapshotCache(LiveSnapshotBuilder): get() builds
+// every time (T12); Stream\LineProtocol returns '', GrafanaLivePusher a failed PushResult, LeaderLock never acquires,
+// LiveStreamer::run() returns 1 (T12).
+
+namespace DF\HorizonObservability\Console;
+// install, check, cache, clear, flush: print "not implemented yet" and exit 0; stream exits 1 (T08, T12, T14).
+namespace DF\HorizonObservability\Support;
+final readonly class Diagnostics { public function __construct(Container $container); /** @return array<string, string> */ public function about(): array; } // basics (T14)
+```
+
+### C2.3 Decisions taken in T02 (integrator)
+
+1. **Fail closed without sentinels** (Q3 `token`, `api_token`, `allowed_ips`). The lists hold only valid entries; `Config::requiresToken()` and `requiresIp()` stay true when the setting was given but every entry was invalid, so nothing matches. `AccessPolicy` (T03) must use them (and `tokensFor()`), not `!== []`. This replaces "the list stays non-empty" of the Q3 table.
+2. **Boot-time flags** use `Config::flag()` (`FILTER_NULL_ON_FAILURE`): an unparsable `enabled`, `live.enabled`, `collectors.attempts` or `available_during_maintenance` keeps its default instead of becoming false. The route file uses the same cast.
+3. **Extra validation:** `namespace` of underscores only falls back to `ho` (a trailing `_` is stripped silently); `path` also rejects `}` (`RoutePath::normalize()` applies the same rule at boot); `log_channel` must exist in `logging.channels`; `live.stream.grafana_url` entries lose a trailing slash.
+4. **Config problems** are logged once, on the first resolution of the `Config` singleton (an `afterResolving` hook), through `FailureReporter::warnOnce('config.problems')`.
+5. **Wait thresholds:** `Topology::waitThreshold()` is Horizon's effective value (default 60 s, like `LongWaitDetected` and `horizon_wait_threshold_seconds`; null only when the entry is 0). R4.4 says `wait_threshold_seconds` is null "when the queue has no horizon.waits entry"; T12 should use `waitThreshold()` so poll colours equal the off-mode colours. Owner decision if the literal R4.4 rule is wanted.
+6. **Circuit breaker** opens on any `Throwable` of the write (a missing connection, a Lua failure or a bug cost at most one failure per cooldown), not only on Redis exceptions.
+7. **Live snapshot model:** `compose()` derives every level, colour and caption; the worst queue is the highest wait ratio (a queue without a threshold ranks below any ratio), then the older age, then the name. `horizon.status` is null with caption `Live unavailable` when Horizon's state cannot be read. Per-queue `delayed` is not yet due and `pending` is ready (`LLEN` + due), so the totals are their sums. A failed queue is listed in `errors` only.
+8. **Payload parity:** an absent or non-numeric `attempts` counts as a first attempt; a non-integer `createdAt` or `delay` counts as absent (`tests/Fixtures/payloads.php`, 13 cases, also for T05's `ReadinessParityTest`).
+9. **Job-list filters:** `var-x` without `=` is the value `''` (a filter that matches nothing); `+` decodes to a space; a value that is not UTF-8, a bad `limit`, a negative period or `from > to` gives 422.
+10. **Provider:** registers `Console\GrafanaCommand` once the class exists, so T13 does not edit the provider; publishes `resources/grafana` to `base_path('grafana')`; `AttemptTracker` is resolved at boot by `Event::subscribe()`, so its constructor must not touch Redis or the DB nor resolve `Config` eagerly (that would freeze the snapshot at boot).
+11. **Test isolation:** instead of `FLUSHDB` (Arch 8.4), every key of a test process lives under `hot_<pid>:` (`REDIS_PREFIX`, `HORIZON_PREFIX`), and tests of the `redis` and `cluster` groups delete exactly that prefix (`SCAN` + `DEL`) before and after, so a shared Redis is safe. Mark Redis tests with `pest()->group('redis')`.
+12. **Test helpers beyond Arch 8.4:** `tests/Support/{RedisKeys,LogRecorder,Apps,BootRouteProvider}` (raw keys, a PSR-3 recorder, separate apps in a fixed provider order, the negative control). `tests/Fixtures/live/captions.php` holds the caption cases shared with T13.
+13. **Tool configs (Arch 8.6/8.8):** PHPStan on `src`, `config`, `routes`, `workbench/app` with `checkMissingCallableSignature: true` and Larastan `configDirectories: [config]` (the package's config dir is where `env()` belongs); Pint `final_class: true` plus the arch test "all classes final" (both); Rector gains `LaravelLevelSetList::UP_TO_LARAVEL_110` and the `config`/`routes` paths, and skips `RemoveUnusedPublicMethodParameterRector` and `RemoveEmptyClassMethodRector`, which would rewrite frozen public signatures; `.gitattributes` export-ignores `/SECURITY.md`, `/docs` and `/tools`.
+14. **Not created in T02** (owned elsewhere): `resources/lua/*.lua` (T04, T05, T06, T12), `resources/views/menu-link.blade.php` (T09), `resources/grafana/**` (T13). The provider tolerates their absence.
+
 ## Appendix D′. Lua contract changes
 
 **`record_attempt.lua`** (WP2):

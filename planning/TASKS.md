@@ -72,7 +72,7 @@ and a `[12.4.13, 13.2.4]` matrix for the grafana/e2e jobs in 8.3/8.5; CI branche
 Q2.2 item 4 probes are in `planning/reference/probes/`.
 Done (2026-10-17): ADDENDUM.md committed in 2f3fc37 (probes: Add Appendix P on 13.2.4, review Appendix P′ on 12.4.13 and 13.2.4); ARCHITECTURE.md amended in place and the Q9′ delta folded into T02–T15 below in the commit that marks T01 done.
 
-### T02 WP0b: shared contracts and wiring — `todo` (depends on T01)
+### T02 WP0b: shared contracts and wiring — `done` (depends on T01)
 Arch Q9 WP0b + addendum changes. Implement in full: `config/horizon-observability.php` (Arch Appendix A + addendum keys),
 `routes/horizon-observability.php` (metrics, jobs/{list}, live), `HorizonObservabilityServiceProvider` (routes from an
 application `booting` callback, Horizon menu-link middleware appended to `horizon.middleware` from the booting callback,
@@ -101,6 +101,26 @@ route cache, C16 test, metric catalog test equals Appendix B, arch tests, PHPSta
 test equals Add §B′ (`ho_exporter_*` with the default namespace); `Captions` unit tests cover every caption and level rule
 of Add §R4.4 (fixtures shared with the Grafana renderer); the route-precedence test includes `/live`; `live.enabled=false`
 leaves no `live` route.
+Done (2026-10-17): contracts, wiring, workbench and tests landed; signatures and integrator decisions are in Add §Appendix C2
+(read it before starting any Phase B task). Gates: Pest 697 green on phpredis and on predis (1 phpredis-only skip),
+PHPStan 9 clean on `src`, `config`, `routes`, `workbench/app`; Pint and Rector clean; lowest legs: deferred to CI (no
+PHP 8.2 locally; the 11.23/5.22 facts used were checked upstream). What later tasks must know:
+- T03: `AccessPolicy` must use `Config::tokensFor()`, `requiresToken()` and `requiresIp()` (fail closed without
+  sentinels, C2.3 item 1); `Authorize`/`ForceJson`/`Exporter`/`TextFormat` are stubs; `Metric::ofCollector()` and
+  `Config::COLLECTORS` give the exporter order; `tests/Support/Exposition.php` parses expositions.
+- T04: `AttemptRing::key()`/`ttl()` and `Keys::field()`/`EXTREMES_BUCKET_SECONDS`/`RING_BUCKET_SECONDS` are final; the
+  breaker opens on any `Throwable` and restores a dropped count taken inside a failing write; `AttemptTracker` is
+  resolved at boot (no Redis, no eager `Config` in its constructor); `AttemptOutcome` is Q6.2 verbatim (tests are yours).
+- T05/T12: `Topology::queues()`, `waits()`, `waitThreshold()` (default 60 s, see C2.3 item 5), the `QueueSnapshot` data
+  class and `QueueInspector::live()`; parity fixtures in `tests/Fixtures/payloads.php`.
+- T06/T13: `JobRows::fields()` freezes the Q2.1 fields; `JobList::horizonPath()`.
+- T12: build snapshots with `LiveSnapshot::compose()`/`unavailable()`; the cache stores `toJson()` and reads
+  `fromArray()`.
+- T13: `Live\Captions` and `tests/Fixtures/live/captions.php` are the caption source; the provider registers
+  `Console\GrafanaCommand` as soon as the class exists (no provider edit).
+- All: Redis tests use `pest()->group('redis')` and the per-process prefix `hot_<pid>:` (no `FLUSHDB`); build apps in a
+  fixed provider order with `tests/Support/Apps::inspect()`; Rector skips the two rules that would rewrite frozen
+  signatures. Not created here: `resources/lua/*`, `resources/views/menu-link.blade.php`, `resources/grafana/**`.
 
 ## Phase B: parallel work packages (all depend on T02; T10 only on T00)
 
