@@ -6,6 +6,7 @@ use DF\HorizonObservability\Tests\Support\RunsWorker;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobReleasedAfterException;
+use Illuminate\Queue\RedisQueue;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Workbench\App\Simulation\Outcome;
@@ -15,6 +16,9 @@ use Workbench\App\Simulation\SimulatedJob;
 /*
 | The simulated outcomes on a real Redis queue with an in-process worker (T11): each outcome produces the attempt
 | sequence the dashboard counts. Timed-out jobs kill their worker, so they are covered by the unit test only.
+|
+| The worker runs inside the test process, whose memory grows over a whole suite: with queue:work's default
+| --memory=128 it would stop at once with exit code 12 (Worker::EXIT_MEMORY_LIMIT), so the tests raise it.
 */
 
 pest()->group('redis');
@@ -51,7 +55,7 @@ function simulationAttempts(Closure $work, Outcome $outcome): array
 }
 
 it('produces the attempt sequence of each outcome', function (Outcome $outcome, array $expected): void {
-    expect(simulationAttempts(fn (): int => $this->runWorker('default'), $outcome))->toBe($expected);
+    expect(simulationAttempts(fn (): int => $this->runWorker('default', options: ['--memory' => 4096]), $outcome))->toBe($expected);
 })->with([
     'completed' => [Outcome::Completed, ['completed']],
     'retried completes on its second attempt' => [Outcome::Retried, ['retried', 'completed']],
@@ -60,7 +64,12 @@ it('produces the attempt sequence of each outcome', function (Outcome $outcome, 
 ]);
 
 it('releases itself with a delay on the first attempt', function (): void {
-    expect(simulationAttempts(fn (): int => $this->runWorker('default'), Outcome::Released))->toBe(['released'])
-        ->and(Queue::connection('redis')->size('default'))->toBe(1)
-        ->and(Queue::connection('redis')->delayedSize('default'))->toBe(1);
+    $queue = Queue::connection('redis');
+
+    // RedisQueue::delayedSize() only exists from Laravel 12.19 on (not in 11.x), so the delayed set is read directly.
+    expect($queue)->toBeInstanceOf(RedisQueue::class)
+        ->and(simulationAttempts(fn (): int => $this->runWorker('default', options: ['--memory' => 4096]), Outcome::Released))->toBe(['released'])
+        ->and($queue->size('default'))->toBe(1)
+        ->and((int) $queue->getConnection()->zcard('queues:default:delayed'))->toBe(1)
+        ->and((int) $queue->getConnection()->llen('queues:default'))->toBe(0);
 });
