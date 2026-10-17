@@ -168,7 +168,8 @@ it('streams with the bootstrapped token, which git ignores', function (): void {
         ->toContain('horizon-observability:stream')
         ->and($stream['environment']['HORIZON_OBSERVABILITY_LIVE_GRAFANA_URL'])->toBe('http://grafana:3000');
 
-    if ($check->run() === 128) {
+    // 0: ignored, 1: not ignored; anything else (127 without git, 128 outside a repository) cannot tell.
+    if (! in_array($check->run(), [0, 1], true)) {
         $this->markTestSkipped('git is not available');
     }
 

@@ -31,18 +31,39 @@ it('writes every sample of a window once with the scrape labels', function (): v
     $this->artisan('workbench:perf-data', ['--hours' => 0.25, '--step' => 15, '--end' => 1792203000, '--out' => $this->perfOut, '--job' => 'j', '--instance' => 'i'])
         ->assertSuccessful();
 
-    $chunk = (string) file_get_contents($this->perfOut.'/chunk-1792202400.om');
-    $lines = explode("\n", rtrim($chunk, "\n"));
-    $times = array_unique(array_map(static fn (string $line): string => (string) strrchr($line, ' '), array_slice($lines, 0, -1)));
+    // A chunk is tens of MB: it is read line by line, so the test fits PHP's default 128 MB memory limit.
+    $scan = static function (string $path): array {
+        $file = fopen($path, 'rb');
+        $result = ['lines' => 0, 'first' => null, 'last' => null, 'times' => []];
+
+        while ($file !== false && ($line = fgets($file)) !== false) {
+            $line = rtrim($line, "\n");
+            $result['lines']++;
+            $result['first'] ??= $line;
+            $result['last'] = $line;
+
+            if ($line !== '# EOF') {
+                $time = (string) strrchr($line, ' ');
+                $result['times'][$time] = ($result['times'][$time] ?? 0) + 1;
+            }
+        }
+
+        if ($file !== false) {
+            fclose($file);
+        }
+
+        return $result;
+    };
+    $chunk = $scan($this->perfOut.'/chunk-1792202400.om');
     $model = new SyntheticModel;
 
     // 15 minutes from 1792202100 span two windows: 1792195200 (the first 5 minutes) and 1792202400.
     expect(array_values(array_diff(scandir($this->perfOut) ?: [], ['.', '..'])))->toBe(['chunk-1792195200.om', 'chunk-1792202400.om', 'info.om'])
-        ->and(substr_count((string) file_get_contents($this->perfOut.'/chunk-1792195200.om'), ' 1792202385'."\n"))->toBeGreaterThan(5000)
-        ->and(end($lines))->toBe('# EOF')
-        ->and(array_values($times))->toBe(array_map(static fn (int $t): string => ' '.$t, range(1792202400, 1792202985, 15)))
-        ->and($lines[0])->toBe('ho_horizon_status{job="j",instance="i"} 1 1792202400')
-        ->and(count($lines) - 1)->toBe(array_sum(array_map(static fn (int $t): int => $model->count($t) - 1, range(1792202400, 1792202985, 15))));
+        ->and($scan($this->perfOut.'/chunk-1792195200.om')['times'][' 1792202385'] ?? 0)->toBeGreaterThan(5000)
+        ->and($chunk['last'])->toBe('# EOF')
+        ->and(array_keys($chunk['times']))->toBe(array_map(static fn (int $t): string => ' '.$t, range(1792202400, 1792202985, 15)))
+        ->and($chunk['first'])->toBe('ho_horizon_status{job="j",instance="i"} 1 1792202400')
+        ->and($chunk['lines'] - 1)->toBe(array_sum(array_map(static fn (int $t): int => $model->count($t) - 1, range(1792202400, 1792202985, 15))));
 });
 
 it('writes one window or the info chunk alone', function (): void {
