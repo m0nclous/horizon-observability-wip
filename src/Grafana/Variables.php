@@ -24,6 +24,16 @@ final readonly class Variables
     public const FILTERS = ['supervisor', 'batch_kind', 'queue', 'job_class', 'supervisor_title', 'batch_title'];
 
     /**
+     * Grafana's variable refresh: on dashboard load, or on every time range change, which for a relative range
+     * means every auto-refresh. Only the variables that read `$__range` refresh with the range (ADDENDUM R2.4 O3):
+     * the others are instant queries or day-long lookbacks, so their lists follow a time range change only after a
+     * reload; a reload or a change of a variable they depend on refreshes them.
+     */
+    public const ON_LOAD = 1;
+
+    public const ON_TIME_RANGE_CHANGE = 2;
+
+    /**
      * The worker utilisation window as the panels read it (Arch Q5.2: the hidden `busy_window` textbox).
      */
     public const BUSY_WINDOW = '$busy_window';
@@ -70,7 +80,7 @@ final readonly class Variables
             $this->filter('supervisor', 'Supervisor', $this->supervisorQuery(), '/supervisor="([^"]+)"/', '.*'),
             // Kinds with batches in the period; the batch tables repeat by it. Batches have no queue or
             // supervisor, so the filter does not narrow the other panels.
-            $this->filter('batch_kind', 'Batch', Promql::call('query_result', $this->batches->kinds()), '/batch="([^"]+)"/', '.*'),
+            $this->filter('batch_kind', 'Batch', Promql::call('query_result', $this->batches->kinds()), '/batch="([^"]+)"/', '.*', self::ON_TIME_RANGE_CHANGE),
             // "All" is the listed queues, not .*: so the Supervisor filter works on every panel (queue metrics
             // have no supervisor label)
             $this->filter('queue', 'Queue', $this->queueQuery(), '/queue="([^"]+)"/'),
@@ -81,7 +91,7 @@ final readonly class Variables
             // Hidden: the queue table repeats by it, the text is the table title
             $this->hiddenFilter('supervisor_title', $this->supervisorTitleQuery(), '/display="(?<text>[^"]+)".*supervisor="(?<value>[^"]+)"/'),
             // Hidden: the batch tables repeat by it, the text is the table title
-            $this->hiddenFilter('batch_title', $this->batchTitleQuery(), '/batch="(?<value>[^"]+)".*display="(?<text>[^"]+)"/'),
+            $this->hiddenFilter('batch_title', $this->batchTitleQuery(), '/batch="(?<value>[^"]+)".*display="(?<text>[^"]+)"/', self::ON_TIME_RANGE_CHANGE),
             // Hidden: the Horizon URL of this environment for the Horizon link, exported by the application. Not
             // in the URL: a dashboard link opened in another environment would lead to the wrong Horizon.
             $this->info('horizon_url', 'url'),
@@ -123,7 +133,7 @@ final readonly class Variables
             'name' => 'prometheus_job',
             'options' => [],
             'query' => $query,
-            'refresh' => 1,
+            'refresh' => self::ON_LOAD,
             'regex' => '',
             'sort' => 1,
             'type' => 'query',
@@ -273,7 +283,7 @@ final readonly class Variables
      *
      * @return array<string, mixed>
      */
-    private function filter(string $name, string $label, string $query, string $regex, ?string $allValue = null): array
+    private function filter(string $name, string $label, string $query, string $regex, ?string $allValue = null, int $refresh = self::ON_LOAD): array
     {
         $variable = [
             'current' => $this->allSelected(),
@@ -293,7 +303,7 @@ final readonly class Variables
             'name' => $name,
             'options' => [],
             'query' => $query,
-            'refresh' => 2,
+            'refresh' => $refresh,
             'regex' => $regex,
             'sort' => 1,
             'type' => 'query',
@@ -305,7 +315,7 @@ final readonly class Variables
      *
      * @return array<string, mixed>
      */
-    private function hiddenFilter(string $name, string $query, string $regex): array
+    private function hiddenFilter(string $name, string $query, string $regex, int $refresh = self::ON_LOAD): array
     {
         return [
             'current' => $this->allSelected(),
@@ -318,7 +328,7 @@ final readonly class Variables
             'name' => $name,
             'options' => [],
             'query' => $query,
-            'refresh' => 2,
+            'refresh' => $refresh,
             'regex' => $regex,
             'sort' => 1,
             'type' => 'query',
@@ -349,7 +359,7 @@ final readonly class Variables
             'name' => $name,
             'options' => [],
             'query' => $query,
-            'refresh' => 1,
+            'refresh' => self::ON_LOAD,
             'regex' => '/'.$label.'="([^"]+)"/',
             'skipUrlSync' => true,
             'type' => 'query',
@@ -388,7 +398,7 @@ final readonly class Variables
             'name' => $name,
             'options' => [],
             'query' => $type,
-            'refresh' => 1,
+            'refresh' => self::ON_LOAD,
             'regex' => $regex,
             'skipUrlSync' => true,
             'type' => 'datasource',

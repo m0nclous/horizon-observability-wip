@@ -77,6 +77,14 @@ it('evaluates no operand twice for the Batch switch: the scope sits in the selec
     expect(committedBudget()->duplicateBranches())->toBe([]);
 });
 
+it('refreshes only the batch variables with the time range (O3)', function (): void {
+    $budget = committedBudget();
+
+    expect($budget->variablePolicy())->toBe([])
+        ->and($budget->variableRequests())->toBe(2)
+        ->and($budget->variableRequests())->toBeLessThanOrEqual(StaticBudget::MAX_VARIABLE_REQUESTS);
+});
+
 it('finds a day-long counter lookback, also in collapsed rows and variables', function (): void {
     $budget = new StaticBudget(budgetDashboard([
         budgetPanel(1, ['sum(last_over_time(ho_queue_jobs_total{job=~".+"}[1d] offset 1h))']),

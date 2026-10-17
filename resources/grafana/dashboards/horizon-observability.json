@@ -4489,7 +4489,7 @@
         "name": "supervisor",
         "options": [],
         "query": "query_result(group by (supervisor) (max by (job, supervisor, queue) (last_over_time(ho_horizon_supervisor_processes{job=~\"$prometheus_job\"}[1d]))))",
-        "refresh": 2,
+        "refresh": 1,
         "regex": "/supervisor=\"([^\"]+)\"/",
         "sort": 1,
         "type": "query"
@@ -4540,7 +4540,7 @@
         "name": "queue",
         "options": [],
         "query": "query_result(((group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\"})) and on (queue) group by (queue) (max by (job, supervisor, queue) (last_over_time(ho_horizon_supervisor_processes{job=~\"$prometheus_job\", supervisor=~\"$supervisor\"}[1d]))) or (group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\"})) unless on (queue) group by (queue) (max by (job, supervisor, queue) (last_over_time(ho_horizon_supervisor_processes{job=~\"$prometheus_job\"}[1d]))) and on () (label_replace(vector(1), \"filter\", \"${supervisor:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\")))) unless on (queue) (group by (queue) ({__name__=~\"ho_queue_pending_jobs\", job=~\"$prometheus_job\", __batch_scope__!~\"$batch_kind\"}) unless on (queue) group by (queue) ({__name__=~\"ho_queue_batch_job_classes\", job=~\"$prometheus_job\", batch=~\"$batch_kind\", __batch_scope__!~\"$batch_kind\"}))))",
-        "refresh": 2,
+        "refresh": 1,
         "regex": "/queue=\"([^\"]+)\"/",
         "sort": 1,
         "type": "query"
@@ -4566,7 +4566,7 @@
         "name": "job_class",
         "options": [],
         "query": "query_result(group by (job_class, display) (label_replace(((group by (queue, job_class) ({__name__=~\"ho_queue_jobs_total|ho_queue_jobs_pending|ho_queue_jobs_reserved\", job=~\"$prometheus_job\", queue=~\"$queue\"}) or label_replace(group by (job_class) (max by (job, job_class) (ho_queue_job_classes{job=~\"$prometheus_job\"})) unless on (job_class) group by (job_class) ({__name__=~\"ho_queue_jobs_total|ho_queue_jobs_pending|ho_queue_jobs_reserved\", job=~\"$prometheus_job\"}), \"queue\", \"—\", \"\", \"\") and on () (label_replace(vector(1), \"filter\", \"${queue:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\")) and on () (label_replace(vector(1), \"filter\", \"${supervisor:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\")) and on () (label_replace(vector(1), \"filter\", \"${batch_kind:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\"))) unless on (job_class) (group by (job_class) ({__name__=~\"ho_queue_jobs_total|ho_queue_jobs_pending|ho_queue_jobs_reserved\", job=~\"$prometheus_job\", __batch_scope__!~\"$batch_kind\"}) unless on (job_class) group by (job_class) ({__name__=~\"ho_queue_batch_job_classes\", job=~\"$prometheus_job\", batch=~\"$batch_kind\", __batch_scope__!~\"$batch_kind\"}))), \"display\", \"$1\", \"job_class\", \"(?:.*\\\\\\\\)?([^\\\\\\\\]*)\")))",
-        "refresh": 2,
+        "refresh": 1,
         "regex": "/display=\"(?<text>[^\"]+)\".*job_class=\"(?<value>[^\"]+)\"/",
         "sort": 1,
         "type": "query"
@@ -4592,7 +4592,7 @@
         "name": "supervisor_title",
         "options": [],
         "query": "query_result((group by (supervisor, display) (label_replace(label_join(label_replace(label_replace(label_replace(count_values by (job, supervisor) (\"min\", max by (job, supervisor) (max by (job, supervisor) (ho_horizon_supervisor_min_processes{job=~\"$prometheus_job\"}))) * on (job, supervisor) group_left (max) count_values by (job, supervisor) (\"max\", max by (job, supervisor) (max by (job, supervisor) (ho_horizon_supervisor_max_processes{job=~\"$prometheus_job\"}))) * on (job, supervisor) group_left (balance, connection) max by (job, supervisor, balance, connection) (ho_horizon_supervisor_info{job=~\"$prometheus_job\"}), \"balancing\", \"Auto\", \"balance\", \"auto\"), \"balancing\", \"Simple\", \"balance\", \"simple\"), \"balancing\", \"Off\", \"balance\", \"off\"), \"joined\", \";\", \"supervisor\", \"min\", \"max\", \"balancing\", \"connection\"), \"display\", \"$1 · Processes: [min: $2, max: $3] · Balancing: $4 · Connection: $5\", \"joined\", \"(.*);(.*);(.*);(.*);(.*)\")) and on (supervisor) group by (supervisor) (max by (job, supervisor, queue) (last_over_time(ho_horizon_supervisor_processes{job=~\"$prometheus_job\", supervisor=~\"$supervisor\", queue=~\"$queue\"}[1d])))) or on (supervisor) label_replace(group by (supervisor) (max by (job, supervisor, queue) (last_over_time(ho_horizon_supervisor_processes{job=~\"$prometheus_job\", supervisor=~\"$supervisor\", queue=~\"$queue\"}[1d]))), \"display\", \"$1\", \"supervisor\", \"(.*)\") or on () label_replace(label_replace(vector(1), \"supervisor\", \"—\", \"\", \"\"), \"display\", \"—\", \"\", \"\"))",
-        "refresh": 2,
+        "refresh": 1,
         "regex": "/display=\"(?<text>[^\"]+)\".*supervisor=\"(?<value>[^\"]+)\"/",
         "sort": 1,
         "type": "query"
