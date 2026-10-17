@@ -29,6 +29,11 @@ use Throwable;
  *   running the same supervisor (a deploy, several hosts) the processes are summed per queue, the minimum and maximum
  *   are the largest reported, and the settings come from the first master by name. The `queue` label is Horizon's
  *   pool label, so a balance=false supervisor keeps its comma-joined queue list (C14).
+ * - **horizon_supervisor_queues** maps every queue a supervisor works to the pool label of its processes: the queue
+ *   itself for balance=auto and simple (a pool per queue), the comma-joined list for balance=false (one pool for all).
+ *   PromQL cannot split a label value into several series, so without it a pooled queue had no supervisor, no
+ *   processes and no row in the dashboard's queue table (T16, the pilot's #5 bug). The queues come from the
+ *   supervisor's `queue` option, the pool labels from its process map (the joined option without one).
  * - **Wait thresholds** follow Horizon's `LongWaitDetected`: the `horizon.waits` entry or 60 s; a queue whose entry
  *   is 0 has no series.
  * - **horizon_info** carries the Horizon URL, the job-list API path and the TTS URL (`''`, i.e. absent, for tone
@@ -130,10 +135,18 @@ final readonly class HorizonCollector implements Collector
             ];
         }
 
+        /** @var array<string, array<string, string>> $pools supervisor => queue => pool label */
+        $pools = [];
+
+        foreach ($snapshots as $snapshot) {
+            $pools[$snapshot->name] = [...self::pools($snapshot), ...($pools[$snapshot->name] ?? [])];
+        }
+
         $processFamily = MetricFamily::of(Metric::SupervisorProcesses);
         $minFamily = MetricFamily::of(Metric::SupervisorMinProcesses);
         $maxFamily = MetricFamily::of(Metric::SupervisorMaxProcesses);
         $infoFamily = MetricFamily::of(Metric::SupervisorInfo);
+        $queuesFamily = MetricFamily::of(Metric::SupervisorQueues);
 
         foreach ($settings as $name => $setting) {
             $name = (string) $name;
@@ -145,9 +158,59 @@ final readonly class HorizonCollector implements Collector
             $minFamily->set(['supervisor' => $name], $setting['min']);
             $maxFamily->set(['supervisor' => $name], $setting['max']);
             $infoFamily->set(['supervisor' => $name, 'balance' => $setting['balance'], 'connection' => $setting['connection']], 1);
+
+            foreach ($pools[$name] ?? [] as $queue => $pool) {
+                $queuesFamily->set(['supervisor' => $name, 'queue' => (string) $queue, 'pool' => $pool], 1);
+            }
         }
 
-        return [$processFamily, $minFamily, $maxFamily, $infoFamily];
+        return [$processFamily, $minFamily, $maxFamily, $infoFamily, $queuesFamily];
+    }
+
+    /**
+     * Queue => the queue label of the process pool that works it (Horizon's `Supervisor::createProcessPools()`): a pool
+     * per queue when the supervisor balances (auto, simple), else one pool for the whole `queue` option. The label is
+     * taken from the process map, where Horizon wrote it; without processes it is rebuilt from the option. A
+     * supervisor without a `queue` option maps the queues of its process labels.
+     *
+     * @return array<string, string>
+     */
+    private static function pools(SupervisorSnapshot $snapshot): array
+    {
+        $labels = array_map(strval(...), array_keys($snapshot->processes));
+        $pools = [];
+
+        if ($snapshot->queues === []) {
+            foreach ($labels as $label) {
+                foreach (explode(',', $label) as $queue) {
+                    $queue = trim($queue);
+
+                    if ($queue !== '') {
+                        $pools[$queue] ??= $label;
+                    }
+                }
+            }
+
+            return $pools;
+        }
+
+        $split = static fn (string $label): array => array_values(array_filter(array_map(trim(...), explode(',', $label)), static fn (string $queue): bool => $queue !== ''));
+
+        foreach ($snapshot->queues as $queue) {
+            $pool = $snapshot->balance === 'off' ? implode(',', $snapshot->queues) : $queue;
+
+            foreach ($labels as $label) {
+                if ($snapshot->balance === 'off' ? $split($label) === $snapshot->queues : trim($label) === $queue) {
+                    $pool = $label;
+
+                    break;
+                }
+            }
+
+            $pools[$queue] = $pool;
+        }
+
+        return $pools;
     }
 
     /**

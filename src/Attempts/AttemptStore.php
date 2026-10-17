@@ -25,8 +25,8 @@ use Illuminate\Redis\Connections\Connection;
  * circuit breaker (C11), so an unreachable storage costs at most one timeout per cooldown and nothing reaches the
  * worker. The `EVAL` goes through Laravel's normalised `Connection::eval()` on phpredis and predis alike (C2).
  *
- * Reads (for the attempts collector): the counter hashes, the job-class set, the merged extremes of the last 150
- * seconds (`extremes_read.lua`) and `meta`, all on a reader client of the storage connection with
+ * Reads (for the attempts collector): the counter hashes, the creation times of the series, the job-class set, the
+ * merged extremes of the last 150 seconds (`extremes_read.lua`) and `meta`, all on a reader client of the storage connection with
  * `redis.scrape_timeout`, without the breaker: read failures fail the collector visibly.
  *
  * A container singleton whose constructor touches neither Redis nor {@see Config}: the config snapshot is resolved
@@ -103,6 +103,7 @@ final readonly class AttemptStore
                 $this->keys->jobClasses(),
                 $this->keys->meta(),
                 $ring->key($unix),
+                $this->keys->created(),
             ];
 
             if ($uuid !== null && $uuid !== '' && $waits) {
@@ -128,6 +129,7 @@ final readonly class AttemptStore
                 $now->getPreciseTimestamp(3) / 1000,
                 $dropped,
                 Labels::OTHER,
+                implode(',', array_map(static fn (AttemptStatus $status): string => $status->value, AttemptStatus::cases())),
             ]);
 
             if ($effective === Labels::OTHER && $class !== Labels::OTHER) {
@@ -164,6 +166,17 @@ final readonly class AttemptStore
             'waitBuckets' => $this->hash($redis->hgetall($this->keys->waitBuckets())),
             'waitSum' => $this->hash($redis->hgetall($this->keys->waitSum())),
         ];
+    }
+
+    /**
+     * The creation times of the counter series, field => Unix seconds: `conn\x1fqueue\x1fclass` (attempt series)
+     * and `conn\x1fqueue` (wait histogram); see {@see Keys::created()}.
+     *
+     * @return array<string, string>
+     */
+    public function created(): array
+    {
+        return $this->hash($this->reader()->hgetall($this->keys->created()));
     }
 
     /**

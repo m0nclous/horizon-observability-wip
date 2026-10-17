@@ -22,6 +22,13 @@ ho_horizon_supervisor_max_processes{supervisor="supervisor-slow"} 2
 ho_horizon_supervisor_info{supervisor="supervisor-default",balance="auto",connection="redis"} 1
 ho_horizon_supervisor_info{supervisor="supervisor-pool",balance="off",connection="redis"} 1
 ho_horizon_supervisor_info{supervisor="supervisor-slow",balance="auto",connection="redis"} 1
+# HELP ho_horizon_supervisor_queues Queues of a Horizon supervisor, one series per queue; pool is the queue label of its process pool in horizon_supervisor_processes (a balance=false pool joins its queues with commas); always 1.
+# TYPE ho_horizon_supervisor_queues gauge
+ho_horizon_supervisor_queues{supervisor="supervisor-default",queue="default",pool="default"} 1
+ho_horizon_supervisor_queues{supervisor="supervisor-pool",queue="mail",pool="mail,sms"} 1
+ho_horizon_supervisor_queues{supervisor="supervisor-pool",queue="sms",pool="mail,sms"} 1
+ho_horizon_supervisor_queues{supervisor="supervisor-slow",queue="reports",pool="reports"} 1
+ho_horizon_supervisor_queues{supervisor="supervisor-slow",queue="slow",pool="slow"} 1
 # HELP ho_horizon_wait_threshold_seconds Long-wait threshold of a queue from horizon.waits, seconds.
 # TYPE ho_horizon_wait_threshold_seconds gauge
 ho_horizon_wait_threshold_seconds{connection="redis",queue="default"} 10

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Carbon\CarbonInterface;
+use DF\HorizonObservability\Collectors\AttemptsCollector;
 use DF\HorizonObservability\Redis\Keys;
 use DF\HorizonObservability\Tests\Integration\Live\Support\LiveState;
 use DF\HorizonObservability\Tests\Support\Exposition;
@@ -157,6 +158,9 @@ it('reads the time from Laravel\'s clock like the exporter, so Date handlers and
 });
 
 it('counts in the ring exactly the attempts the counters count', function (): void {
+    // The counters of a new series read 0 for their first seconds (T16, AttemptsCollector::NEW_SERIES_HOLD_SECONDS);
+    // the ring is read from its keys, so only the scrape moves past the hold.
+    LiveState::freeze(LiveState::now()->addSeconds(AttemptsCollector::NEW_SERIES_HOLD_SECONDS));
     $metrics = Exposition::parse((string) $this->get('/horizon/observability/metrics')->assertOk()->getContent());
     $client = RedisKeys::client();
     $prefix = TestCase::redisPrefix().'horizon:';
