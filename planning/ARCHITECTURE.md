@@ -1058,7 +1058,7 @@ public static function readyAt(array $payload): ?float
 
 - **`Redis\RedisClients`** is a container singleton holding its own `Illuminate\Redis\RedisManager`, built lazily on first use from a filtered copy of `config('database.redis')`. Global config is never mutated, so ordering does not matter. It provides:
   - `storage()`: a clone of `redis.connection` (`horizon` by default). `timeout`, `read_timeout` and `read_write_timeout` are set to `min(existing, redis.worker_timeout)`, `persistent` is forced to false (the app's persistent socket is never shared), and serializer and compression are removed;
-  - `reader(string $name)`: the same for any connection (including `clusters.*`), with `redis.scrape_timeout`. It is used for queue state, delayed jobs and Horizon job lists;
+  - `reader(string $name)`: the same for any connection (including `clusters.*`), with `redis.scrape_timeout`. It is used for queue state, delayed jobs and Horizon job lists, and for the package keys on the scrape, job-list and live paths (the attempt counters, the batch links; phase B review);
   - `manager()`: the private manager, used by tests for `enableEvents()`/`listen()`. Private clients bypass the app's `Redis::listen()`.
 - **Horizon repositories** (`MasterSupervisorRepository`, `SupervisorRepository`, `JobRepository` metadata) stay container-bound and are never re-instantiated.
 - **`Redis\CircuitBreaker`** is one instance per process, shared by `AttemptStore`, `BatchLinks` and `LegacyReadyAt`:
