@@ -40,8 +40,9 @@ final class PayloadClock
     }
 
     /**
-     * Whether the payload is a first attempt: `attempts` is 0, absent or not a number. Horizon retries and
-     * `queue:retry` reset it to 0; a released job carries its attempts.
+     * Whether the payload is a first attempt: `attempts` is absent, not a number, not finite or truncates to 0.
+     * Horizon retries and `queue:retry` reset it to 0; a released job carries its attempts. `first_attempt()` in
+     * `queue_state.lua` applies the same rule (tests/Contract/ReadinessParityTest).
      *
      * @param  array<array-key, mixed>  $payload
      */
@@ -49,8 +50,15 @@ final class PayloadClock
     {
         $attempts = $payload['attempts'] ?? null;
 
-        // |attempts| < 1 is what (int) truncates to 0, without casting a float past the integer range (a wrapped
-        // value on PHP 8.2-8.4, a warning on PHP 8.5).
-        return ! is_numeric($attempts) || abs((float) $attempts) < 1;
+        if (! is_numeric($attempts)) {
+            return true;
+        }
+
+        // Compared as a float, never cast: (int) of a float past the integer range wraps on PHP 8.2-8.4 (2^64 is 0)
+        // and warns on PHP 8.5. A non-finite value (1e999 decodes to INF) is what (int) truncates to 0 on every
+        // version, as in the Lua twin; a finite |attempts| >= 1 is a retry, however large.
+        $value = (float) $attempts;
+
+        return ! is_finite($value) || abs($value) < 1;
     }
 }
