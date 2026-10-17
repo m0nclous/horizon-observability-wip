@@ -1,0 +1,80 @@
+name: Bug report
+description: Something in the metrics, the job lists, the dashboard or the alert rules is wrong.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Remove tokens, hostnames and job payloads you do not want to share before you paste output.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Steps to reproduce, the panel or metric involved, and what you saw instead.
+    validations:
+      required: true
+  - type: input
+    id: package
+    attributes:
+      label: Package version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: php
+    attributes:
+      label: PHP version
+      placeholder: '8.4.12'
+    validations:
+      required: true
+  - type: input
+    id: laravel
+    attributes:
+      label: Laravel version
+      placeholder: '13.5.0'
+    validations:
+      required: true
+  - type: input
+    id: horizon
+    attributes:
+      label: Horizon version
+      placeholder: '5.50.1'
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: Redis client
+      options: [phpredis, predis]
+    validations:
+      required: true
+  - type: input
+    id: redis
+    attributes:
+      label: Redis server
+      description: Redis or Valkey and the version; Cluster or Sentinel if used.
+      placeholder: Redis 7.4.2
+    validations:
+      required: true
+  - type: input
+    id: prometheus
+    attributes:
+      label: Prometheus version and scrape interval
+      placeholder: 3.15.0, 10s
+  - type: input
+    id: grafana
+    attributes:
+      label: Grafana version and plugin versions
+      description: Infinity and Business Text versions; the live mode (off, poll or stream) if relevant.
+      placeholder: Grafana 13.2.4, Infinity 4.1.1, Business Text 6.3.0, --live=poll
+  - type: textarea
+    id: exposition
+    attributes:
+      label: Exposition excerpt
+      description: The relevant lines of GET {horizon path}/observability/metrics.
+      render: text
+  - type: textarea
+    id: check
+    attributes:
+      label: Output of php artisan horizon-observability:check --json
+      render: json

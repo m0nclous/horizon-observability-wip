@@ -21,6 +21,13 @@
 //          interpolated KB. Exits 1 when a --budget limit or an --expect value (within --tolerance) is missed.
 //          Times are from the first request of a cycle to its last response, so the first load excludes Grafana's
 //          own page boot.
+//
+//   node bin/perf.mjs compare build/perf/<name>.json --prometheus <url> --against <url> [--cycle 1] [--tolerance 0.1]
+//                             [--lag 60]
+// compare  evaluates every Prometheus target of one cycle on two Prometheus servers at the same time (now - --lag
+//          seconds, the same range length) and compares the series (without `instance`) and their values within a
+//          relative --tolerance. The e2e dedupe gate: one server scrapes two replicas of the application, the other
+//          one replica, so a panel that does not deduplicate replicas shows doubled values. Exits 1 on a difference.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, basename } from 'node:path';
 
@@ -260,6 +267,66 @@ async function replay(file, options) {
   console.log(`replayed ${results.length} targets of cycle ${index}: ${totals.promqlMs} ms, ${totals.samples} samples, ${totals.interpolatedKb} KB -> ${out}`);
 }
 
+function seriesKey(metric) {
+  return JSON.stringify(Object.keys(metric).filter((k) => k !== 'instance').sort().map((k) => [k, metric[k]]));
+}
+
+// [seriesKey => [[t, v], ...]] of a query result (vector or matrix).
+function resultValues(body) {
+  const out = new Map();
+  for (const series of (body.data && body.data.result) || []) {
+    const values = series.values || (series.value ? [series.value] : []);
+    const key = seriesKey(series.metric || {});
+    out.set(key, [...(out.get(key) || []), ...values.map(([t, v]) => [Number(t), Number(v)])]);
+  }
+  return out;
+}
+
+async function compare(file, options) {
+  if (!options.prometheus || !options.against) fail('compare needs --prometheus <url> --against <url>');
+  const capture = JSON.parse(readFileSync(file, 'utf8'));
+  const all = cycles(capture.rows);
+  const index = Math.min(Number(options.cycle ?? 1), all.length - 1);
+  if (index < 0) fail(`${file} has no data requests`);
+  const tolerance = Number(options.tolerance ?? 0.1);
+  const end = Math.floor(Date.now() / 1000) - Number(options.lag ?? 60);
+  const differences = [];
+  let compared = 0;
+  for (const row of all[index].rows) {
+    for (const target of targetsOf(row)) {
+      const { expr, step, range } = interpolate(target, capture.range || 3600);
+      const params = target.instant
+        ? { query: expr, time: String(end) }
+        : { query: expr, start: String(end - range - ((end - range) % step)), end: String(end - (end % step)), step: String(step) };
+      const endpoint = target.instant ? '/api/v1/query' : '/api/v1/query_range';
+      const [a, b] = await Promise.all([prometheusCall(options.prometheus, endpoint, params), prometheusCall(options.against, endpoint, params)]);
+      const left = resultValues(a.body);
+      const right = resultValues(b.body);
+      const label = `panel ${target.panel} ${target.refId}`;
+      compared++;
+      for (const key of new Set([...left.keys(), ...right.keys()])) {
+        if (!left.has(key) || !right.has(key)) {
+          differences.push(`${label}: series ${key} only on ${left.has(key) ? options.prometheus : options.against}`);
+          continue;
+        }
+        const other = new Map(right.get(key));
+        for (const [t, v] of left.get(key)) {
+          if (!other.has(t)) continue;
+          const w = other.get(t);
+          if (Number.isNaN(v) && Number.isNaN(w)) continue;
+          if (Math.abs(v - w) > tolerance * Math.max(Math.abs(v), Math.abs(w), 1)) {
+            differences.push(`${label}: ${key} at ${t}: ${v} vs ${w}`);
+            break;
+          }
+        }
+      }
+    }
+  }
+  console.log(`compared ${compared} targets of cycle ${index} at ${end}: ${differences.length} difference(s)`);
+  for (const d of differences.slice(0, 50)) console.log(d);
+  process.exit(differences.length ? 1 : 0);
+}
+
 function summariseReplay(targets) {
   const byPanel = {};
   for (const t of targets) {
@@ -368,8 +435,10 @@ if (isMain) {
   if (command === 'capture') await capture(options);
   else if (command === 'replay') await replay(positional[0] || fail('replay needs a capture file'), options);
   else if (command === 'report') report(positional.length ? positional : fail('report needs capture files'), options);
+  else if (command === 'compare') await compare(positional[0] || fail('compare needs a capture file'), options);
   else {
-    console.log(readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(1, 25).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
+    const lines = readFileSync(new URL(import.meta.url), 'utf8').split('\n').slice(1);
+    console.log(lines.slice(0, lines.findIndex((l) => !l.startsWith('//'))).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
     process.exit(command ? 2 : 0);
   }
 }

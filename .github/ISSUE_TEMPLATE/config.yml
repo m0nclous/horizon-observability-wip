@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/sushi-market/horizon-observability/security/advisories/new
+    about: Report vulnerabilities privately through a GitHub security advisory, never in a public issue.
+  - name: Question
+    url: https://github.com/sushi-market/horizon-observability/discussions
+    about: Ask about setup and usage in Discussions.
