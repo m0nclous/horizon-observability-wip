@@ -66,6 +66,36 @@ it('still logs when the cache fails', function (): void {
     expect($this->log->messages())->toBe(['horizon-observability: warning']);
 });
 
+it('logs with the null cache store, throttled in the process only', function (): void {
+    // The null store keeps nothing and its add() always fails: without the in-process fallback nothing was logged.
+    config()->set('cache.stores.none', ['driver' => 'null']);
+    config()->set('cache.default', 'none');
+    $e = new RuntimeException('down');
+
+    $this->reporter->report('discovery.scan', $e);
+    $this->reporter->report('discovery.scan', $e);
+    (new FailureReporter($this->app, fn (): float => $this->time))->report('discovery.scan', $e);
+
+    expect($this->log->messages('warning'))->toBe([
+        'horizon-observability: discovery.scan failed: RuntimeException: down',
+        'horizon-observability: discovery.scan failed: RuntimeException: down',
+    ]);
+});
+
+it('logs the config problems once, and nothing without problems', function (): void {
+    $repository = clone $this->app['config'];
+    $repository->set('horizon-observability.namespace', '1bad');
+    $config = Config::fromRepository($repository);
+    $clean = Config::fromRepository($this->app['config']);
+
+    $this->reporter->configProblems($clean);
+    $this->reporter->configProblems($config);
+    $this->reporter->configProblems($config);
+
+    expect($this->log->messages('warning'))->toBe(['horizon-observability: 1 invalid configuration values were replaced by defaults; run php artisan horizon-observability:check.'])
+        ->and($this->log->records[0]['context']['problems'][0] ?? null)->toStartWith('namespace: ');
+});
+
 it('does not double the prefix', function (): void {
     $this->reporter->warnOnce('routes.late', 'horizon-observability: provider registered after boot.');
 

@@ -118,6 +118,8 @@ final readonly class Exporter
         $config = $this->container->make(Config::class);
         /** @var FailureReporter $reporter */
         $reporter = $this->container->make(FailureReporter::class);
+        // The provider logs config problems in the console only; over HTTP this authorised scrape does (Arch Q2.4).
+        $reporter->configProblems($config);
 
         $budget = self::budget($request);
         $context = new ScrapeContext(now()->toImmutable(), $budget, $this->clock);

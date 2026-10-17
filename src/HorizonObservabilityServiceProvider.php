@@ -9,7 +9,6 @@ use DF\HorizonObservability\Attempts\AttemptTracker;
 use DF\HorizonObservability\Attempts\LegacyReadyAt;
 use DF\HorizonObservability\Batches\BatchLinks;
 use DF\HorizonObservability\Config\Config;
-use DF\HorizonObservability\Config\ConfigProblem;
 use DF\HorizonObservability\Console\CacheCommand;
 use DF\HorizonObservability\Console\CheckCommand;
 use DF\HorizonObservability\Console\ClearCommand;
@@ -70,12 +69,12 @@ final class HorizonObservabilityServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/horizon-observability.php', 'horizon-observability');
 
         $this->app->singleton(Config::class, static fn (Application $app): Config => Config::fromRepository(self::repository($app)));
+        // In the console (commands, workers) only: an HTTP request resolves the snapshot before Authorize decides, and
+        // the throttled warning's cache round trip must not be paid by denied requests (Arch Q2.4). An authorised
+        // scrape logs the problems instead (Exporter::scrape()).
         $this->app->afterResolving(Config::class, static function (Config $config, Application $app): void {
-            if ($config->problems !== []) {
-                $app->make(FailureReporter::class)->warnOnce('config.problems', sprintf(
-                    '%d invalid configuration values were replaced by defaults; run php artisan horizon-observability:check.',
-                    count($config->problems),
-                ), ['problems' => array_map(static fn (ConfigProblem $problem): string => $problem->path.': '.$problem->message, $config->problems)]);
+            if ($config->problems !== [] && $app->runningInConsole()) {
+                $app->make(FailureReporter::class)->configProblems($config);
             }
         });
 

@@ -368,6 +368,20 @@ it('exports the number of config problems', function (): void {
     expect(exporterTestScrape(exporterTestQuiet())->value('ho_exporter_config_problems'))->toBe(3.0);
 });
 
+it('logs the config problems on a scrape served over HTTP', function (): void {
+    // Over HTTP the provider leaves the warning to the (authorised) scrape: denied requests stay free of cache I/O.
+    (fn () => $this->isRunningInConsole = false)->call($this->app);
+    $log = exporterTestLog();
+    exporterTestConfig(['namespace' => '1bad']);
+    app(Config::class);
+    $resolved = $log->messages('warning');
+
+    exporterTestScrape(exporterTestQuiet());
+
+    expect($resolved)->toBe([])
+        ->and($log->messages('warning'))->toBe(['horizon-observability: 1 invalid configuration values were replaced by defaults; run php artisan horizon-observability:check.']);
+});
+
 it('exports the build info', function (): void {
     $exposition = exporterTestScrape(exporterTestQuiet());
 

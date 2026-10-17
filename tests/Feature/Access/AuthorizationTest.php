@@ -276,6 +276,10 @@ it('causes no cache write when unauthenticated', function (array $config, ?Closu
 
             return [$denied, $ioWhileDenied, $allowed, $io];
         },
+        // A web server, not the console: the provider then leaves the config-problems warning to the scrape.
+        static function (Application $app): void {
+            (fn () => $this->isRunningInConsole = false)->call($app);
+        },
     );
 
     [$denied, [$ioWhileDenied, $redisWhileDenied], $allowed, $io] = $result;
@@ -296,4 +300,6 @@ it('causes no cache write when unauthenticated', function (array $config, ?Closu
     'IP not allowed' => [['horizon-observability.allowed_ips' => '10.0.0.0/8'], null, '203.0.113.7', 403],
     'locked' => [['horizon-observability.token' => null], null, '10.0.0.5', 403],
     'callback says no' => [[], static fn (): bool => false, '10.0.0.5', 403],
+    // Resolving the snapshot must not log its problems on the denied path (that warning costs a cache round trip).
+    'token missing or wrong, with a config problem' => [['horizon-observability.namespace' => '1bad'], null, '10.0.0.5', 401],
 ]);
