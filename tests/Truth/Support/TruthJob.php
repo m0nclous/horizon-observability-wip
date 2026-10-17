@@ -21,9 +21,11 @@ use RuntimeException;
  * - `fail`: calls `fail()` (status `failed`);
  * - `release:<seconds>`: releases itself with that delay (status `released`); popped again after its last try,
  *   the worker fails it without running it (`failed` without a duration);
- * - `hang`: sleeps for 30 s, for a timeout in a forked worker ({@see Scenario::workInChild()}).
+ * - `hang`: sleeps for 30 s, for a timeout in a forked worker ({@see Scenario::timeOutInChild()}).
  *
- * Steps after the plan complete. Every attempt first sleeps {@see self::$sleepMs}, the known duration.
+ * Steps after the plan complete. Every attempt first sleeps {@see self::$sleepMs}, the known duration, and with
+ * {@see self::$countRuns} counts itself in the cache ({@see self::RUNS}), which proves that a job ran where the
+ * exporter must not see it (sync, deferred, background, database).
  */
 final class TruthJob implements ShouldQueue
 {
@@ -32,11 +34,10 @@ final class TruthJob implements ShouldQueue
     use InteractsWithQueue;
     use Queueable;
 
-    public int $tries;
-
-    public int $backoff;
-
-    public ?int $timeout;
+    /**
+     * Cache key of the run counter of the jobs that count their runs.
+     */
+    public const RUNS = 'truth-job-runs';
 
     /**
      * @param  list<string>  $plan
@@ -44,20 +45,17 @@ final class TruthJob implements ShouldQueue
     public function __construct(
         public string $label,
         public array $plan = ['complete'],
-        int $tries = 1,
+        public int $tries = 1,
         public int $sleepMs = 0,
-        int $backoff = 0,
-        ?int $timeout = null,
+        public int $backoff = 0,
+        public ?int $timeout = null,
+        public bool $countRuns = false,
     ) {
         foreach ($plan as $step) {
             if (! in_array($step, ['complete', 'throw', 'fail', 'hang'], true) && preg_match('/^release:\d+$/', $step) !== 1) {
                 throw new InvalidArgumentException(sprintf('Unknown step "%s".', $step));
             }
         }
-
-        $this->tries = $tries;
-        $this->backoff = $backoff;
-        $this->timeout = $timeout;
     }
 
     public function displayName(): string
@@ -68,6 +66,10 @@ final class TruthJob implements ShouldQueue
     public function handle(): void
     {
         $step = $this->plan[$this->attempts() - 1] ?? 'complete';
+
+        if ($this->countRuns) {
+            cache()->increment(self::RUNS);
+        }
 
         if ($this->sleepMs > 0) {
             usleep($this->sleepMs * 1000);

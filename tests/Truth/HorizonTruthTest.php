@@ -69,10 +69,15 @@ it('exports the supervisors of every master as Horizon holds them', function ():
 
     expect($actual)->toBe(horizonTruthExpected())
         // The scenario's own numbers: supervisor-default runs 3 + 2 processes on two hosts, limits 2..5.
-        ->and($actual['horizon_status'])->toBe(['' => 1.0])
-        ->and($actual['horizon_supervisor_processes'][Model::key(['supervisor' => 'supervisor-default', 'queue' => 'default'])])->toBe(5.0)
-        ->and($actual['horizon_supervisor_min_processes'][Model::key(['supervisor' => 'supervisor-default'])])->toBe(2.0)
-        ->and($actual['horizon_supervisor_max_processes'][Model::key(['supervisor' => 'supervisor-default'])])->toBe(5.0);
+        ->and($actual[Metric::HorizonStatus->value])->toBe(['' => 1.0])
+        ->and($actual[Metric::SupervisorProcesses->value][Model::key(['supervisor' => 'supervisor-default', 'queue' => 'default'])])->toBe(5.0)
+        ->and($actual[Metric::SupervisorMinProcesses->value][Model::key(['supervisor' => 'supervisor-default'])])->toBe(2.0)
+        ->and($actual[Metric::SupervisorMaxProcesses->value][Model::key(['supervisor' => 'supervisor-default'])])->toBe(5.0)
+        ->and($actual[Metric::SupervisorInfo->value])->toBe([
+            Model::key(['supervisor' => 'supervisor-default', 'balance' => 'auto', 'connection' => 'redis']) => 1.0,
+            Model::key(['supervisor' => 'supervisor-slow', 'balance' => 'auto', 'connection' => 'redis']) => 1.0,
+            Model::key(['supervisor' => 'supervisor-pool', 'balance' => 'off', 'connection' => 'redis']) => 1.0,
+        ]);
 });
 
 it('maps the queues of a balance=false pool to its supervisor and its pool (#5)', function (): void {

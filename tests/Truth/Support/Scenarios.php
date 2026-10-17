@@ -74,4 +74,59 @@ final class Scenarios
 
         return $scenario;
     }
+
+    /**
+     * Ten minutes of steady load on the scenario clock, scraped every `$interval` seconds: at every 7th second
+     * 1 to 3 jobs of Truth\Tick complete on default and every 5th time one fails; Truth\Late starts at 300 s on
+     * reports. The scrapes run from 0 to 700 s (past the hold of the last new series); `$before` runs before every
+     * scrape, e.g. a simulated restore.
+     *
+     * @param  (callable(Scenario, int): void)|null  $before
+     * @return array{0: Scenario, 1: array<int, array{samples: Samples, jobsTotal: array<string, int>, durations: array<string, array{buckets: array<string, int>, count: int, sum: array{0: float, 1: float}}>, waits: array<string, array{buckets: array<string, int>, count: int, sum: float}>}>} the scenario, and per scrape second the scrape and what the model expected of it
+     */
+    public static function timeline(TestCase $test, int $interval, ?callable $before = null): array
+    {
+        $scenario = Scenario::start($test);
+        $start = $scenario->unix();
+        $scrapes = [];
+
+        for ($second = 0; $second <= 700; $second++) {
+            $scenario->advance($second === 0 ? 0 : 1);
+
+            if ($second > 0 && $second % 7 === 0 && $second <= 600) {
+                $event = intdiv($second, 7);
+
+                foreach (range(1, $event % 3 + 1) as $ignored) {
+                    $scenario->dispatch(new TruthJob('Truth\\Tick'));
+                }
+
+                if ($event % 5 === 0) {
+                    $scenario->dispatch(new TruthJob('Truth\\Tick', ['fail']));
+                }
+
+                if ($second >= 300 && $event % 4 === 0) {
+                    $scenario->dispatch(new TruthJob('Truth\\Late'), 'reports')->work('reports');
+                }
+
+                $scenario->work();
+            }
+
+            if ($second % $interval === 0) {
+                if ($before !== null) {
+                    $before($scenario, $second);
+                }
+
+                $scrapes[$second] = [
+                    'samples' => new Samples($scenario->scrape()),
+                    'jobsTotal' => $scenario->model->jobsTotal($scenario->unix()),
+                    'durations' => $scenario->model->durations($scenario->unix()),
+                    'waits' => $scenario->model->waits($scenario->unix()),
+                ];
+            }
+        }
+
+        expect($scenario->unix() - $start)->toBe(700.0);
+
+        return [$scenario, $scrapes];
+    }
 }

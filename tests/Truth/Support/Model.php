@@ -537,7 +537,7 @@ final class Model
         $buckets = [];
 
         foreach ($this->bounds as $bound) {
-            $buckets[self::le($bound)] = count(array_filter($values, static fn (float $value): bool => $value <= $bound));
+            $buckets[$this->le($bound)] = count(array_filter($values, static fn (float $value): bool => $value <= $bound));
         }
 
         $buckets['+Inf'] = count($values);
@@ -545,7 +545,7 @@ final class Model
         return $buckets;
     }
 
-    private static function le(float $bound): string
+    private function le(float $bound): string
     {
         return floor($bound) === $bound ? (string) (int) $bound : (string) $bound;
     }
