@@ -1,0 +1,44 @@
+
+== wp8c-g12-6h.json (range 6h, 9 cycles)
+requests per panel (refresh cycles 2-4):
+   panel  requestsPerRefresh  medianMs
+      24                   1      1215
+       4                   1      1212
+       8                   1      1190
+      17                   1       974
+variable                   2       301
+      21                   1       167
+       1                   1       166
+      23                   1       165
+       3                   1       148
+       2                   1        95
+       9                   1        73
+PromQL replay per panel:
+   panel  targets  wallMs    samples    kb
+      17        9     921    8464650  18.5
+       4        3     684  156453120   9.9
+      24        8     581    5151080  20.9
+       8        2     232  153294300   5.3
+variable        2     124    1170836   2.0
+       3        2      40      28597   7.3
+       2        3      17       6994   4.9
+       1        2      13       3753   2.1
+      21        3      12          0   1.8
+      23        1       5          0   0.1
+       9        1       4        144   0.6
+                    metric      value
+               firstLoadMs       2323
+              refreshP50Ms       1566
+              refreshP95Ms       2029
+             overviewP50Ms       1566
+        requestsPerRefresh         12
+variableRequestsPerRefresh          2
+infinityRequestsPerRefresh          0
+            failedRequests          0
+                  promqlMs       2633
+                   samples  324573474
+            interpolatedKb       73.5
+                maxPanelKb       20.9
+                    errors          0
+
+within budget
