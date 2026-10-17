@@ -84,16 +84,33 @@ it('refreshes the last-seen score of a known class', function (): void {
     expect((float) Storage::store()->reader()->zscore($this->keys->jobClasses(), 'App\\Jobs\\A'))->toBe(1_700_000_000.0 + 864_000);
 });
 
-it('stops exporting classes idle for 30 days and deletes their fields lazily', function (): void {
+it('stops exporting a class pruned for a new one after 30 idle days and deletes its fields lazily', function (): void {
     Storage::record(jobClass: 'App\\Jobs\\Gone', duration: 0.5, now: $this->now);
     Storage::record(jobClass: 'App\\Jobs\\Kept', duration: 0.5, now: $this->now->addDays(29));
     $later = $this->now->addDays(31);
+    // The set is full (2): the new class makes room by pruning the class idle for more than 30 days.
+    Storage::record(jobClass: 'App\\Jobs\\New', duration: 0.5, now: $later);
 
-    expect(($this->exported)($later))->toBe(['App\\Jobs\\Kept'])
-        ->and(($this->classes)())->toBe(['App\\Jobs\\Kept'])
-        ->and(array_keys(Storage::hash($this->keys->attempts())))->toBe(['redis|default|App\\Jobs\\Kept|completed'])
-        ->and(array_keys(Storage::hash($this->keys->durationBuckets())))->toBe(['redis|default|App\\Jobs\\Kept|0.5'])
-        ->and(array_keys(Storage::hash($this->keys->durationSum())))->toBe(['redis|default|App\\Jobs\\Kept']);
+    expect(($this->exported)($later))->toBe(['App\\Jobs\\Kept', 'App\\Jobs\\New'])
+        ->and(($this->classes)())->toBe(['App\\Jobs\\Kept', 'App\\Jobs\\New'])
+        ->and(array_keys(Storage::hash($this->keys->attempts())))->toBe(['redis|default|App\\Jobs\\Kept|completed', 'redis|default|App\\Jobs\\New|completed'])
+        ->and(array_keys(Storage::hash($this->keys->durationBuckets())))->toBe(['redis|default|App\\Jobs\\Kept|0.5', 'redis|default|App\\Jobs\\New|0.5'])
+        ->and(array_keys(Storage::hash($this->keys->durationSum())))->toBe(['redis|default|App\\Jobs\\Kept', 'redis|default|App\\Jobs\\New']);
+});
+
+it('keeps counting a class idle for more than 30 days while the set has room (a monthly job)', function (): void {
+    // Pruning idle classes on every scrape would delete the counter between two monthly runs: each run would start
+    // a new series at 1, which increase() and the dashboard never count.
+    Storage::record(jobClass: 'App\\Jobs\\Monthly', now: $this->now);
+    $nextRun = $this->now->addDays(31);
+
+    $between = ($this->exported)($this->now->addDays(30)->addHour());
+    Storage::record(jobClass: 'App\\Jobs\\Monthly', now: $nextRun);
+    $samples = Storage::scrape($nextRun)['samples']['queue_jobs_total'];
+
+    expect($between)->toBe(['App\\Jobs\\Monthly'])
+        ->and(($this->classes)())->toBe(['App\\Jobs\\Monthly'])
+        ->and($samples['connection=redis,queue=default,job_class=App\\Jobs\\Monthly,status=completed'])->toBe(2);
 });
 
 it('stops exporting a class that left the set and keeps (other)', function (): void {

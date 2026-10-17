@@ -47,7 +47,8 @@ final readonly class AttemptStore
     public const EXTREMES_READ_BUCKETS = 10;
 
     /**
-     * Job classes idle for longer than this leave the class set (Arch Q4: 30 days), and their series stop.
+     * Job classes idle for longer than this leave the class set when it is full and a new class needs the room
+     * (Arch Q4: 30 days); their series stop.
      */
     public const CLASS_IDLE_SECONDS = 2592000;
 
@@ -166,17 +167,18 @@ final readonly class AttemptStore
     }
 
     /**
-     * The admitted job classes, after removing the ones idle for {@see self::CLASS_IDLE_SECONDS}.
+     * The admitted job classes.
+     *
+     * Read only: classes idle for {@see self::CLASS_IDLE_SECONDS} leave the set inside `record_attempt.lua`, and only
+     * when the set is full and a new class needs the room (Arch Q4 guard 1). Pruning idle classes on every scrape
+     * instead would delete the counters of a job that runs less often than every 30 days (a monthly job), so each
+     * run would start a new series at 1 that `increase()` and the dashboard never count.
      *
      * @return list<string>
      */
-    public function jobClasses(CarbonImmutable $now): array
+    public function jobClasses(): array
     {
-        $redis = $this->reader();
-        $cutoff = $now->getPreciseTimestamp(3) / 1000 - self::CLASS_IDLE_SECONDS;
-
-        $redis->zremrangebyscore($this->keys->jobClasses(), '-inf', '('.Lua::argument($cutoff));
-        $members = $redis->zrange($this->keys->jobClasses(), 0, -1);
+        $members = $this->reader()->zrange($this->keys->jobClasses(), 0, -1);
 
         return array_values(array_map(strval(...), array_filter(is_array($members) ? $members : [], is_scalar(...))));
     }

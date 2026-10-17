@@ -162,8 +162,9 @@ it('reads on the short-timeout reader with a bounded number of commands', functi
 
     Storage::scrape($this->now);
 
-    expect($commands->names(RedisClients::READER.'horizon'))->toBe(['EVAL', 'HGETALL', 'HGETALL', 'HGETALL', 'HGETALL', 'HGETALL', 'EVAL', 'HGETALL', 'ZREMRANGEBYSCORE', 'ZRANGE'])
-        ->and($commands->count())->toBe(10);
+    // The guard, 5 counter hashes, the extremes, meta and the class set; the scrape path never prunes the class set.
+    expect($commands->names(RedisClients::READER.'horizon'))->toBe(['EVAL', 'HGETALL', 'HGETALL', 'HGETALL', 'HGETALL', 'HGETALL', 'EVAL', 'HGETALL', 'ZRANGE'])
+        ->and($commands->count())->toBe(9);
 });
 
 it('skips malformed fields and unknown statuses and deletes the malformed ones', function (): void {

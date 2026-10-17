@@ -22,12 +22,12 @@ use Throwable;
  * self-metrics, read from the storage written by the workers.
  *
  * Per scrape: the reset guard `EVAL`, the five counter hashes, one `extremes_read` `EVAL`, `meta` and the job-class
- * set (idle classes pruned first), on the short-timeout reader of the storage connection. Values are absolute
- * (no registry, C3).
+ * set (read only), on the short-timeout reader of the storage connection. Values are absolute (no registry, C3).
  * - Every (connection, queue, job_class) of `queue_jobs_total` is zero-filled with all five statuses, so the first
  *   failure or timeout of a known class is visible to `increase()`.
- * - Fields of classes that left the class set (cap overflow, 30 idle days) are not exported and are deleted
- *   lazily, at most {@see self::FORGET_LIMIT} per scrape; `(other)` always stays.
+ * - Fields of classes that left the class set (idle for 30 days and pruned by `record_attempt.lua` when the full set
+ *   needed room for a new class, Arch Q4) are not exported and are deleted lazily, at most
+ *   {@see self::FORGET_LIMIT} per scrape; `(other)` always stays.
  * - Histograms are cumulative over the configured bounds ({@see HistogramSnapshot}).
  * - `exporter_attempts_dropped_total` is always exported; the live push series only once a stream leader pushed
  *   (`meta.live_push_at`).
@@ -69,7 +69,7 @@ final readonly class AttemptsCollector implements Collector
         $counters = $this->store->counters();
         $extremes = $this->store->extremes($now);
         $meta = $this->store->meta();
-        $known = array_fill_keys($this->store->jobClasses($now), true);
+        $known = array_fill_keys($this->store->jobClasses(), true);
         $known[Labels::OTHER] = true;
 
         /** @var array<string, list<string>> $stale */
