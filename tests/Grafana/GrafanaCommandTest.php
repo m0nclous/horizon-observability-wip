@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Grafana\DashboardOptions;
 use DF\HorizonObservability\Grafana\Render;
 use Illuminate\Support\Facades\Artisan;
@@ -136,6 +137,29 @@ it('renders the identity, the folder and the datasource regexes it is given', fu
         ->and($rules['groups'][0]['folder'])->toBe('Queues')
         ->and(array_column($rules['groups'][0]['rules'], 'uid'))->each->toStartWith('queues_prod-1-');
 });
+
+it('names the metrics with the prefix of the namespace, also with --defaults', function (string $namespace, string $expected): void {
+    config()->set('horizon-observability.namespace', $namespace);
+    app()->forgetInstance(Config::class);
+
+    [$status] = runGrafana(['path' => $this->output, '--defaults' => true]);
+    $files = array_map(fn (string $file): string => (string) file_get_contents($this->output.'/'.$file), [Render::DASHBOARD, Render::ALERTING]);
+
+    expect($status)->toBe(0);
+
+    foreach ($files as $contents) {
+        expect($contents)->toContain($expected.'queue_jobs_total{')
+            ->toContain($expected.'horizon_status');
+
+        if ($namespace !== 'ho') {
+            expect($contents)->not->toContain('ho_queue_')->not->toContain('ho_horizon_');
+        }
+    }
+})->with([
+    'default' => ['ho', 'ho_'],
+    'office continuity' => ['office', 'office_'],
+    'no prefix' => ['', ''],
+]);
 
 it('refuses invalid options and writes nothing', function (array $options, string $message): void {
     [$status, $output] = runGrafana(['path' => $this->output, ...$options]);

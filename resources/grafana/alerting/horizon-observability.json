@@ -8,7 +8,7 @@
       "interval": "1m",
       "rules": [
         {
-          "uid": "horizon-no-metrics",
+          "uid": "horizon-observability-no-metrics",
           "title": "No queue metrics",
           "condition": "C",
           "data": [
@@ -21,7 +21,7 @@
               "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "count(office_horizon_status)",
+                "expr": "count(ho_horizon_status)",
                 "instant": true,
                 "range": false,
                 "refId": "A"
@@ -51,14 +51,14 @@
           "execErrState": "Error",
           "for": "5m",
           "annotations": {
-            "summary": "Prometheus has no office_horizon_status, /metrics of the app is not scraped",
-            "__dashboardUid__": "horizon",
+            "summary": "Prometheus has no ho_horizon_status, /metrics of the app is not scraped",
+            "__dashboardUid__": "horizon-observability",
             "__panelId__": "1"
           },
           "isPaused": false
         },
         {
-          "uid": "horizon-down",
+          "uid": "horizon-observability-down",
           "title": "Horizon is down",
           "condition": "C",
           "data": [
@@ -71,7 +71,7 @@
               "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "min(office_horizon_status)",
+                "expr": "min(ho_horizon_status)",
                 "instant": true,
                 "range": false,
                 "refId": "A"
@@ -102,13 +102,13 @@
           "for": "5m",
           "annotations": {
             "summary": "Horizon is paused or not running",
-            "__dashboardUid__": "horizon",
+            "__dashboardUid__": "horizon-observability",
             "__panelId__": "1"
           },
           "isPaused": false
         },
         {
-          "uid": "horizon-long-wait",
+          "uid": "horizon-observability-long-wait",
           "title": "Queue wait over 2x limit",
           "condition": "C",
           "data": [
@@ -121,7 +121,7 @@
               "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "max by (queue) (office_queue_oldest_pending_job_age) / on (queue) max by (queue) (office_horizon_wait_threshold_seconds)",
+                "expr": "max by (queue) (ho_queue_oldest_pending_job_age) / on (queue) max by (queue) (ho_horizon_wait_threshold_seconds)",
                 "instant": true,
                 "range": false,
                 "refId": "A"
@@ -152,13 +152,13 @@
           "for": "5m",
           "annotations": {
             "summary": "Oldest pending job in {{ $labels.queue }} waits {{ printf \"%.1f\" $values.A.Value }}x the queue wait limit",
-            "__dashboardUid__": "horizon",
+            "__dashboardUid__": "horizon-observability",
             "__panelId__": "2"
           },
           "isPaused": false
         },
         {
-          "uid": "horizon-failures",
+          "uid": "horizon-observability-failures",
           "title": "High failure rate",
           "condition": "C",
           "data": [
@@ -171,7 +171,7 @@
               "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "sum by (queue) (increase(office_queue_jobs_total{status=~\"failed|timed_out\"}[15m])) / clamp_min(sum by (queue) (increase(office_queue_jobs_total{status=~\"completed|failed|timed_out\"}[15m])), 100)",
+                "expr": "sum by (queue) (increase(ho_queue_jobs_total{status=~\"failed|timed_out\"}[15m])) / clamp_min(sum by (queue) (increase(ho_queue_jobs_total{status=~\"completed|failed|timed_out\"}[15m])), 100)",
                 "instant": true,
                 "range": false,
                 "refId": "A"
@@ -202,7 +202,7 @@
           "for": "5m",
           "annotations": {
             "summary": "{{ humanizePercentage $values.A.Value }} of attempts in {{ $labels.queue }} failed in 15 minutes",
-            "__dashboardUid__": "horizon",
+            "__dashboardUid__": "horizon-observability",
             "__panelId__": "4"
           },
           "isPaused": false

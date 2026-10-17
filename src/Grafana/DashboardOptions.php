@@ -16,6 +16,11 @@ namespace DF\HorizonObservability\Grafana;
 final readonly class DashboardOptions
 {
     /**
+     * Dashboard uid of the package render; the alert rule uids start with it (Arch Q5.2).
+     */
+    public const DEFAULT_UID = 'horizon-observability';
+
+    /**
      * @param  string  $metricPrefix  prefix of every package metric name, including the trailing underscore
      * @param  string  $uid  dashboard uid, also the prefix of the alert rule uids
      * @param  list<string>  $tags
@@ -33,10 +38,10 @@ final readonly class DashboardOptions
      * @param  bool  $dedupe  wrap every selector in a replica dedupe aggregation (WP8B, Arch Q5.6 step 10)
      */
     public function __construct(
-        public string $metricPrefix = 'office_',
-        public string $uid = 'horizon',
+        public string $metricPrefix = 'ho_',
+        public string $uid = self::DEFAULT_UID,
         public string $title = 'Queues',
-        public array $tags = ['horizon', 'queue', 'office'],
+        public array $tags = ['horizon', 'queue'],
         public string $prometheusDatasourceRegex = '',
         public string $infinityDatasourceRegex = '',
         public string $jobListUrl = '/metrics/horizon/{list}-jobs',

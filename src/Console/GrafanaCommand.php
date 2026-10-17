@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DF\HorizonObservability\Console;
 
+use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Grafana\DashboardOptions;
 use DF\HorizonObservability\Grafana\Render;
 use Illuminate\Console\Command;
@@ -15,7 +16,8 @@ use InvalidArgumentException;
  * `{path}/dashboards/horizon-observability.json` and `{path}/alerting/horizon-observability.json`, or with `--check`
  * compares those files with the render and exits 1 when they differ (for the CI of an infrastructure repository).
  *
- * The path is relative to the current directory: the application root for `php artisan`, the package root for
+ * Metric names carry the prefix of `horizon-observability.namespace` (default `ho_`), also with `--defaults`, so the
+ * render matches what the application exports. The path is relative to the current directory: the application root for `php artisan`, the package root for
  * `vendor/bin/testbench`, whose base path is its own skeleton.
  */
 final class GrafanaCommand extends Command
@@ -29,7 +31,7 @@ final class GrafanaCommand extends Command
         {path=grafana : Output directory, relative to the current directory}
         {--defaults : Render with the package defaults, ignoring the application config (the metric prefix still follows horizon-observability.namespace)}
         {--check : Render in memory and exit 1 when the files differ from the render}
-        {--uid=horizon : Dashboard uid ([A-Za-z0-9_-], at most 29 characters); the alert rule uids start with it}
+        {--uid=horizon-observability : Dashboard uid ([A-Za-z0-9_-], at most 29 characters); the alert rule uids start with it}
         {--title=Queues : Dashboard title}
         {--folder=Horizon : Grafana folder of the alert rules}
         {--prometheus-datasource= : Name regex of the Prometheus datasource (default: Grafana\'s default datasource)}
@@ -40,10 +42,10 @@ final class GrafanaCommand extends Command
      */
     protected $description = 'Render the Grafana dashboard and alert rules';
 
-    public function handle(Filesystem $files): int
+    public function handle(Filesystem $files, Config $config): int
     {
         try {
-            $options = $this->renderOptions();
+            $options = $this->renderOptions($config);
         } catch (InvalidArgumentException $e) {
             $this->components->error($e->getMessage());
 
@@ -112,7 +114,7 @@ final class GrafanaCommand extends Command
     /**
      * @throws InvalidArgumentException for an invalid option
      */
-    private function renderOptions(): DashboardOptions
+    private function renderOptions(Config $config): DashboardOptions
     {
         $uid = $this->text('uid');
 
@@ -127,6 +129,7 @@ final class GrafanaCommand extends Command
         }
 
         return new DashboardOptions(
+            metricPrefix: $config->prefix(),
             uid: $uid,
             title: $this->text('title'),
             prometheusDatasourceRegex: $this->text('prometheus-datasource', required: false),

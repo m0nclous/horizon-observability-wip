@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use DF\HorizonObservability\Grafana\DashboardBuilder;
+use DF\HorizonObservability\Grafana\DashboardOptions;
 use DF\HorizonObservability\Grafana\PanelRegistry;
 use DF\HorizonObservability\Tests\Grafana\Support\LayoutProjection;
 use DF\HorizonObservability\Tests\Grafana\Support\LegacyFixtures;
@@ -65,9 +66,12 @@ it('freezes the projection of the legacy golden', function (): void {
     expect(LayoutProjection::frozen())->toBe(LayoutProjection::full($golden));
 });
 
-it('keeps the layout and the look of the legacy dashboard', function (): void {
-    expect(LayoutProjection::full(legacyDashboard()))->toBe(LayoutProjection::frozen());
-});
+it('keeps the layout and the look of the legacy dashboard', function (string $profile): void {
+    $options = $profile === 'legacy' ? LegacyFixtures::options() : new DashboardOptions;
+    $dashboard = LayoutProjection::decoded((new DashboardBuilder($options))->build());
+
+    expect(LayoutProjection::full($dashboard))->toBe(LayoutProjection::frozen());
+})->with(['legacy', 'package defaults']);
 
 it('fills the Overview row with tiles from edge to edge', function (): void {
     $tiles = array_values(array_filter(LayoutProjection::layout(legacyDashboard()), static fn (array $panel): bool => $panel['row'] === PanelRegistry::OVERVIEW_ROW));
