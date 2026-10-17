@@ -394,7 +394,7 @@ Acceptance: every job of `tests` green on the PR head, including the prefer-lowe
 predis ^2.0.2, L12, L13) on phpredis and predis and the cluster job; the coverage threshold measured and met (or
 lowered to the measured value with a written justification); then green on the integration branch after the merge.
 
-### T14 WP10 Operations commands — `in progress` (depends on T03–T09, T12)
+### T14 WP10 Operations commands — `testing` (depends on T03–T09, T12)
 Arch Q7, Q9 table. `install`, `check`, `flush` commands, `Support/Diagnostics`, `about` integration.
 Addendum (Add §Q9′ WP10): `check` gains the live block (enabled; stream URL, token set or missing, stream id; optional
 `--live-push-test`, which pushes one `tiles` frame to stream id `<id>_check` and reports the HTTP status with the Add
