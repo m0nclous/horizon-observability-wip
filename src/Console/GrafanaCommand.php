@@ -39,6 +39,7 @@ final class GrafanaCommand extends Command
         {--uid=horizon-observability : Dashboard uid ([A-Za-z0-9_-], at most 29 characters); the alert rule uids start with it}
         {--title=Queues : Dashboard title}
         {--job= : Prometheus job (scrape job of the package endpoint) the dashboard selects by default and the alert rules are scoped to; empty = all jobs}
+        {--scrape-interval=10s : Scrape interval S of the package endpoint, 5s to 60s: the panels\' min interval, the busy window max(15s, 2 x S), the counter lookback max(10m, 10 x S) and the refresh}
         {--folder=Horizon : Grafana folder of the alert rules}
         {--datasource-uid= : Uid of the Prometheus datasource of the alert rules (default: ${HORIZON_OBSERVABILITY_PROMETHEUS_UID}, interpolated by Grafana)}
         {--health-rules : Add the opt-in health rules: a failing metrics collector, and more than one scraped target per job}
@@ -137,6 +138,7 @@ final class GrafanaCommand extends Command
         }
 
         $job = $this->text('job', required: false);
+        $scrapeInterval = $this->scrapeInterval();
         $datasource = $this->text('datasource-uid', required: false);
 
         if ($datasource !== '' && preg_match(self::DATASOURCE_UID_PATTERN, $datasource) !== 1) {
@@ -149,11 +151,34 @@ final class GrafanaCommand extends Command
             title: $this->text('title'),
             prometheusDatasourceRegex: $this->text('prometheus-datasource', required: false),
             infinityDatasourceRegex: $this->text('infinity-datasource', required: false),
+            scrapeInterval: $scrapeInterval,
             alertFolder: $folder,
             alertDatasourceUid: $datasource === '' ? DashboardOptions::DATASOURCE_PLACEHOLDER : $datasource,
             job: $job === '' ? null : $job,
             healthRules: $this->option('health-rules') === true,
         );
+    }
+
+    /**
+     * `--scrape-interval` in seconds: `<n>s` or `1m`, within the supported 5 to 60 seconds (ADDENDUM R3.2).
+     *
+     * @throws InvalidArgumentException
+     */
+    private function scrapeInterval(): int
+    {
+        $value = $this->option('scrape-interval');
+
+        if (! is_string($value) || preg_match('/^(\d+)(s|m)$/', trim($value), $match) !== 1
+            || ($seconds = (int) $match[1] * ($match[2] === 'm' ? 60 : 1)) < DashboardOptions::MIN_SCRAPE_INTERVAL
+            || $seconds > DashboardOptions::MAX_SCRAPE_INTERVAL) {
+            throw new InvalidArgumentException(sprintf(
+                '--scrape-interval must be a duration from %ds to %ds such as 10s, 30s or 1m (the scrape interval of the package endpoint).',
+                DashboardOptions::MIN_SCRAPE_INTERVAL,
+                DashboardOptions::MAX_SCRAPE_INTERVAL,
+            ));
+        }
+
+        return $seconds;
     }
 
     /**

@@ -9,7 +9,6 @@ use DF\HorizonObservability\Grafana\PanelRegistry;
 use DF\HorizonObservability\Grafana\Promql;
 use DF\HorizonObservability\Grafana\Queries\Attempts;
 use DF\HorizonObservability\Grafana\Queries\BatchState;
-use DF\HorizonObservability\Grafana\Thresholds;
 use DF\HorizonObservability\Metrics\Metric;
 
 /**
@@ -32,6 +31,7 @@ final readonly class Batches
         private Promql $promql,
         private Attempts $attempts,
         private BatchState $batches,
+        private int $rpmMinutes,
     ) {}
 
     /**
@@ -46,7 +46,7 @@ final readonly class Batches
         $total = $this->batches->jobs('total');
         $pending = $this->batches->jobs('pending');
         $failed = $this->batches->jobs('failed');
-        $minutes = Thresholds::RPM_WINDOW_MINUTES;
+        $minutes = $this->rpmMinutes;
 
         // Progress of the running batches of the kind: 1000 + percent for the bar, 1999 (a dash) without any
         $progress = Common::PERCENT_OFFSET.' + '.Promql::paren(Promql::either(

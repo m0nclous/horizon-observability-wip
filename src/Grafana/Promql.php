@@ -255,6 +255,18 @@ final readonly class Promql
     }
 
     /**
+     * A PromQL duration of whole seconds: `20s`, `2m`, `1h`.
+     */
+    public static function duration(int $seconds): string
+    {
+        return match (true) {
+            $seconds > 0 && $seconds % 3600 === 0 => intdiv($seconds, 3600).'h',
+            $seconds > 0 && $seconds % 60 === 0 => intdiv($seconds, 60).'m',
+            default => $seconds.'s',
+        };
+    }
+
+    /**
      * A job name as an exact regex (Go's `regexp.QuoteMeta`): the alert rules scope a pinned `--job` with it.
      */
     public static function literalRegex(string $value): string

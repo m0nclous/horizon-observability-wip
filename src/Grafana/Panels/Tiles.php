@@ -73,6 +73,7 @@ final readonly class Tiles
         private Workers $workers,
         private Waits $waits,
         private AlertState $alerts,
+        private int $rpmMinutes,
     ) {}
 
     /**
@@ -295,7 +296,7 @@ final readonly class Tiles
      */
     private function completed(array $gridPos): array
     {
-        $minutes = Thresholds::RPM_WINDOW_MINUTES;
+        $minutes = $this->rpmMinutes;
         $perMinute = Promql::either(
             Promql::call('round', Promql::sum($this->attempts->delta(Attempts::COMPLETED, $minutes.'m')).' / '.$minutes),
             $this->selection->zeroIfMetrics(),

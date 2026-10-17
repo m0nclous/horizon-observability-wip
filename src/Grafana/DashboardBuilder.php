@@ -71,13 +71,13 @@ final readonly class DashboardBuilder
             'panels' => $this->panels(),
             'preload' => false,
             // Grafana accepts only an interval of timepicker.refresh_intervals
-            'refresh' => $this->options->refresh,
+            'refresh' => $this->options->refresh(),
             'schemaVersion' => self::SCHEMA_VERSION,
             'tags' => $this->options->tags,
             'templating' => ['list' => $this->variables()],
             'time' => ['from' => 'now-1h', 'to' => 'now'],
             // Refreshing less often than every 5 minutes makes no sense: the dashboard shows the current state
-            'timepicker' => ['refresh_intervals' => ['5s', '10s', '15s', '30s', '1m', '5m']],
+            'timepicker' => ['refresh_intervals' => $this->refreshIntervals()],
             'timezone' => 'browser',
             'title' => $this->options->title,
             'uid' => $this->options->uid,
@@ -114,18 +114,18 @@ final readonly class DashboardBuilder
     {
         $promql = $this->options->promql();
         $selection = new Selection($promql);
-        $attempts = new Attempts($promql);
-        $workers = new Workers($promql, $selection, $this->options->legacy ? $this->options->busyWindow : Variables::BUSY_WINDOW);
+        $attempts = new Attempts($promql, $this->options->counterLookback());
+        $workers = new Workers($promql, $selection, $this->options->legacy ? $this->options->busyWindow() : Variables::BUSY_WINDOW);
         $waits = new Waits($promql, $selection);
         $batchState = new BatchState($promql);
         $alertState = new AlertState($this->options->alertRules());
         $common = new Common($promql);
 
-        $tiles = new Tiles($common, $promql, $selection, $attempts, $workers, $waits, $alertState);
+        $tiles = new Tiles($common, $promql, $selection, $attempts, $workers, $waits, $alertState, $this->options->rpmMinutes());
         $queues = new Queues($promql, $selection, $attempts, $workers, $waits);
         $jobs = new Jobs($common, $promql, $selection, $attempts, $workers);
         $jobLists = new JobLists($this->options);
-        $batches = new Batches($common, $promql, $attempts, $batchState);
+        $batches = new Batches($common, $promql, $attempts, $batchState, $this->options->rpmMinutes());
 
         $panels = [(new AlertSound($common, $alertState, $this->options->alertSound()))->panel()];
         $y = AlertSound::HEIGHT;
@@ -156,7 +156,65 @@ final readonly class DashboardBuilder
             $batches->list($y + Common::ROW_HEIGHT),
         ]);
 
-        return $panels;
+        return $this->options->legacy ? $panels : array_map(self::withMinInterval(...), $panels);
+    }
+
+    /**
+     * Every Prometheus panel takes the scrape interval as its min interval, so `$__interval` is never below S
+     * whatever the datasource's `timeInterval` (ADDENDUM R3.3, verified on Grafana 12 and 13); the panels of a
+     * collapsed row too.
+     *
+     * @param  array<string, mixed>  $panel
+     * @return array<string, mixed>
+     */
+    private static function withMinInterval(array $panel): array
+    {
+        if (is_array($panel['panels'] ?? null) && $panel['panels'] !== []) {
+            /** @var list<array<string, mixed>> $children */
+            $children = $panel['panels'];
+            $panel['panels'] = array_map(self::withMinInterval(...), $children);
+        }
+
+        $datasource = $panel['datasource'] ?? null;
+
+        if (! is_array($datasource) || ($datasource['type'] ?? null) !== 'prometheus') {
+            return $panel;
+        }
+
+        $interval = [];
+
+        foreach ($panel as $key => $value) {
+            $interval[$key] = $value;
+
+            if ($key === 'id') {
+                $interval['interval'] = Variables::SCRAPE_INTERVAL;
+            }
+        }
+
+        return $interval;
+    }
+
+    /**
+     * The refresh choices of the time picker, including the dashboard's own refresh (Grafana accepts only these).
+     *
+     * @return list<string>
+     */
+    private function refreshIntervals(): array
+    {
+        $intervals = ['5s', '10s', '15s', '30s', '1m', '5m'];
+        $refresh = $this->options->refresh();
+
+        if (! in_array($refresh, $intervals, true)) {
+            $intervals[] = $refresh;
+            usort($intervals, static fn (string $a, string $b): int => self::seconds($a) <=> self::seconds($b));
+        }
+
+        return $intervals;
+    }
+
+    private static function seconds(string $duration): int
+    {
+        return (int) $duration * ['s' => 1, 'm' => 60, 'h' => 3600][substr($duration, -1)];
     }
 
     /**

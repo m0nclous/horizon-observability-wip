@@ -28,6 +28,7 @@ final class LegacyProfile
             prometheusDatasourceRegex: '',
             infinityDatasourceRegex: '',
             jobListUrl: '/metrics/horizon/{list}-jobs',
+            scrapeInterval: 15,
             busyWindow: '15s',
             refresh: '15s',
             alertRuleUidRegex: 'horizon-.*',

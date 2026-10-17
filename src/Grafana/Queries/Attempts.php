@@ -27,16 +27,15 @@ final readonly class Attempts
     private const LABELS = ['queue', 'job_class', 'status'];
 
     /**
-     * How far back the start of a period looks for the last counter value.
+     * @param  string  $startLookback  how far back the start of a period looks for the last counter value:
+     *                                 max(10m, 10 x the scrape interval) (ADDENDUM R3.3; the pilot looked back a day)
      */
-    private const START_LOOKBACK = '1d';
-
-    public function __construct(private Promql $promql) {}
+    public function __construct(private Promql $promql, private string $startLookback) {}
 
     /**
      * Attempts in the window, exactly: the counter difference without increase()'s extrapolation (legacy
-     * `attempts_delta`). The start is the last value within a day before the window, so a scrape gap at the
-     * boundary does not break the count; a series that did not exist before starts at its first value. After a
+     * `attempts_delta`). The start is the last value within the lookback before the window, so a scrape gap at
+     * the boundary does not break the count; a series that did not exist before starts at its first value. After a
      * counter reset (negative difference) the value after the reset counts.
      */
     public function delta(string $statuses, string $window): string
@@ -44,7 +43,7 @@ final readonly class Attempts
         $status = [Promql::re('status', $statuses)];
         $now = $this->sum($this->promql->selector(Metric::JobsTotal, ...$status));
         $start = Promql::paren(Promql::either(
-            $this->sum($this->promql->over('last_over_time', Metric::JobsTotal, self::START_LOOKBACK, $status, offset: $window)),
+            $this->sum($this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status, offset: $window)),
             $this->sum($this->promql->over('min_over_time', Metric::JobsTotal, $window, $status)),
         ));
 
@@ -75,7 +74,7 @@ final readonly class Attempts
         ));
         $stepFirst = $this->sum($this->promql->over('min_over_time', Metric::JobsTotal, Promql::INTERVAL, $status, offset: $nextStep));
         $periodEnd = $this->sum($this->promql->shifted(Metric::JobsTotal, $status, at: Promql::TO_SECONDS));
-        $periodStart = $this->sum($this->promql->over('last_over_time', Metric::JobsTotal, self::START_LOOKBACK, $status, at: Promql::FROM_SECONDS));
+        $periodStart = $this->sum($this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status, at: Promql::FROM_SECONDS));
 
         $later = Promql::paren(Promql::either(
             Promql::paren($stepEnd.' <= '.$periodEnd),

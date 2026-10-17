@@ -29,6 +29,11 @@ final readonly class Variables
     public const BUSY_WINDOW = '$busy_window';
 
     /**
+     * The min interval of every Prometheus panel (ADDENDUM R3.3: the hidden `scrape_interval` textbox).
+     */
+    public const SCRAPE_INTERVAL = '$scrape_interval';
+
+    /**
      * Supervisors and their queues are taken from the last day, so they are known while Horizon is down.
      */
     public const KNOWN_FOR = '1d';
@@ -79,9 +84,12 @@ final readonly class Variables
             // Hidden: the path of the application's job list API (horizon-observability.path), exported like
             // horizon_url; the Infinity URLs are relative to the datasource URL: ${api_path}/jobs/<list>
             $this->options->legacy ? null : $this->info('api_path', 'api_path'),
+            // Hidden: the scrape interval of the package endpoint, the min interval of every Prometheus panel;
+            // ?var-scrape_interval=30s overrides it
+            $this->options->legacy ? null : $this->textbox('scrape_interval', $this->options->scrapeIntervalText()),
             // Hidden: the window of the worker utilisation (Utilization bars, the Supervisor Processes colour), at
             // least one scrape interval; ?var-busy_window=30s overrides it
-            $this->options->legacy ? null : $this->textbox('busy_window', $this->options->busyWindow),
+            $this->options->legacy ? null : $this->textbox('busy_window', $this->options->busyWindow()),
             // Hidden: the Infinity datasource with the application's job lists, by type: in a production Grafana
             // the datasource is created in the UI and has its own uid
             $this->datasource('app_api', 'yesoreyeram-infinity-datasource', $this->options->infinityDatasourceRegex),
