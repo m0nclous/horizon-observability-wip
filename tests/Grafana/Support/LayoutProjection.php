@@ -5,15 +5,22 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Tests\Grafana\Support;
 
 use DF\HorizonObservability\Grafana\Json;
+use RuntimeException;
 
 /**
  * The layout projection of a dashboard (Arch Q5.6 and Q5.7): what must stay equal to the legacy dashboard while
  * WP8B changes the queries. Per panel in document order (the panels of a collapsed row right after it): id,
  * type, title, gridPos, the row it belongs to, repeat options and the collapsed flag; the full projection adds
  * the options without the alert sound script, the field config and the transformations.
+ *
+ * The full projection of the legacy dashboard is frozen in `tests/Fixtures/grafana/default/layout-projection.json`
+ * (as decoded JSON: an empty object reads as an empty list, on both sides of the comparison), so it outlives the
+ * legacy goldens.
  */
 final class LayoutProjection
 {
+    private const FROZEN = __DIR__.'/../../Fixtures/grafana/default/layout-projection.json';
+
     private const LAYOUT_KEYS = ['id', 'type', 'title', 'gridPos', 'repeat', 'repeatDirection', 'maxPerRow', 'collapsed'];
 
     private const LOOK_KEYS = ['options', 'fieldConfig', 'transformations'];
@@ -38,6 +45,23 @@ final class LayoutProjection
     public static function full(array $dashboard): array
     {
         return self::project($dashboard, [...self::LAYOUT_KEYS, ...self::LOOK_KEYS]);
+    }
+
+    /**
+     * The frozen full projection of the legacy dashboard.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function frozen(): array
+    {
+        $frozen = json_decode((string) file_get_contents(self::FROZEN), true, flags: JSON_THROW_ON_ERROR);
+
+        if (! is_array($frozen) || ! array_is_list($frozen)) {
+            throw new RuntimeException('The frozen layout projection is not a list.');
+        }
+
+        /** @var list<array<string, mixed>> $frozen */
+        return $frozen;
     }
 
     /**

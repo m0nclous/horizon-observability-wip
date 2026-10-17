@@ -9,7 +9,8 @@ use DF\HorizonObservability\Tests\Grafana\Support\LegacyFixtures;
 
 /*
  * The layout projection (Arch Q5.6, Q5.7) must not change while WP8B rewrites the queries: panel ids, types,
- * titles, grid positions, repeat options and row membership, and the look of every panel.
+ * titles, grid positions, repeat options and row membership, and the look of every panel. The reference is the
+ * projection of the legacy golden, frozen in tests/Fixtures/grafana/default/layout-projection.json.
  */
 
 function legacyDashboard(): array
@@ -57,10 +58,15 @@ it('pins the layout', function (): void {
     ]);
 });
 
-it('keeps the layout and the look of the legacy dashboard', function (): void {
+it('freezes the projection of the legacy golden', function (): void {
+    // The frozen file outlives tests/Fixtures/grafana/legacy (Arch Q5.6: deleted at the end of WP8B)
     $golden = json_decode(LegacyFixtures::read('queues.json'), true, flags: JSON_THROW_ON_ERROR);
 
-    expect(LayoutProjection::full(legacyDashboard()))->toBe(LayoutProjection::full($golden));
+    expect(LayoutProjection::frozen())->toBe(LayoutProjection::full($golden));
+});
+
+it('keeps the layout and the look of the legacy dashboard', function (): void {
+    expect(LayoutProjection::full(legacyDashboard()))->toBe(LayoutProjection::frozen());
 });
 
 it('fills the Overview row with tiles from edge to edge', function (): void {
