@@ -256,6 +256,17 @@ it('writes the Docker stack pointed at the app, with the dashboard rendered for 
     }
 });
 
+it('asks where Docker reaches the app when interactive', function (): void {
+    $this->artisan('horizon-observability:install', ['--docker' => true])
+        ->expectsQuestion('At which URL do Prometheus and Grafana in Docker reach the app?', 'http://host.docker.internal:9000')
+        ->expectsConfirmation('Publish config/horizon-observability.php?', 'yes')
+        ->assertExitCode(0);
+
+    $prometheus = Yaml::parseFile($this->base.'/docker/observability/prometheus/prometheus.yml');
+
+    expect($prometheus['scrape_configs'][0]['static_configs'][0]['targets'])->toBe(['host.docker.internal:9000']);
+});
+
 it('selects Grafana 12 and the app URL, and rejects an unknown Grafana', function (): void {
     [$code] = install(['--docker' => true, '--grafana' => '12', '--app-url' => 'https://shop.internal/sub/']);
     $compose = Yaml::parseFile($this->base.'/'.DockerStack::COMPOSE_FILE);

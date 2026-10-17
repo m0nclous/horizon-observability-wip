@@ -21,7 +21,9 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
  *   and reports the HTTP status with the hint for 401 and 403 (Addendum R4.10). The dashboard's own stream is never
  *   touched.
  *
- * Tokens are never printed, only whether they are set.
+ * The collector dry run is a real scrape without the HTTP request: it reads what a scrape reads and writes what a
+ * scrape writes (the counter reset guard's run id, the job-class runtime cache). Tokens are never printed, only
+ * whether they are set.
  */
 final class CheckCommand extends Command
 {
