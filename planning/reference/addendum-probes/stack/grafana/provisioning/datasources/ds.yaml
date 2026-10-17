@@ -1,0 +1,15 @@
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://127.0.0.1:9391
+    isDefault: true
+    jsonData: {timeInterval: 15s, httpMethod: POST}
+  - name: App API
+    uid: app-api
+    type: yesoreyeram-infinity-datasource
+    access: proxy
+    url: http://127.0.0.1:8391
+    jsonData: {allowedHosts: ['http://127.0.0.1:8391']}

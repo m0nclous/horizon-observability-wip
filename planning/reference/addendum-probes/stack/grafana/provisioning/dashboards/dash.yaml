@@ -1,0 +1,4 @@
+apiVersion: 1
+providers:
+  - {name: legacy, type: file, folder: Legacy, updateIntervalSeconds: 5, allowUiUpdates: true, options: {path: /etc/grafana/dashboards/legacy}}
+  - {name: probe, type: file, folder: Probe, updateIntervalSeconds: 5, allowUiUpdates: true, options: {path: /etc/grafana/dashboards/probe}}

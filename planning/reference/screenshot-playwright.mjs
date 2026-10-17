@@ -1,4 +1,4 @@
-import { chromium } from '/opt/node-tools/node_modules/playwright/index.mjs';
+import { chromium } from 'playwright';
 const [url, out, w, h] = process.argv.slice(2);
 const browser = await chromium.launch();
 const page = await browser.newPage({ locale: 'en-US', timezoneId: 'UTC', viewport: { width: +w, height: +h } });
