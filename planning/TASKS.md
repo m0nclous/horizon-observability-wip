@@ -378,7 +378,7 @@ jobs read the uid from the mounted file); write `build/grafana-rules.yml` and us
 T13's rules replace; TextFormat omits empty label values (`horizon_info{tts_url}` is absent without TTS); the batch kind
 `(other)` matches no links as a filter.
 
-### T18 Make CI green on the integration branch — `todo` (depends on T11)
+### T18 Make CI green on the integration branch — `in progress` (depends on T11)
 Stop-the-line task (owner decision 14). The first runs of `.github/workflows/tests.yml` on
 `claude/hopeful-hawking-njeu3v` fail: most legs at the `composer show ...` step, the Laravel 11 legs at "Resolve the
 leg", the static job at PHPStan and the coverage job (85 % minimum, never measured). Diagnose every failing job from
