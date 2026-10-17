@@ -86,10 +86,9 @@ that the next task points to. Everything here is export-ignored and will be dele
       and must return the expected values (tiles, captions, colours, table cells, series), including filters, empty
       state, counter resets, two replicas, scrape intervals 5/10/60 s and ranges 15 m/1 h/6 h; a DOM check reads tiles.
     - Every change to collectors, Lua, `src/Grafana/**` or a dependency bump must keep both suites green (CI gate).
-14. **Kanban with a QA gate** (owner, 2026-10-17). Board columns: Todo → In Progress → Testing → Done, plus Needs
-    owner for tasks waiting for the owner (`tools/board/README.md`). `planning/TASKS.md` stays the source of truth;
-    change statuses only with `tools/board/set-status.sh` (it commits and pushes `planning/TASKS.md`, the board
-    workflow moves the card).
+14. **Kanban with a QA gate** (owner, 2026-10-17). Board columns: Todo → In Progress → Testing → Done
+    (`tools/board/README.md`). `planning/TASKS.md` stays the source of truth; change statuses only with
+    `tools/board/set-status.sh` (it commits and pushes `planning/TASKS.md`, the board workflow moves the card).
     - The implementing agent sets `in progress` when it starts and `testing` when all its gates are green and committed.
     - At least two independent tester agents (never the implementer) test every task in `testing`:
       the **spec tester** (each acceptance item, Arch/ADDENDUM conformance, all gates on phpredis and predis, lowest
@@ -103,43 +102,57 @@ that the next task points to. Everything here is export-ignored and will be dele
       asks the owner.
     - The integrator merges a task branch only when the task is `done`.
 
-    Flow rules (added 2026-10-17; details and commands in `tools/board/README.md`):
-    - **Needs owner.** A task that waits for a decision only the owner can make moves to `needs owner` with
-      `set-status.sh Txx "needs owner" --question "..."` (the issue comment mentions @m0nclous; the board column is
-      "Needs owner"). Whoever receives the answer records it with `--answer "..."` and moves the task back to
-      `in progress` (WIP permitting) or `todo`. Do not guess past an open owner question.
+    **Proposed flow rules** (2026-10-17, **pending the owner's confirmation**). They answer the owner's question for
+    more Kanban and flow ideas; the owner has not confirmed them yet, so they are not owner decisions and may be
+    re-litigated. Until the owner decides, they are the working rules: the board tooling already enforces their gates.
+    When the owner confirms (or changes) them, record the date here and drop this paragraph. Details and commands:
+    `tools/board/README.md`.
+    - **Needs owner.** A board column "Needs owner" (status `needs owner`, label `needs owner`) for a task that waits
+      for a decision only the owner can make: `set-status.sh Txx "needs owner" --question "..."`. The issue comment
+      mentions @m0nclous and comes from `github-actions[bot]`, so the owner is notified (GitHub never notifies anyone of
+      their own comments, and every other board write uses the owner's token). Whoever receives the answer records it
+      with `--answer "..."` and moves the task back to `in progress` (WIP permitting) or `todo`. Do not guess past an
+      open owner question.
     - **Stop the line.** When the `tests` workflow fails on a push to the integration branch, the board workflow opens
       "[CI] The integration branch is red" (label `stop-the-line`) and closes it when the branch is green again. While
       it is open nothing moves to `done`: testers and the integrator check for it via MCP before approving or merging,
-      and the next work is making the branch green (fix forward or revert).
-    - **One pull request per task.** The implementer pushes `wip/Txx-<slug>` to `origin` and opens a draft PR to the
-      integration branch via MCP with `Closes #<issue>`. Pull requests run a fast CI subset (static, the stable leg
+      and the next work is making the branch green (fix forward or revert). Pushes that change only `TASKS.md` and
+      `planning/screenshots/` run no tests; the last run's verdict stands for them.
+    - **One pull request per task.** Task code goes to `wip/Txx-<slug>` on `origin` with a draft PR to the integration
+      branch via MCP (`Closes #<issue>`), never straight to the integration branch: only `set-status.sh` commits and
+      `integrator:` commits go there directly. Pull requests run a fast CI subset (static, the stable leg
       PHP 8.3 / L13 / phpredis, the lowest leg PHP 8.2 / L11 / predis, Grafana assets on 13.2.4); the full matrix runs
       on the integration branch after the merge. All GitHub writes act as the owner's account, so testers post
       **COMMENT** reviews that start with `QA verdict: APPROVED` or `QA verdict: CHANGES REQUESTED` (GitHub refuses
-      APPROVE and REQUEST_CHANGES on a PR of its own author). The integrator merges via MCP (merge commit) only when the
-      task is `done`, the PR checks are green and no `stop-the-line` issue is open.
-    - **Dependencies and WIP limits.** `set-status.sh` refuses `in progress`, `testing` and `done` while a dependency
-      (heading tail `(depends on ...)` or the phase's `(all depend on ...)`) is not `done`, and refuses a task entering
-      In Progress at 2 tasks or Testing at 3 (`BOARD_WIP_IN_PROGRESS`, `BOARD_WIP_TESTING`); a QA rejection always
-      returns to In Progress. `--force` overrides and is recorded in the commit; use it only with a reason. The board
-      labels todo tasks `ready` or `blocked` (with a comment naming the missing dependencies): take ready tasks only.
-    - **Fields and report.** The board carries Phase, Area (`tools/board/areas.tsv`; add a line for every new task),
-      QA rounds, Started and Finished. The pinned issue "[Board] Flow report" shows WIP against the limits, the CI
-      state, open owner questions and per-task QA rounds, start, finish and cycle days with the rejection rate. QA lines
-      say `round N approved by ...` or `round N rejected by ...` so the rounds are counted.
-    - **Screenshots.** Evidence images go in with `set-status.sh ... --attach <png>` (copied to
-      `planning/screenshots/<Txx>/`, committed and linked from the QA comment). Visual tasks (dashboard: T13, T15, T17,
-      any change of `src/Grafana/**` or `resources/grafana/**`) attach Grafana 12.4.13 and 13.2.4 screenshots with
-      every verdict; a visual verdict without both is a finding.
+      APPROVE and REQUEST_CHANGES on a PR of its own author). The integrator merges via MCP (merge commit), or locally
+      with `--no-ff` and a push, only when the task is `done`, the PR checks are green and no `stop-the-line` issue is
+      open.
+    - **Dependencies and WIP limits.** `set-status.sh` first brings the main checkout up to date with origin (fetch and
+      fast-forward), so its gates see merged PRs and other sessions' moves; it refuses `in progress`, `testing` and
+      `done` while a dependency (heading tail `(depends on ...)` or the phase's `(all depend on ...)`) is not `done`,
+      and a task entering In Progress at 2 tasks or Testing at 3 (`BOARD_WIP_IN_PROGRESS`, `BOARD_WIP_TESTING`). A QA
+      rejection (`testing` -> `in progress` with `--qa "round N rejected by ..."`) always returns to In Progress.
+      `--force --reason "why"` overrides; the commit records what was forced and why; use it rarely. The board labels
+      todo tasks `ready` or `blocked` (with one comment naming the missing dependencies): take ready tasks only.
+    - **Fields and report.** The board carries Phase, Area (`tools/board/areas.tsv`; add a line for every new task, the
+      sync warns otherwise), QA rounds, Started and Finished. The pinned issue "[Board] Flow report" shows WIP against
+      the limits, the CI state, open owner questions and per-task QA rounds, start, finish and cycle days with the
+      rejection rate. QA lines say `round N approved by ...` or `round N rejected by ...`: the board counts each
+      distinct round once (rejected when any line of it rejects).
+    - **Screenshots.** Evidence images go in with `set-status.sh ... --attach <png>` (at most 1 MiB each; committed to
+      `planning/screenshots/<Txx>/` and linked from the QA comment by commit, so the links outlive T15's deletion of
+      `planning/`). Visual tasks (dashboard: T13, T15, T17, any change of `src/Grafana/**` or `resources/grafana/**`)
+      attach Grafana 12.4.13 and 13.2.4 screenshots with every verdict; a visual verdict without both is a finding.
 
 ## Git and environment
 
-- Work on branch `claude/hopeful-hawking-njeu3v`. Remote `origin` = `https://github.com/m0nclous/horizon-observability-wip`
-  (private working repo; the owner will move it later). Push only to `origin`, never to the `sushi-market` remote
-  (`https://github.com/sushi-market/horizon-observability`), until the owner says so. The old base branch there is `master`
-  (commit `3b260c9 init`); there is no `main`.
-- Commit after every completed task (or meaningful step) and push to `origin`. Commit messages in English.
+- The integration branch is `claude/hopeful-hawking-njeu3v` on `origin` = `https://github.com/m0nclous/horizon-observability-wip`
+  (private working repo; the owner will move it later). Task code goes to a task branch `wip/Txx-<slug>` pushed to
+  `origin`, with a draft PR to the integration branch (decision 14, one pull request per task); only `set-status.sh`
+  commits and `integrator:` commits go to the integration branch directly. Push only to `origin`, never to the
+  `sushi-market` remote (`https://github.com/sushi-market/horizon-observability`), until the owner says so. The old
+  base branch there is `master` (commit `3b260c9 init`); there is no `main`.
+- Commit after every completed task (or meaningful step) and push the task branch to `origin`. Commit messages in English.
 - Local prerequisites: PHP 8.3+ with `redis`, `pcntl`, `posix`, `pdo_sqlite`; Composer; Docker for Redis, Prometheus and
   Grafana; Node 20+ for screenshots.
   - Redis before T11 lands: `docker run -d --name ho-redis -p 6379:6379 redis:7.4-alpine redis-server --save "" --appendonly no`.
@@ -173,10 +186,11 @@ that the next task points to. Everything here is export-ignored and will be dele
 ## Working alone or in parallel
 
 - **Alone:** you are the integrator (Arch Q9 rule 2) and may edit the shared files; commit shared-file changes separately
-  with the subject prefix `integrator:`.
-- **Parallel:** one worktree per task: `git worktree add ../ho-Txx -b wip/Txx-<slug> claude/hopeful-hawking-njeu3v`.
-  Only the integrator edits TASKS.md and the shared files, merges `wip/*` branches with `--no-ff` into
-  `claude/hopeful-hawking-njeu3v` and pushes.
+  with the subject prefix `integrator:`. Task code still goes through its task branch and draft PR (decision 14).
+- **Parallel:** one worktree per task: `git worktree add ../ho-Txx -b wip/Txx-<slug> claude/hopeful-hawking-njeu3v`,
+  pushed to `origin` with a draft PR to the integration branch. Only the integrator edits TASKS.md (beyond
+  `set-status.sh`) and the shared files, and merges a task's PR via MCP (merge commit), or locally with `--no-ff` and a
+  push, only when the task is `done`, the PR checks are green and no `stop-the-line` issue is open (decision 14).
 - **Phase review:** when a phase is done, a fresh agent reviews `git diff <first commit of the phase>^..HEAD` against each
   task's acceptance and Arch Appendix H (e.g. `/code-review high`), fixes the findings, and adds
   "Review: <date>, <n> findings fixed, <commit>" under the phase heading in TASKS.md.
