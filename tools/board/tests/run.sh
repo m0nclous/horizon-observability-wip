@@ -1287,6 +1287,233 @@ planning/screenshots/**" "$(awk '/^  push:/ { on = 1; next } on && /^  [a-z_]+:/
     check_contains "board.sh ci excludes the same paths" 'BOARD_ONLY_PATHS=("$TASKS_FILE" "$(dirname "$TASKS_FILE")/screenshots")' "$(cat "$BOARD/board.sh")"
 }
 
+# --- Adversarial QA, round 2: probes kept as regression tests --------------------------------------------------------
+
+CASES+=("adv2 probe: six set-status calls at once from two clones")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_46() {
+    new_world
+    other_clone
+    base="$(git -C "$WORK/world/origin.git" rev-parse "$BRANCH")"
+    # name dir task status [options]: one call in the background; its exit code goes to $name.rc.
+    one_call() {
+        local name="$1" dir="$2" rc=0
+        shift 2
+        (cd "$dir" && BOARD_MAIN="$dir" BOARD_WAIT=60 BOARD_NOW="2026-10-12 09:00" "$BOARD/set-status.sh" "$@") \
+            >"$WORK/world/$name.out" 2>"$WORK/world/$name.err" || rc=$?
+        echo "$rc" >"$WORK/world/$name.rc"
+    }
+    # In Progress holds T02 (limit 2): T05 races the QA rejection of T03 for the last slot unless T02 moves on first.
+    one_call a1 "$REPO" T05 "in progress" &
+    one_call b1 "$OTHER" T03 "in progress" --qa "round 1 rejected by the clone b tester: x" &
+    one_call a2 "$REPO" T06 "needs owner" --question "A question from clone a?" &
+    one_call b2 "$OTHER" T02 testing &
+    one_call a3 "$REPO" T07 todo --qa "a note from clone a" &
+    one_call b3 "$OTHER" T04 todo --answer "No, from clone b" &
+    wait
+    declare -A want=([a1]="T05|in progress|todo" [b1]="T03|in progress|testing" [a2]="T06|needs owner|todo"
+        [b2]="T02|testing|in progress" [a3]="T07|todo|todo" [b3]="T04|todo|needs owner")
+    declare -A subject=([a1]="board: T05 -> in progress" [b1]="board: T03 -> in progress (QA)"
+        [a2]="board: T06 -> needs owner (question)" [b2]="board: T02 -> testing" [a3]="board: T07 -> todo (QA)"
+        [b3]="board: T04 -> todo (answer)")
+    git -C "$REPO" fetch -q origin
+    tasks="$(git -C "$WORK/world/origin.git" show "$BRANCH:planning/TASKS.md")"
+    log="$(git -C "$WORK/world/origin.git" log --format=%s "$base..$BRANCH")"
+    successes=0
+    bad=""
+    for name in a1 a2 a3 b1 b2 b3; do
+        rc="$(cat "$WORK/world/$name.rc")"
+        IFS='|' read -r id to from <<<"${want[$name]}"
+        heading="$(grep "^### $id " <<<"$tasks")"
+        if [[ "$rc" == 0 ]]; then
+            successes=$((successes + 1))
+            [[ "$heading" == *" — \`$to\`"* ]] || bad+=" $name:heading"
+            [[ "$(grep -cxF "${subject[$name]}" <<<"$log")" == 1 ]] || bad+=" $name:commit"
+        else
+            # Only T05 can lose (the WIP gate), or a call can give up after three lost push races: cleanly.
+            grep -qE "the WIP limit of in progress is 2|kept moving; nothing changed" "$WORK/world/$name.err" || bad+=" $name:refusal"
+            [[ "$name" == a1 ]] || grep -q "kept moving" "$WORK/world/$name.err" || bad+=" $name:refused"
+            [[ "$heading" == *" — \`$from\`"* ]] || bad+=" $name:heading"
+            [[ "$(grep -cxF "${subject[$name]}" <<<"$log" || true)" == 0 ]] || bad+=" $name:commit"
+        fi
+        ! grep -qE "index\.lock|Traceback|fatal:|CONFLICT" "$WORK/world/$name.err" || bad+=" $name:git-error"
+    done
+    for name in a1 a2 a3 b1 b2 b3; do echo "== $name rc=$(cat "$WORK/world/$name.rc")"; cat "$WORK/world/$name.out" "$WORK/world/$name.err"; done >"${ADV2_DEBUG:-/dev/null}"
+    check "every call either landed once or was refused cleanly" "" "$bad"
+    check "one origin commit per landed call" "$successes" "$(grep -c . <<<"$log")"
+    landed="" expected=""
+    for pair in "b1|round 1 rejected by the clone b tester" "a2|A question from clone a?" "a3|a note from clone a" "b3|No, from clone b"; do
+        expected+="$(( $(cat "$WORK/world/${pair%%|*}.rc") == 0 ? 1 : 0 )) "
+        landed+="$(grep -cF "${pair#*|}" <<<"$tasks" || true) "
+    done
+    check "the QA, question and answer lines of the landed calls, once each" "$expected" "$landed"
+    check "In Progress within its limit (or over it only by the QA rejection)" "yes" \
+        "$([[ "$(grep -c '^### T.* — `in progress`' <<<"$tasks")" -le 2 ]] && echo yes)"
+    check "clone a: clean" "" "$(git -C "$REPO" status --porcelain --untracked-files=no)"
+    check "clone b: clean" "" "$(git -C "$OTHER" status --porcelain --untracked-files=no)"
+    printf '%s\n' "$tasks" >"$WORK/world/final.md"
+    check "the task list still parses" "8" "$(cd "$REPO" && TASKS_FILE="$WORK/world/final.md" "$BOARD/board.sh" list 2>&1 | grep -c '^T0')"
+}
+
+CASES+=("adv2 probe: tokens and URL credentials stay out of the output")
+case_47() {
+    new_world
+    local secret="ghp_ADV2SECRETTOKEN0000" notify="ghs_ADV2NOTIFYSECRET000"
+    {
+        (cd "$REPO" && GH_TOKEN="$secret" BOARD_NOTIFY_TOKEN="$notify" "$BOARD/board.sh" sync --dry-run)
+        (cd "$REPO" && GH_TOKEN="$secret" BOARD_NOTIFY_TOKEN="$notify" GH_STUB_FAIL="project item-edit" "$BOARD/board.sh" sync)
+        (cd "$REPO" && GH_TOKEN="$secret" BOARD_NOTIFY_TOKEN="$notify" "$BOARD/board.sh" report --dry-run)
+        (cd "$REPO" && GH_TOKEN="$secret" CI_CONCLUSION=failure CI_RUN_ID=900 "$BOARD/board.sh" ci --dry-run)
+    } >"$OUT" 2>"$ERR"
+    check_contains "the dry runs printed their writes" "dry-run: gh issue comment" "$(cat "$OUT")"
+    check_contains "the failing writes printed their warnings" "could not write the board field" "$(cat "$ERR")"
+    check "board.sh prints no token" "" "$(grep -e "$secret" -e "$notify" "$OUT" "$ERR" || true)"
+
+    # Credentials in the origin URL (a token remote): git's messages, which set-status passes on, drop them.
+    git -C "$REPO" remote set-url origin "https://x-access-token:$secret@127.0.0.1:9/m0nclous/board-fixture.git"
+    rc=0
+    (cd "$REPO" && env -u HTTPS_PROXY -u https_proxy -u ALL_PROXY -u all_proxy GIT_TERMINAL_PROMPT=0 BOARD_MAIN="$REPO" \
+        BOARD_NOW="2026-10-12 09:00" "$BOARD/set-status.sh" T05 "in progress") >"$OUT" 2>"$ERR" || rc=$?
+    check_status "an unreachable token remote: refused" 1 "$rc"
+    check_contains "it names the failed fetch" "set-status: cannot fetch $BRANCH from origin (" "$(cat "$ERR")"
+    check "set-status prints no token" "" "$(grep -e "$secret" "$OUT" "$ERR" || true)"
+    rc=0
+    BOARD_REPO="" status "2026-10-12 09:00" T05 "in progress" --qa "round 1 approved by x" --attach "$FIXTURES/shot.png" \
+        --no-push >"$OUT" 2>"$ERR" || rc=$?
+    check "a link repo is not taken from a URL with credentials, and the URL is not printed" \
+        "1 set-status: cannot derive owner/repo from origin; set BOARD_REPO" "$rc $(cat "$ERR")"
+}
+
+CASES+=("adv2 probe: a Phase field without the option of a phase")
+case_48() {
+    new_world
+    state_edit '.project.fields += [{"id": "PVTSSF_phase", "name": "Phase", "type": "ProjectV2SingleSelectField", "options": [{"id": "ph0", "name": "0"}, {"id": "phB", "name": "B"}]}]'
+    rc=0
+    board sync >"$OUT" 2>"$ERR" || rc=$?
+    check_status "the sync goes on" 0 "$rc"
+    check_contains "the missing option is named" "board: warning: the board's Phase field has no option \"C\"; add it in the board settings" "$(cat "$ERR")"
+    check "named once" "1" "$(grep -c 'no option "C"' "$ERR")"
+    check "the Phase field is not created again" "" "$(calls | grep -- 'field-create .*--name Phase' || true)"
+    check "a phase C card: Status and Area, no Phase" "card #7 Status=Todo; Area=live; QA rounds=0" "$(summary | grep '^card #7 ')"
+    check "a phase B card: its Phase" "card #6 Status=Todo; Phase=B; Area=grafana; QA rounds=0" "$(summary | grep '^card #6 ')"
+    reset_log
+    board sync >/dev/null 2>&1
+    check "the next sync writes nothing" "" "$(writes)"
+}
+
+CASES+=("adv2 probe: dependency ranges across a decade, reversed and without spaces")
+# shellcheck disable=SC2016 # literal backticks in the test data
+case_49() {
+    new_world
+    cat >"$WORK/world/parse.md" <<'EOF'
+## Phase C: tail (all depend on T01; T05 only on T00)
+
+### T00 Zero — `done`
+### T01 One — `done`
+### T02 Two — `todo` (depends on T08–T10)
+### T03 Three — `todo` (depends on T04–T02)
+### T04 Four — `todo` (depends on T01,T02&T03+T05/T06)
+### T05 Five — `todo` (depends only on T00; it is on the critical path)
+### T06 Six — `todo`
+### T07 Seven — `todo` (depends on T03-T05, T06 and T07)
+EOF
+    (cd "$REPO" && TASKS_FILE="$WORK/world/parse.md" "$BOARD/board.sh" list) >"$OUT" 2>"$ERR"
+    check "list" "T00  done         phase:C  process     Zero
+T01  done         phase:C  exporter    One
+T02  todo         phase:C  exporter    Two [blocked by T08, T09, T10]
+T03  todo         phase:C  attempts    Three [blocked by T02, T04]
+T04  todo         phase:C  queues      Four [blocked by T02, T03, T05, T06]
+T05  todo         phase:C  grafana     Five [ready]
+T06  todo         phase:C  live        Six [ready]
+T07  todo         phase:C  docs        Seven [blocked by T03, T04, T05, T06]" "$(cat "$OUT")"
+    check "a reversed range is named" "board: warning: T03: unparsed text in \"depends on T04–T02\": T04–T02" "$(cat "$ERR")"
+}
+
+CASES+=("adv2 probe: WIP counting")
+case_50() {
+    new_world
+    # needs owner (T04) does not count: In Progress holds T02 only.
+    status "2026-10-12 09:00" T05 "in progress" >/dev/null
+    # shellcheck source-path=SCRIPTDIR/.. source=lib.sh
+    check "In Progress is full" "T02 T05" "$(source "$BOARD/lib.sh" && board_load_tasks "$REPO/planning/TASKS.md" && board_ids_with_status "in progress")"
+    rc=0
+    status "2026-10-12 09:01" T05 "in progress" --qa "a note while In Progress is full" >"$OUT" 2>"$ERR" || rc=$?
+    check "a note on a task that stays in its full column passes" "0" "$rc"
+    rc=0
+    BOARD_WIP_TESTING=1 status "2026-10-12 09:02" T03 testing --qa "round 1 approved by the spec tester" >"$OUT" 2>"$ERR" || rc=$?
+    check "a verdict line in a full Testing column passes" "0" "$rc"
+    status "2026-10-12 09:03" T05 todo >/dev/null
+    rc=0
+    status "2026-10-12 09:04" T04 "in progress" --answer "Yes" >"$OUT" 2>"$ERR" || rc=$?
+    check "handing a task back frees its slot" "0" "$rc"
+    rc=0
+    BOARD_WIP_IN_PROGRESS=two status "2026-10-12 09:05" T05 "in progress" >"$OUT" 2>"$ERR" || rc=$?
+    check "an invalid limit is refused" "1 set-status: invalid WIP limit for in progress: two" "$rc $(cat "$ERR")"
+}
+
+CASES+=("adv2 probe: the pull request subset of tests.yml (its legs equal full-matrix legs key by key)")
+case_51() {
+    if ! python3 -c 'import yaml' 2>/dev/null; then
+        echo "skipped (no PyYAML)" >&2
+        return 0
+    fi
+    OUT="$WORK/tests-yml.out"
+    python3 -I - "$BOARD/../../.github/workflows/tests.yml" >"$OUT" <<'PY'
+import itertools, sys, yaml
+
+
+def expand(matrix):
+    """GitHub's matrix expansion: product of the base keys, minus exclude, then include (docs: an include entry is
+    added to every combination whose original values it does not overwrite, else it becomes a new combination)."""
+    keys = [k for k in matrix if k not in ("include", "exclude")]
+    combos = [dict(zip(keys, values)) for values in itertools.product(*(matrix[k] for k in keys))] if keys else []
+    combos = [c for c in combos
+              if not any(all(c.get(k) == v for k, v in e.items()) for e in matrix.get("exclude", []))]
+    originals = [dict(c) for c in combos]
+    for entry in matrix.get("include", []):
+        added = False
+        for combo, original in zip(combos, originals):
+            # Only the product's combinations take include entries; a combination made by an include does not.
+            if original is not None and all(original[k] == v for k, v in entry.items() if k in original):
+                combo.update(entry)
+                added = True
+        if not added:
+            combos.append(dict(entry))
+            originals.append(None)
+    return combos
+
+
+wf = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
+on = wf.get("on", wf.get(True))
+jobs = wf["jobs"]
+pr, full = jobs["tests-pr"], jobs["tests"]
+print("push:", on["push"]["branches"], on["push"]["paths-ignore"])
+print("pull_request filters:", on["pull_request"])
+print("same steps, services, env and name:", all(pr[k] == full[k] for k in ("steps", "services", "env", "name")))
+full_legs = expand(full["strategy"]["matrix"])
+for leg in sorted(expand(pr["strategy"]["matrix"]), key=lambda leg: leg["php"]):
+    print("pr leg:", " / ".join(str(leg[k]) for k in ("php", "laravel", "stability", "client", "redis")),
+          "| a full-matrix leg with every key equal:", leg in full_legs)
+for name in sorted(jobs):
+    print("job", name, "if:", jobs[name].get("if", "(always)"))
+print("grafana:", jobs["grafana"]["strategy"]["matrix"]["grafana"])
+PY
+    check "jobs, legs and filters" "push: ['master', 'claude/**'] ['planning/TASKS.md', 'planning/screenshots/**']
+pull_request filters: None
+same steps, services, env and name: True
+pr leg: 8.2 / ^11.23 / prefer-lowest / predis / redis:6.2-alpine | a full-matrix leg with every key equal: True
+pr leg: 8.3 / 13.* / prefer-stable / phpredis / redis:7.4-alpine | a full-matrix leg with every key equal: True
+job cluster if: github.event_name != 'pull_request'
+job coverage if: github.event_name != 'pull_request'
+job dist if: github.event_name != 'pull_request'
+job e2e if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+job grafana if: (always)
+job static if: (always)
+job tests if: github.event_name != 'pull_request'
+job tests-pr if: github.event_name == 'pull_request'
+grafana: \${{ fromJSON(github.event_name == 'pull_request' && '[\"grafana/grafana:13.2.4\"]' || '[\"grafana/grafana:12.4.13\", \"grafana/grafana:13.2.4\"]') }}" "$(cat "$OUT")"
+}
+
 run_cases
 
 PASSED="$(grep -c '^ok$' "$RESULTS" || true)"
