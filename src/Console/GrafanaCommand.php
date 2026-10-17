@@ -11,6 +11,7 @@ use DF\HorizonObservability\Grafana\Render;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use InvalidArgumentException;
+use Symfony\Component\Console\Input\InputOption;
 
 /**
  * PUBLIC `horizon-observability:grafana` (Arch Q5.1): renders the Grafana dashboard and the alert rules into
@@ -18,8 +19,9 @@ use InvalidArgumentException;
  * compares those files with the render and exits 1 when they differ (for the CI of an infrastructure repository).
  *
  * Metric names carry the prefix of `horizon-observability.namespace` (default `ho_`), also with `--defaults`, so the
- * render matches what the application exports. The path is relative to the current directory: the application root
- * for `php artisan`, the package root for `vendor/bin/testbench`, whose base path is its own skeleton.
+ * render matches what the application exports. A relative path is relative to the application root (`base_path()`,
+ * Arch Q5.1), wherever the command runs from; under `vendor/bin/testbench` that is its skeleton, so the package's
+ * own scripts pass an absolute path.
  */
 final class GrafanaCommand extends Command
 {
@@ -34,7 +36,7 @@ final class GrafanaCommand extends Command
      * @var string
      */
     protected $signature = 'horizon-observability:grafana
-        {path=grafana : Output directory, relative to the current directory}
+        {path=grafana : Output directory, relative to the application root}
         {--defaults : Render with the package defaults, ignoring the application config (the metric prefix still follows horizon-observability.namespace)}
         {--check : Render in memory and exit 1 when the files differ from the render}
         {--uid=horizon-observability : Dashboard uid ([A-Za-z0-9_-], at most 29 characters); the alert rule uids start with it}
@@ -42,7 +44,7 @@ final class GrafanaCommand extends Command
         {--job= : Prometheus job (scrape job of the package endpoint) the dashboard selects by default and the alert rules are scoped to; empty = all jobs}
         {--scrape-interval=10s : Scrape interval S of the package endpoint, 5s to 60s: the panels\' min interval, the busy window max(15s, 2 x S), the counter lookback max(10m, 10 x S) and the refresh}
         {--folder=Horizon : Grafana folder of the alert rules}
-        {--datasource-uid= : Uid of the Prometheus datasource of the alert rules (default: ${HORIZON_OBSERVABILITY_PROMETHEUS_UID}, interpolated by Grafana)}
+        {--datasource-uid= : Uid of the Prometheus datasource of the alert rules (the description is set in the constructor)}
         {--live=off : Live Overview mode: off (every tile reads Prometheus); poll and stream arrive with the live panels}
         {--health-rules : Add the opt-in health rules: a failing metrics collector, and more than one scraped target per job}
         {--prometheus-datasource= : Name regex of the Prometheus datasource (default: Grafana\'s default datasource)}
@@ -52,6 +54,22 @@ final class GrafanaCommand extends Command
      * @var string
      */
     protected $description = 'Render the Grafana dashboard and alert rules';
+
+    public function __construct()
+    {
+        parent::__construct();
+
+        // The signature parser ends an option at its first "}", so this description cannot be written there
+        $options = $this->getDefinition()->getOptions();
+        $options['datasource-uid'] = new InputOption(
+            'datasource-uid',
+            null,
+            InputOption::VALUE_OPTIONAL,
+            'Uid of the Prometheus datasource of the alert rules (default: '.DashboardOptions::DATASOURCE_PLACEHOLDER
+                .', interpolated by Grafana at provisioning)',
+        );
+        $this->getDefinition()->setOptions(array_values($options));
+    }
 
     public function handle(Filesystem $files, Config $config): int
     {
@@ -211,13 +229,16 @@ final class GrafanaCommand extends Command
         return $value;
     }
 
+    /**
+     * The output directory: an absolute path as is, a relative one under the application root (Arch Q5.1).
+     */
     private function directory(): string
     {
         $path = $this->argument('path');
         $path = is_string($path) && $path !== '' ? $path : 'grafana';
 
         if (! str_starts_with($path, '/') && preg_match('/^[A-Za-z]:[\\\\\/]/', $path) !== 1) {
-            $path = (getcwd() ?: '.').'/'.$path;
+            $path = $this->laravel->basePath($path);
         }
 
         return rtrim($path, '/\\');

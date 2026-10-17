@@ -147,8 +147,10 @@ final readonly class BatchState
     {
         $created = $this->lastOfKind(Metric::BatchCreated);
         $closed = $this->lastOfKind(Metric::BatchClosed);
-        $end = Promql::orOn(Promql::paren($closed), Promql::paren('0 * '.$created.' + '.Promql::TO_SECONDS), 'batch', 'name');
-        $duration = Promql::binary(Promql::paren($end), '-', $created, on: ['batch', 'name']);
+        // Per application (job): with all jobs selected, two applications may run batches of the same name, and a
+        // one-to-one match on the name alone would fail on their duplicate series
+        $end = Promql::orOn(Promql::paren($closed), Promql::paren('0 * '.$created.' + '.Promql::TO_SECONDS), 'job', 'batch', 'name');
+        $duration = Promql::binary(Promql::paren($end), '-', $created, on: ['job', 'batch', 'name']);
 
         return Promql::unlessOn(
             Promql::max(Promql::andOn(Promql::paren($duration), $this->latestOfKind(), 'batch', 'name'), 'batch', 'name'),

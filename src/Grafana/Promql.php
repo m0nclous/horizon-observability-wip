@@ -122,8 +122,9 @@ final readonly class Promql
     }
 
     /**
-     * A package selector without the replica dedupe, for the one rule that counts the replicas (the opt-in
-     * duplicates rule, Arch Q1.5).
+     * A package selector without the replica dedupe, for the opt-in health rules, which look at each replica (Arch
+     * Q1.5, Q5.3): the duplicates rule counts the replicas, the collector rule finds a collector that fails on one
+     * of them (self-metrics are per replica, unlike the business series read from shared storage).
      */
     public function replicas(Metric $metric, string ...$matchers): string
     {

@@ -194,8 +194,9 @@ it('wraps the selectors of every alert rule and of a pinned job', function (): v
     $problems = [];
 
     foreach (Rendered::expressions((new DashboardBuilder($options))->build(), (new AlertRulesBuilder($options))->build()) as $where => $expr) {
-        // The duplicates rule counts the replicas on purpose (Arch Q1.5)
-        if (! str_starts_with($expr, 'label_values(') && $where !== 'rule queues-duplicates A') {
+        // The health rules look at each replica on purpose (Arch Q1.5, Q5.3): the duplicates rule counts them, the
+        // collector rule finds a collector that fails on one of them
+        if (! str_starts_with($expr, 'label_values(') && ! in_array($where, ['rule queues-duplicates A', 'rule queues-collector A'], true)) {
             array_push($problems, ...array_map(static fn (string $problem): string => $where.': '.$problem, undeduplicated($expr)));
         }
     }

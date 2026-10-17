@@ -101,19 +101,34 @@ it('fails the check with a summary for an outdated or missing file and writes no
         ->and(file_exists($this->output.'/'.Render::ALERTING))->toBeFalse();
 });
 
-it('resolves a relative path against the current directory', function (): void {
+it('resolves a relative path against the application root, not the current directory (Arch Q5.1)', function (): void {
+    $relative = 'ho-grafana-'.bin2hex(random_bytes(6)).'/nested';
     $previous = (string) getcwd();
     chdir($this->output);
 
     try {
-        [$status] = runGrafana(['path' => 'nested/grafana']);
+        [$status] = runGrafana(['path' => $relative]);
     } finally {
         chdir($previous);
     }
 
+    $written = base_path($relative);
+
+    try {
+        expect($status)->toBe(0)
+            ->and(is_file($written.'/'.Render::DASHBOARD))->toBeTrue()
+            ->and(is_file($written.'/'.Render::ALERTING))->toBeTrue()
+            ->and(glob($this->output.'/*'))->toBe([]);
+    } finally {
+        removeGrafanaOutput(dirname($written));
+    }
+});
+
+it('keeps an absolute path', function (): void {
+    [$status] = runGrafana(['path' => $this->output.'/absolute/']);
+
     expect($status)->toBe(0)
-        ->and(is_file($this->output.'/nested/grafana/'.Render::DASHBOARD))->toBeTrue()
-        ->and(is_file($this->output.'/nested/grafana/'.Render::ALERTING))->toBeTrue();
+        ->and(is_file($this->output.'/absolute/'.Render::DASHBOARD))->toBeTrue();
 });
 
 it('renders the identity, the folder and the datasource regexes it is given', function (): void {

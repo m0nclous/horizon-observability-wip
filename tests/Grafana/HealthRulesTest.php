@@ -39,7 +39,7 @@ it('adds the collector and duplicates rules', function (): void {
         'horizon-observability-failures', 'horizon-observability-collector', 'horizon-observability-duplicates',
     ])
         ->and($collector['title'])->toBe('Metrics collector failing')
-        ->and($collector['data'][0]['model']['expr'])->toBe('min by (job, collector) (max by (job, collector) (ho_exporter_collector_success{job=~".+"}))')
+        ->and($collector['data'][0]['model']['expr'])->toBe('min by (job, collector) (ho_exporter_collector_success{job=~".+"})')
         ->and($collector['data'][1]['model']['conditions'][0]['evaluator'])->toBe(['type' => 'lt', 'params' => [1]])
         ->and($collector['for'])->toBe('15m')
         ->and($collector['noDataState'])->toBe('OK')

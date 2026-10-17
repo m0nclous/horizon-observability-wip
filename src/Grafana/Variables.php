@@ -44,6 +44,12 @@ final readonly class Variables
      */
     private const INFO_LOOKBACK = '7d';
 
+    /**
+     * The resolution of the last horizon_info series within the lookback; with Prometheus' 5-minute lookback delta
+     * every sample is seen.
+     */
+    private const INFO_STEP = '5m';
+
     public function __construct(
         private Promql $promql,
         private Selection $selection,
@@ -201,16 +207,19 @@ final readonly class Variables
             self::KNOWN_FOR,
             [Promql::re('supervisor', '$supervisor'), Promql::re('queue', '$queue')],
         ), 'supervisor');
+        // Per application (job): with all jobs selected, two applications may run supervisors of the same name, and
+        // a join on the name alone would fail on their duplicate series
         $processes = fn (string $label, Metric $family): string => Promql::countValues(
             $label,
-            Promql::max($this->promql->selector($family), 'supervisor'),
+            Promql::max($this->promql->selector($family), 'job', 'supervisor'),
+            'job',
             'supervisor',
         );
         $facts = Promql::binary(
-            Promql::binary($processes('min', Metric::SupervisorMinProcesses), '*', $processes('max', Metric::SupervisorMaxProcesses), on: ['supervisor'], groupLeft: ['max']),
+            Promql::binary($processes('min', Metric::SupervisorMinProcesses), '*', $processes('max', Metric::SupervisorMaxProcesses), on: ['job', 'supervisor'], groupLeft: ['max']),
             '*',
             $this->promql->selector(Metric::SupervisorInfo),
-            on: ['supervisor'],
+            on: ['job', 'supervisor'],
             groupLeft: ['balance', 'connection'],
         );
 
@@ -219,13 +228,14 @@ final readonly class Variables
         }
 
         $dot = ' '.Glyph::DOT.' ';
-        $title = Promql::labelReplace(
+        // One option per supervisor and title: applications with the same settings give one
+        $title = Promql::group(Promql::labelReplace(
             Promql::labelJoin($facts, 'joined', ';', 'supervisor', 'min', 'max', 'balancing', 'connection'),
             'display',
             '$1'.$dot.'Processes: [min: $2, max: $3]'.$dot.'Balancing: $4'.$dot.'Connection: $5',
             'joined',
             '(.*);(.*);(.*);(.*);(.*)',
-        );
+        ), 'supervisor', 'display');
 
         return Promql::call('query_result', Promql::orOn(
             Promql::orOn(
@@ -319,16 +329,18 @@ final readonly class Variables
     }
 
     /**
-     * A hidden variable with one label of horizon_info, refreshed on page load.
+     * A hidden variable with one label of horizon_info, refreshed on page load: the value the application exports
+     * now, else the last one it exported within the lookback (while it is not scraped). Not every value of the
+     * lookback: after a change (a new path or URL) the old series stays in the lookback, and Grafana would take
+     * whichever value comes first. The last value is the series seen last per job, to the subquery step.
      *
      * @return array<string, mixed>
      */
     private function info(string $name, string $label): array
     {
-        $query = Promql::call('query_result', Promql::group(
-            $this->promql->over('last_over_time', Metric::HorizonInfo, self::INFO_LOOKBACK),
-            $label,
-        ));
+        $info = $this->promql->selector(Metric::HorizonInfo);
+        $lastSeen = Promql::topk(1, Promql::range('max_over_time', Promql::call('timestamp', $info), self::INFO_LOOKBACK.':'.self::INFO_STEP), 'job');
+        $query = Promql::call('query_result', Promql::orOn(Promql::group($info, $label), Promql::group($lastSeen, $label)));
 
         return [
             'current' => new stdClass,

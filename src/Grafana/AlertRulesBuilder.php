@@ -134,20 +134,23 @@ final readonly class AlertRulesBuilder
     }
 
     /**
-     * The opt-in health rules (`--health-rules`, Arch Q1.5): a collector that keeps failing, and more than one
-     * scraped target per job (per-pod scraping), which the dedupe hides from the panels. Neither is in the Alerts
-     * tile: they are about the exporter, not the queues.
+     * The opt-in health rules (`--health-rules`, Arch Q1.5): a collector that keeps failing on any replica, and more
+     * than one scraped target per job (per-pod scraping), which the dedupe hides from the panels. Both read the
+     * replicas one by one, so they are the only selectors without the dedupe. Neither is in the Alerts tile: they
+     * are about the exporter, not the queues.
      *
      * @return list<array<string, mixed>>
      */
     private function healthRules(Promql $promql, int $panelId): array
     {
         return [
-            // Auto-disabled collectors emit no success series, so they never fire
+            // Self-metrics are per replica: each replica runs its own collectors, so a collector that fails on one
+            // replica only must fire, and the replica dedupe (a max) would hide it (Arch Q5.3). Auto-disabled
+            // collectors emit no success series, so they never fire.
             $this->rule(
                 'collector',
                 'Metrics collector failing',
-                Promql::min($promql->selector(Metric::CollectorSuccess), 'job', 'collector'),
+                Promql::min($promql->replicas(Metric::CollectorSuccess), 'job', 'collector'),
                 $this->below(1),
                 noData: 'OK',
                 summary: 'The {{ $labels.collector }} collector of {{ $labels.job }} fails; run php artisan horizon-observability:check',
