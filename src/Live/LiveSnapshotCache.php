@@ -34,6 +34,9 @@ use UnexpectedValueException;
  * 3. The others return the stale copy, or, without one, poll the fresh key every 50 ms for up to 500 ms.
  * 4. When the builder died or is slow, the snapshot is built without caching (counted in {@see self::stats()}).
  *
+ * {@see self::refresh()} (the stream leader, once per tick) skips step 1 when it gets the lock, so every push carries a
+ * new build and keeps the full-scope copy fresh for poll requests: 1 build per stream interval for that scope.
+ *
  * A build that has no live data ({@see LiveSnapshot::isAvailable()}) stores nothing, so the next request after the
  * lock is released tries again; a snapshot with partial errors is stored like any other. `age_ms` is local now minus
  * `generated_at` (informational, clamped at 0). `cache_ttl = 0` disables the cache.
@@ -95,6 +98,21 @@ final class LiveSnapshotCache
 
     public function get(LiveScope $scope): LiveSnapshot
     {
+        return $this->fetch($scope, false);
+    }
+
+    /**
+     * Build a new snapshot and store it, whatever the age of the fresh copy (the stream leader, every tick: each
+     * push carries a new build and poll requests for the full scope find a fresh copy). When another request holds
+     * the build lock it answers like {@see self::get()}.
+     */
+    public function refresh(LiveScope $scope): LiveSnapshot
+    {
+        return $this->fetch($scope, true);
+    }
+
+    private function fetch(LiveScope $scope, bool $refresh): LiveSnapshot
+    {
         $ttlMs = $this->ttlMs();
 
         if ($ttlMs <= 0) {
@@ -110,6 +128,11 @@ final class LiveSnapshotCache
 
         try {
             $redis = $this->clients->reader($this->clients->storageConnection());
+
+            if ($refresh && LiveRedis::setIfAbsent($redis, $lock, $token = bin2hex(random_bytes(16)), self::LOCK_TTL_MS)) {
+                return $this->buildAndStore($redis, $scope, $fresh, $stale, $lock, $token, $ttlMs);
+            }
+
             $reply = LiveRedis::command($redis, 'mget', [[$fresh, $stale]]);
             [$freshJson, $staleJson] = is_array($reply) ? [...array_values($reply), null, null] : [null, null];
 
@@ -188,8 +211,8 @@ final class LiveSnapshotCache
             if ($snapshot->isAvailable()) {
                 try {
                     $json = $snapshot->toJson();
-                    LiveRedis::command($redis, 'psetex', [$fresh, $ttlMs, $json]);
-                    LiveRedis::command($redis, 'psetex', [$stale, $this->staleTtlMs(), $json]);
+                    LiveRedis::setWithTtl($redis, $fresh, $json, $ttlMs);
+                    LiveRedis::setWithTtl($redis, $stale, $json, $this->staleTtlMs());
                 } catch (Throwable $e) {
                     $this->stats['failures']++;
                     $this->reporter->reportLocally('live.cache', $e);

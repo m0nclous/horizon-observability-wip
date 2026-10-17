@@ -266,29 +266,43 @@ it('keeps at most 179 window points', function (): void {
         ->and(substr_count($body, "\ndelayed "))->toBe(LineProtocol::WINDOW_POINTS + 1);
 });
 
-it('pushes the unavailable frame at most every 5 s while the storage Redis is down', function (): void {
+it('pushes the unavailable frame every 5 s during the first 7 s of an outage from a process that never reached Redis', function (): void {
     config()->set('database.redis.dead', ['host' => '127.0.0.1', 'port' => 1, 'database' => 0, 'timeout' => 0.2]);
     config()->set('horizon-observability.redis.connection', 'dead');
     $this->app->forgetInstance(Config::class);
     $this->app->forgetInstance(RedisClients::class);
 
-    liveStreamer()->run(static fn (): bool => false, 11, 4096, false);
+    liveStreamer()->run(static fn (): bool => false, 20, 4096, false);
 
+    // follower retries at 0, 2, 4, 6, ... s; frames at 0 and 6 s; none after the 7 s window (Grafana keeps the last)
     expect(liveStreamPushTimes())->toBe([0.0, 6.0])
         ->and($this->pushes[0]['body'])->toBe('tiles tile="pending",key="",caption="Live unavailable",value=-1.0,color="text",level=0.0 1792201716123000000'."\n");
 });
 
-it('keeps the tiles of the last push in the unavailable frame', function (): void {
-    $streamer = liveStreamer();
-    $streamer->tick();
-    config()->set('database.redis.dead', ['host' => '127.0.0.1', 'port' => 1, 'database' => 0, 'timeout' => 0.2]);
-    config()->set('horizon-observability.redis.connection', 'dead');
-    $this->app->forgetInstance(Config::class);
-    $this->app->forgetInstance(RedisClients::class);
-    $streamer = liveStreamer(); // a restarted process knows no rows; this one keeps them
+it('lets the leader that lost Redis tell the viewers with its last tiles, and keeps a follower silent', function (): void {
+    $leader = liveStreamer();
+    $follower = liveStreamer();
+    $leader->tick();
+    $follower->tick();
+    $this->pushes = [];
+    // A Redis error for every lease command: the leader key holds a list (WRONGTYPE).
+    RedisKeys::client()->del(($this->raw)($this->keys->liveLeader()));
+    RedisKeys::client()->rpush(($this->raw)($this->keys->liveLeader()), ['broken']);
+    $outcomes = [];
 
-    expect($streamer->tick())->toBe(LiveStreamer::UNAVAILABLE)
-        ->and(substr_count($this->pushes[1]['body'], 'caption="Live unavailable"'))->toBe(1);
+    foreach (range(1, 12) as $ignored) {
+        $this->time->advance(1.0);
+        $outcomes[] = $leader->tick().'/'.$follower->tick();
+    }
+
+    $frames = array_map(static fn (array $push): string => $push['body'], $this->pushes);
+
+    // the leader: lease lost at 1 s, then the frame at 3 and 9 s (every 5 s, within 7 s of the outage);
+    // the follower, which had reached Redis, never pushes
+    expect(array_slice($outcomes, 0, 3))->toBe(['lost/follower', 'follower/unavailable', 'unavailable/follower'])
+        ->and(liveStreamPushTimes())->toBe([3.0, 9.0])
+        ->and(substr_count($frames[0], 'caption="Live unavailable"'))->toBe(6)
+        ->and($frames[0])->toContain('tiles tile="supervisor",key="supervisor-default",caption="Live unavailable",value=-1.0,color="text",level=0.0');
 });
 
 it('stops on the signal flag and releases the lease', function (): void {

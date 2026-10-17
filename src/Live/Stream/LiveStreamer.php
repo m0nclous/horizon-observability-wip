@@ -25,7 +25,8 @@ use Throwable;
  *    so a failover takes at most about 7 s. The leader renews the lease at the start of every tick and before every
  *    push; a failed renew (the lease expired during a long tick, or was taken over) stops the tick at once and makes
  *    the process a follower, so a leader that lost its lease pushes nothing more.
- * 2. **Snapshot** of the full scope from {@see LiveSnapshotCache} (shared with poll requests).
+ * 2. **Snapshot** of the full scope, built anew through {@see LiveSnapshotCache::refresh()}, which also keeps the
+ *    copy fresh for poll requests of the full scope.
  * 3. **Delayed window**: when its newest point is 5 s old, `LPUSH live:window:delayed "<unix_ms>:<value>"`,
  *    `LTRIM 0 178`, 1-hour TTL, so a new leader continues the window.
  * 4. **Push** of {@see LineProtocol::encode()} (or {@see LineProtocol::unavailable()} when the snapshot has no live
@@ -36,8 +37,11 @@ use Throwable;
  *    push. After {@see self::RELEASE_AFTER_FAILED_TICKS} consecutive ticks in which no push succeeded the leader
  *    releases the lease and waits {@see self::RELEASE_PAUSE_SECONDS} before competing again, so a replica with a
  *    working route to Grafana can take over.
- * 6. **Storage Redis down**: the lease cannot be taken, so every process pushes the idempotent "unavailable" frame
- *    at most every {@see self::UNAVAILABLE_EVERY_SECONDS} (the tiles then read "Live unavailable").
+ * 6. **Storage Redis down**: the lease cannot be taken. The process that led when it lost Redis (or one that never
+ *    reached it since it started) pushes the idempotent "unavailable" frame at most every
+ *    {@see self::UNAVAILABLE_EVERY_SECONDS} during the first {@see self::UNAVAILABLE_WINDOW_SECONDS}; Grafana keeps the
+ *    last frame, so the tiles read "Live unavailable" until a leader pushes again. A follower cut off from Redis
+ *    alone stays silent, so it cannot interleave the frame with a healthy leader's pushes.
  *
  * {@see self::run()} stops between ticks when `$shouldStop` returns true (signals), after `$maxSeconds` (0 = never)
  * or above `$memoryMb`, and releases the lease on the way out.
@@ -53,6 +57,12 @@ final class LiveStreamer
     public const RELEASE_PAUSE_SECONDS = 10.0;
 
     public const UNAVAILABLE_EVERY_SECONDS = 5.0;
+
+    /**
+     * The "unavailable" frame is pushed during this long of an outage (the lease lifetime plus the follower retry:
+     * by then a replica that still reaches Redis has taken over, or nobody pushes and Grafana keeps the frame).
+     */
+    public const UNAVAILABLE_WINDOW_SECONDS = 7.0;
 
     public const WINDOW_STEP_MS = 5000;
 
@@ -113,6 +123,20 @@ final class LiveStreamer
     private array $lastRows = [];
 
     private ?float $lastUnavailableAt = null;
+
+    /**
+     * Whether a lease command reached the storage Redis since the process started.
+     */
+    private bool $reachedRedis = false;
+
+    /**
+     * Monotonic start of the current storage outage, null while Redis answers.
+     */
+    private ?float $outageSince = null;
+
+    private bool $outageAsLeader = false;
+
+    private bool $outageMayPush = false;
 
     private ?string $lastOutcome = null;
 
@@ -235,8 +259,10 @@ final class LiveStreamer
                 $this->reporter->reportLocally('live.leader', $e);
                 $this->nextAttemptAt = $now + self::FOLLOWER_RETRY_SECONDS;
 
-                return $this->pushUnavailable($now);
+                return $this->outage($now);
             }
+
+            $this->redisReached();
 
             if (! $this->leader) {
                 $this->nextAttemptAt = $now + self::FOLLOWER_RETRY_SECONDS;
@@ -260,7 +286,7 @@ final class LiveStreamer
             return self::BACKING_OFF;
         }
 
-        $snapshot = $this->cache->get(LiveScope::full($this->topology));
+        $snapshot = $this->cache->refresh(LiveScope::full($this->topology));
         $wall = CarbonImmutable::now();
         $nowMs = (int) floor((float) $wall->format('U.u') * 1000);
         $timeNs = $nowMs * LineProtocol::ROW_SPACING_NS;
@@ -355,12 +381,17 @@ final class LiveStreamer
     private function renew(): bool
     {
         try {
-            if ($this->lock->renew()) {
+            $renewed = $this->lock->renew();
+            $this->redisReached();
+
+            if ($renewed) {
                 return true;
             }
 
             $this->emit('follower', 'Lost the leader lease (it expired or another process took it over); following.');
         } catch (Throwable $e) {
+            // The leader lost the storage Redis: it was feeding the tiles, so it may tell the viewers (outage()).
+            $this->outageAsLeader = true;
             $this->reporter->reportLocally('live.leader', $e);
             $this->emit('follower', 'Could not renew the leader lease: '.FailureReporter::describe($e));
         }
@@ -400,10 +431,34 @@ final class LiveStreamer
     }
 
     /**
-     * The "unavailable" frame to every URL, at most every 5 s, without a lease (the storage Redis is down).
+     * The storage Redis answered (a lease command did not throw): any outage is over.
      */
-    private function pushUnavailable(float $now): string
+    private function redisReached(): void
     {
+        $this->reachedRedis = true;
+        $this->outageSince = null;
+        $this->outageAsLeader = false;
+    }
+
+    /**
+     * The lease cannot be taken because the storage Redis cannot be reached: push the idempotent "unavailable"
+     * frame to every URL without a lease, at most every 5 s, during the first {@see self::UNAVAILABLE_WINDOW_SECONDS}
+     * of the outage, and only from a process that was the leader when it lost Redis or never reached it since it
+     * started. Grafana keeps the last frame of a channel for every viewer, so the tiles keep reading "Live
+     * unavailable" until a leader pushes again; a follower cut off from Redis alone stays silent instead of
+     * interleaving the frame with a healthy leader's pushes.
+     */
+    private function outage(float $now): string
+    {
+        if ($this->outageSince === null) {
+            $this->outageSince = $now;
+            $this->outageMayPush = $this->outageAsLeader || ! $this->reachedRedis;
+        }
+
+        if (! $this->outageMayPush || $now - $this->outageSince >= self::UNAVAILABLE_WINDOW_SECONDS) {
+            return self::UNAVAILABLE;
+        }
+
         if ($this->lastUnavailableAt !== null && $now - $this->lastUnavailableAt < self::UNAVAILABLE_EVERY_SECONDS) {
             return self::UNAVAILABLE;
         }

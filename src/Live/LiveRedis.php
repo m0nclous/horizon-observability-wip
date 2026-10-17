@@ -86,6 +86,18 @@ final class LiveRedis
     }
 
     /**
+     * `SET key value PX ttl` (not `PSETEX`, which predis refuses on a Redis Cluster connection).
+     *
+     * @throws RuntimeException on an error reply
+     */
+    public static function setWithTtl(Connection $connection, string $key, string $value, int $ttlMs): void
+    {
+        $connection instanceof PhpRedisConnection
+            ? self::command($connection, 'set', [$key, $value, ['px' => max(1, $ttlMs)]])
+            : self::command($connection, 'set', [$key, $value, 'PX', max(1, $ttlMs)]);
+    }
+
+    /**
      * `lock.lua renew`: extend the lease to `$ttlMs` if it still holds `$token`.
      *
      * @throws RedisScriptFailed

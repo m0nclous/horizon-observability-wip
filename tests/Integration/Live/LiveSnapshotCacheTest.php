@@ -293,3 +293,35 @@ it('makes one build for 50 concurrent requests on 2 replicas whose clocks differ
         ->and(array_unique(array_column($answers, 2)))->toBe([5])
         ->and(array_merge(...array_column($answers, 3)))->toBe([]);
 });
+
+it('rebuilds and stores on refresh() even while the fresh copy lives (the stream leader)', function (): void {
+    liveCache()->get($this->scope);
+    $old = RedisKeys::client()->get($this->fresh);
+    CarbonImmutable::setTestNow(LiveState::now()->addMilliseconds(400));
+    $cache = liveCache();
+
+    $snapshot = $cache->refresh($this->scope);
+
+    expect(liveBuildCount())->toBe(2)
+        ->and($snapshot->generatedAtMs())->toBe(1792201716523)
+        ->and(RedisKeys::client()->get($this->fresh))->not->toBe($old)
+        ->and(RedisKeys::client()->pttl($this->fresh))->toBeGreaterThan(500)
+        ->and(RedisKeys::client()->exists($this->lock))->toBe(0)
+        ->and($cache->stats())->toMatchArray(['builds' => 1, 'hits' => 0])
+        // a poll request right after it is a hit on the leader's build
+        ->and(liveCache()->get($this->scope)->generatedAtMs())->toBe(1792201716523)
+        ->and(liveBuildCount())->toBe(2);
+});
+
+it('answers refresh() like get() while another request builds', function (): void {
+    liveCache()->get($this->scope);
+    RedisKeys::client()->set($this->lock, 'a-poll-request', 'PX', 2000);
+    $cache = liveCache();
+
+    $snapshot = $cache->refresh($this->scope);
+
+    expect(liveBuildCount())->toBe(1)
+        ->and($snapshot->generatedAtMs())->toBe(1792201716123)
+        ->and($cache->stats())->toMatchArray(['hits' => 1, 'builds' => 0])
+        ->and(RedisKeys::client()->get($this->lock))->toBe('a-poll-request');
+});
