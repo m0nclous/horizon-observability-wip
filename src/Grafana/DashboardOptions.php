@@ -36,6 +36,8 @@ final readonly class DashboardOptions
      *                                         `resources/grafana/js/alert-sound.js`
      * @param  string|null  $job  job regex every selector is scoped to; null renders no job matcher (WP8B)
      * @param  bool  $dedupe  wrap every selector in a replica dedupe aggregation (WP8B, Arch Q5.6 step 10)
+     * @param  bool  $legacy  render what the pilot rendered where WP8B changed the output (metric names, ...);
+     *                        TEMPORARY, set by {@see LegacyProfile} only and deleted with it at the end of WP8B
      */
     public function __construct(
         public string $metricPrefix = 'ho_',
@@ -55,7 +57,16 @@ final readonly class DashboardOptions
         public GrafanaVersion $grafana = GrafanaVersion::Grafana13,
         public ?string $job = null,
         public bool $dedupe = false,
+        public bool $legacy = false,
     ) {}
+
+    /**
+     * The PromQL builder for this render.
+     */
+    public function promql(): Promql
+    {
+        return new Promql($this->metricPrefix, $this->legacy);
+    }
 
     /**
      * The `afterRender` script of the alert sound panel.

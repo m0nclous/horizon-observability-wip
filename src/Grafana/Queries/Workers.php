@@ -56,7 +56,8 @@ final readonly class Workers
     }
 
     /**
-     * Busy share of the workers of each queue over the busy window (legacy `QUEUE_BUSY`).
+     * Busy share of the workers of each queue over the busy window (legacy `QUEUE_BUSY`): the reserved jobs summed
+     * over the window, divided by the number of scrapes in it, counted on the processes series.
      */
     public function queueBusy(): string
     {
@@ -65,7 +66,7 @@ final readonly class Workers
         return Promql::paren(Promql::binary(
             Promql::sum(Promql::range('sum_over_time', $this->promql->selector('queue_jobs_reserved', $anyQueue), $this->busyWindow), 'queue'),
             '/',
-            Promql::max(Promql::range('count_over_time', $this->promql->selector('horizon_current_processes', $anyQueue), $this->busyWindow), 'queue'),
+            Promql::max(Promql::range('count_over_time', $this->promql->queueProcesses($anyQueue), $this->busyWindow), 'queue'),
             on: ['queue'],
         ));
     }

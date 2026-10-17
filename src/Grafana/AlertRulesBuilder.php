@@ -40,7 +40,7 @@ final readonly class AlertRulesBuilder
     public function build(): array
     {
         $dashboard = (new DashboardBuilder($this->options))->build();
-        $promql = new Promql($this->options->metricPrefix);
+        $promql = $this->options->promql();
         $status = $promql->selector('horizon_status');
         $window = Thresholds::FAILURE_WINDOW_MINUTES.'m';
         $attemptsIn = fn (string $statuses): string => Promql::sum(

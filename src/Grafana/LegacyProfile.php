@@ -37,6 +37,7 @@ final class LegacyProfile
             live: LiveMode::Off,
             grafana: GrafanaVersion::Grafana13,
             dedupe: false,
+            legacy: true,
         );
     }
 }

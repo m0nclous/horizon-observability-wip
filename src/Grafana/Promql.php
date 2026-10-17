@@ -37,6 +37,8 @@ final readonly class Promql
      */
     private const QUEUE_FAMILIES = [
         'queue_pending_jobs',
+        'queue_oldest_pending_job_age_seconds',
+        // The legacy names, for the LegacyProfile render only
         'queue_oldest_pending_job_age',
         'horizon_current_processes',
         'queue_jobs_total',
@@ -80,7 +82,10 @@ final readonly class Promql
      */
     private array $jobMetrics;
 
-    public function __construct(private string $prefix)
+    /**
+     * @param  bool  $legacy  the pilot's family names (TEMPORARY, {@see DashboardOptions::$legacy})
+     */
+    public function __construct(private string $prefix, public bool $legacy = false)
     {
         $this->queueMetrics = $this->names(self::QUEUE_FAMILIES);
         $this->jobMetrics = $this->names(self::JOB_FAMILIES);
@@ -93,6 +98,24 @@ final readonly class Promql
     public function metric(string $family): string
     {
         return $this->prefix.$family;
+    }
+
+    /**
+     * The oldest pending job age per queue (Arch Q5.6 step 3: `queue_oldest_pending_job_age_seconds`).
+     */
+    public function oldestAge(string ...$matchers): string
+    {
+        return $this->selector($this->legacy ? 'queue_oldest_pending_job_age' : 'queue_oldest_pending_job_age_seconds', ...$matchers);
+    }
+
+    /**
+     * Worker processes per queue: `horizon_supervisor_processes` per (supervisor, queue), which replaces the
+     * pilot's `horizon_current_processes` per queue (Arch Q5.2, Q5.6 step 3). Both come from the supervisors'
+     * process maps with the same pooled queue label, so their sums and sample counts per queue are equal.
+     */
+    public function queueProcesses(string ...$matchers): string
+    {
+        return $this->selector($this->legacy ? 'horizon_current_processes' : 'horizon_supervisor_processes', ...$matchers);
     }
 
     /**

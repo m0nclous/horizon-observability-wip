@@ -121,7 +121,7 @@
               "datasourceUid": "${HPG_PROMETHEUS_DATASOURCE_UID}",
               "model": {
                 "editorMode": "code",
-                "expr": "max by (queue) (ho_queue_oldest_pending_job_age) / on (queue) max by (queue) (ho_horizon_wait_threshold_seconds)",
+                "expr": "max by (queue) (ho_queue_oldest_pending_job_age_seconds) / on (queue) max by (queue) (ho_horizon_wait_threshold_seconds)",
                 "instant": true,
                 "range": false,
                 "refId": "A"

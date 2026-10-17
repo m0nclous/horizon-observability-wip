@@ -85,7 +85,7 @@ final readonly class DashboardBuilder
      */
     private function panels(): array
     {
-        $promql = new Promql($this->options->metricPrefix);
+        $promql = $this->options->promql();
         $selection = new Selection($promql);
         $attempts = new Attempts($promql);
         $workers = new Workers($promql, $selection, $this->options->busyWindow);
@@ -137,7 +137,7 @@ final readonly class DashboardBuilder
      */
     private function variables(): array
     {
-        $promql = new Promql($this->options->metricPrefix);
+        $promql = $this->options->promql();
 
         return (new Variables($promql, new Selection($promql), new BatchState($promql), $this->options))->all();
     }
