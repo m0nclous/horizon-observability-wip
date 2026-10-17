@@ -4,20 +4,99 @@ declare(strict_types=1);
 
 namespace DF\HorizonObservability\Live\Stream;
 
+use Closure;
+use DF\HorizonObservability\Support\FailureReporter;
+use Illuminate\Http\Client\Factory;
 use SensitiveParameter;
+use Throwable;
 
 /**
- * `POST {grafana}/api/live/push/{id}` with a service-account token, 2 s timeout and 1 s connect timeout
- * (Addendum R4.6).
+ * `POST {grafana}/api/live/push/{id}` of a line-protocol body with a service-account token (Addendum R4.6), through
+ * Laravel's HTTP client (`Http::fake()` works): 2 s timeout, 1 s connect timeout, no retries.
  *
- * Stub (T02): pushes nothing. Owned by T12 (WP-L2).
+ * A push never throws: connection errors and timeouts are a {@see PushResult} without a status, a non-2xx answer one
+ * with it. The error text is short and never contains the token. {@see self::hint()} gives the operator hint for a
+ * status (Addendum R4.10), shared with `check --live-push-test`.
  *
  * @internal
  */
-final class GrafanaLivePusher
+final readonly class GrafanaLivePusher
 {
+    public const TIMEOUT_SECONDS = 2;
+
+    public const CONNECT_TIMEOUT_SECONDS = 1;
+
+    /**
+     * Bytes of a Grafana error body kept in the error text.
+     */
+    public const MAX_ERROR_BYTES = 200;
+
+    /**
+     * @var Closure(): float
+     */
+    private Closure $clock;
+
+    /**
+     * @param  (Closure(): float)|null  $clock  monotonic seconds, for tests; default `hrtime()`
+     */
+    public function __construct(private Factory $http, ?Closure $clock = null)
+    {
+        $this->clock = $clock ?? static fn (): float => hrtime(true) / 1e9;
+    }
+
+    /**
+     * The push URL of a Grafana base URL and stream id.
+     */
+    public static function url(string $baseUrl, string $streamId): string
+    {
+        return rtrim($baseUrl, '/').'/api/live/push/'.rawurlencode($streamId);
+    }
+
     public function push(string $baseUrl, string $streamId, #[SensitiveParameter] string $token, string $body): PushResult
     {
-        return new PushResult(false, null, 'The stream push is not implemented yet.', 0.0);
+        $started = ($this->clock)();
+
+        try {
+            $response = $this->http
+                ->timeout(self::TIMEOUT_SECONDS)
+                ->connectTimeout(self::CONNECT_TIMEOUT_SECONDS)
+                ->withToken($token)
+                ->withBody($body, 'text/plain')
+                ->post(self::url($baseUrl, $streamId));
+        } catch (Throwable $e) {
+            return new PushResult(false, null, $this->redact(FailureReporter::describe($e), $token), ($this->clock)() - $started);
+        }
+
+        $seconds = ($this->clock)() - $started;
+        $status = $response->status();
+
+        if ($response->successful()) {
+            return new PushResult(true, $status, null, $seconds);
+        }
+
+        $text = trim((string) strtok(trim($response->body()), "\r\n"));
+        $text = strlen($text) > self::MAX_ERROR_BYTES ? mb_strcut($text, 0, self::MAX_ERROR_BYTES - 3, 'UTF-8').'...' : $text;
+
+        return new PushResult(false, $status, $this->redact('HTTP '.$status.($text === '' ? '' : ': '.$text), $token), $seconds);
+    }
+
+    /**
+     * What to check for a failed push, by HTTP status (null: no answer).
+     */
+    public static function hint(?int $status): string
+    {
+        return match (true) {
+            $status === null => 'Grafana is unreachable from the app or did not answer within 2 s; check HORIZON_OBSERVABILITY_LIVE_GRAFANA_URL',
+            $status === 401 => 'service account token invalid or missing; check HORIZON_OBSERVABILITY_LIVE_GRAFANA_TOKEN',
+            $status === 403 => 'service account token invalid, or role Editor needed on Grafana 13 (live:push)',
+            $status === 404 => 'no Grafana Live push endpoint at this URL; check HORIZON_OBSERVABILITY_LIVE_GRAFANA_URL and that Grafana Live is enabled',
+            $status >= 500 => 'Grafana rejected or failed to process the push',
+            default => 'Grafana refused the push',
+        };
+    }
+
+    private function redact(string $text, string $token): string
+    {
+        return $token === '' ? $text : str_replace($token, '[redacted]', $text);
     }
 }
