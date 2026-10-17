@@ -139,7 +139,7 @@ final readonly class HorizonCollector implements Collector
         $pools = [];
 
         foreach ($snapshots as $snapshot) {
-            $pools[$snapshot->name] = [...self::pools($snapshot), ...($pools[$snapshot->name] ?? [])];
+            $pools[$snapshot->name] = [...$this->pools($snapshot), ...($pools[$snapshot->name] ?? [])];
         }
 
         $processFamily = MetricFamily::of(Metric::SupervisorProcesses);
@@ -175,7 +175,7 @@ final readonly class HorizonCollector implements Collector
      *
      * @return array<string, string>
      */
-    private static function pools(SupervisorSnapshot $snapshot): array
+    private function pools(SupervisorSnapshot $snapshot): array
     {
         $labels = array_map(strval(...), array_keys($snapshot->processes));
         $pools = [];

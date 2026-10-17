@@ -6,6 +6,7 @@ use Carbon\CarbonImmutable;
 use DF\HorizonObservability\Attempts\AttemptStatus;
 use DF\HorizonObservability\Attempts\AttemptStore;
 use DF\HorizonObservability\Attempts\LegacyReadyAt;
+use DF\HorizonObservability\Collectors\AttemptsCollector;
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Redis\Keys;
 use DF\HorizonObservability\Redis\RedisClients;
@@ -83,6 +84,7 @@ it('records attempts with every key in one slot of a cluster connection (C10)', 
 
     expect($keys)->toBe([
         $root.'attempts',
+        $root.'created',
         $root.'duration:buckets',
         $root.'duration:sum',
         $root.'extremes:113333334:max',
@@ -97,7 +99,8 @@ it('records attempts with every key in one slot of a cluster connection (C10)', 
 it('collects from a cluster connection, reset guard included (C10)', function (): void {
     Storage::record(duration: 0.3, startedAt: 1_700_000_010.0, readyAt: 1_700_000_009.0, now: $this->now);
 
-    $scrape = Storage::scrape($this->now);
+    // After the hold of new series (T16), so the counter shows its value.
+    $scrape = Storage::scrape($this->now->addSeconds(AttemptsCollector::NEW_SERIES_HOLD_SECONDS));
 
     expect($scrape['failures'])->toBe([])
         ->and($scrape['samples']['queue_jobs_total']['connection=redis,queue=default,job_class=App\\Jobs\\SendInvoice,status=completed'])->toBe(1)
