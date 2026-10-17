@@ -22,8 +22,9 @@ use Illuminate\Redis\Connections\Connection;
  * - The queues are resolved to their Redis connection by {@see Topology::redisConnection()} and read on the
  *   private reader of that connection; a queue whose connection does not use the `redis` driver is skipped, and
  *   one Redis key is read once even when two queue connections share it.
- * - `delayed_jobs.lua` extracts light rows in Redis, {@see self::CHUNK} entries at a time and at most
- *   {@see self::SCAN_LIMIT} per queue, all against the same `now`; the payloads never leave Redis.
+ * - `delayed_jobs.lua` extracts light rows in Redis, at most {@see self::CHUNK} entries and {@see self::MAX_BYTES}
+ *   payload bytes per call, and at most {@see self::SCAN_LIMIT} entries in 20 calls per queue, all against the same
+ *   `now`; the payloads never leave Redis.
  * - The class filter compares the normalised job name ({@see JobClassLabel}).
  * - Each queue contributes its `$limit` soonest matching jobs; the merged rows are sorted by availability (ties keep
  *   the queue order) and cut to `$limit`.
@@ -45,6 +46,18 @@ final readonly class DelayedJobStore
      * Entries read per queue at most (20 calls).
      */
     public const SCAN_LIMIT = 10000;
+
+    /**
+     * `delayed_jobs.lua` calls per queue at most (10 000 / 500).
+     */
+    private const MAX_CALLS = self::SCAN_LIMIT / self::CHUNK;
+
+    /**
+     * Payload bytes one `delayed_jobs.lua` call reads at most (it stops after the entry that reaches them): Redis is
+     * blocked while the script copies payloads into Lua, about 5 ms per MB, so a call stays near 40 ms however large
+     * the payloads are. A queue of very large payloads therefore lists fewer than `$limit` rows (20 calls).
+     */
+    public const MAX_BYTES = 8 * 1024 * 1024;
 
     public function __construct(
         private RedisClients $clients,
@@ -105,15 +118,18 @@ final readonly class DelayedJobStore
         $rows = [];
         $offset = 0;
 
-        while ($offset < self::SCAN_LIMIT && count($rows) < $limit) {
-            // Without a class filter every entry with a JSON payload is a row, so read no more than still needed.
-            $count = min($classSet === null ? $limit - count($rows) : self::CHUNK, self::CHUNK, self::SCAN_LIMIT - $offset);
-            $reply = $this->lua->eval($redis, 'delayed_jobs', ['queues:'.$queue.':delayed'], [$now, $offset, $count]);
-            $offset += $count;
+        for ($calls = 0; $calls < self::MAX_CALLS && $offset < self::SCAN_LIMIT && count($rows) < $limit; $calls++) {
+            // Without a class filter every entry with a JSON payload is a row, so the first call reads no more than
+            // the page needs; later calls (after entries that are not JSON) read whole chunks, so a small page
+            // still costs at most MAX_CALLS calls per queue.
+            $count = min($calls === 0 && $classSet === null ? $limit : self::CHUNK, self::CHUNK, self::SCAN_LIMIT - $offset);
+            $reply = $this->lua->eval($redis, 'delayed_jobs', ['queues:'.$queue.':delayed'], [$now, $offset, $count, self::MAX_BYTES]);
             $reply = is_array($reply) ? array_values($reply) : [];
-            $read = $reply[0] ?? 0;
+            $read = is_numeric($reply[0] ?? null) ? (int) $reply[0] : 0;
+            $more = is_numeric($reply[1] ?? null) && (int) $reply[1] === 1;
+            $offset += $read;
 
-            foreach (array_slice($reply, 1) as $entry) {
+            foreach (array_slice($reply, 2) as $entry) {
                 $row = is_array($entry) ? $this->row(array_values($entry), $queue) : null;
 
                 if ($row === null || ($classSet !== null && ! isset($classSet[JobClassLabel::normalize($row['name'])]))) {
@@ -127,7 +143,7 @@ final readonly class DelayedJobStore
                 }
             }
 
-            if (! is_numeric($read) || (int) $read < $count) {
+            if (! $more || $read < 1) {
                 break;
             }
         }
@@ -156,7 +172,7 @@ final readonly class DelayedJobStore
             'name' => is_string($name) ? $this->decode($name) : '',
             'queue' => $queue,
             'attempts' => is_numeric($attempts) ? (int) $attempts : 0,
-            'pushed_at' => is_numeric($pushedAt) ? (float) $pushedAt : null,
+            'pushed_at' => is_numeric($pushedAt) && is_finite((float) $pushedAt) ? (float) $pushedAt : null,
             'available_at' => (float) $score,
         ];
     }

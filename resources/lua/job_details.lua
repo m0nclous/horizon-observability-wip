@@ -13,7 +13,9 @@ Returns one {attempts|false, exception|false} pair per key, in KEYS order:
   may be cut; the PHP side scrubs it); false when the hash has no exception or max_exception_bytes is 0.
 
 "attempts": is found with a plain string.find (no patterns: cjson reorders the keys of a released payload, and
-the escaped quotes inside string values cannot match), as in queue_state.lua and delayed_jobs.lua.
+the escaped quotes inside string values cannot match), as in queue_state.lua and delayed_jobs.lua: first in the
+first and the last WINDOW bytes, where it sits before or after the large "data" value, and in the whole payload
+only when neither window has it.
 ]]
 
 local find, sub, match = string.find, string.sub, string.match
@@ -26,12 +28,37 @@ end
 
 max_bytes = math.max(0, math.floor(max_bytes))
 
+local WINDOW = 4096
+local NEEDLE = '"attempts":'
+
+-- End of the first NEEDLE in the first WINDOW bytes, else of the first in the last WINDOW bytes, else of the first
+-- in the whole payload; nil when it does not occur.
+local function locate(payload)
+    local size = #payload
+
+    if size > 2 * WINDOW then
+        local _, last = find(sub(payload, 1, WINDOW + #NEEDLE - 1), NEEDLE, 1, true)
+
+        if last == nil then
+            _, last = find(payload, NEEDLE, size - WINDOW + 1, true)
+        end
+
+        if last ~= nil then
+            return last
+        end
+    end
+
+    local _, last = find(payload, NEEDLE, 1, true)
+
+    return last
+end
+
 local function attempts_of(payload)
     if not payload then
         return false
     end
 
-    local _, last = find(payload, '"attempts":', 1, true)
+    local last = locate(payload)
 
     if last == nil then
         return false

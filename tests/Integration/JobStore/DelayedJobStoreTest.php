@@ -158,6 +158,69 @@ it('scans a filtered queue in chunks of 500 entries, at most 10000', function ()
         ->and($commands->names())->toBe(array_fill(0, 20, 'EVAL'));
 });
 
+it('reads whole chunks after a short first call, at most 20 calls per queue, however small the page', function (): void {
+    $redis = delayedJobStoreTestRedis();
+
+    foreach (array_chunk(range(1, DelayedJobStore::SCAN_LIMIT), 1000) as $chunk) {
+        $arguments = [];
+
+        foreach ($chunk as $index) {
+            $arguments[] = DELAYED_JOB_STORE_TEST_NOW + $index;
+            $arguments[] = 'not json '.$index;
+        }
+
+        $redis->zadd('queues:slow:delayed', ...$arguments);
+    }
+
+    QueuePayloads::delay($redis, 'default', 'not json', DELAYED_JOB_STORE_TEST_NOW + 1);
+    QueuePayloads::delay($redis, 'default', 'still not json', DELAYED_JOB_STORE_TEST_NOW + 2);
+    QueuePayloads::delay($redis, 'default', delayedJobStoreTestJob('d-1'), DELAYED_JOB_STORE_TEST_NOW + 3);
+    $commands = RedisCommands::start($this->app);
+
+    expect(array_column(delayedJobStoreTestRows(limit: 1, queues: ['default']), 'id'))->toBe(['d-1'])
+        // 1 entry, then a chunk of 500.
+        ->and($commands->names())->toBe(['EVAL', 'EVAL'])
+        ->and(delayedJobStoreTestRows(limit: 1, queues: ['slow']))->toBe([])
+        ->and($commands->names())->toBe(array_fill(0, 22, 'EVAL'));
+});
+
+it('splits large payloads over calls of at most MAX_BYTES and continues after the entries read', function (): void {
+    // 60 payloads of about 200 KB (12 MB): one call would block Redis for seconds while it copies them into Lua.
+    $command = str_repeat('O:8:"stdClass":1:{s:4:"name";s:5:"value";}', 4600);
+
+    foreach (array_chunk(range(1, 60), 10) as $chunk) {
+        $arguments = [];
+
+        foreach ($chunk as $index) {
+            $arguments[] = DELAYED_JOB_STORE_TEST_NOW + $index;
+            $arguments[] = QueuePayloads::encode(delayedJobStoreTestJob('d-'.$index, 'App\Jobs\Big', ['data' => ['commandName' => 'App\Jobs\Big', 'command' => $command]]));
+        }
+
+        delayedJobStoreTestRedis()->zadd('queues:default:delayed', ...$arguments);
+    }
+
+    $size = strlen((string) delayedJobStoreTestRedis()->zrange('queues:default:delayed', 0, 0)[0]);
+    $commands = RedisCommands::start($this->app);
+    $rows = delayedJobStoreTestRows(queues: ['default']);
+    $perCall = intdiv(DelayedJobStore::MAX_BYTES, $size) + 1;
+
+    expect($size)->toBeGreaterThan(200_000)
+        ->and(array_column($rows, 'id'))->toBe(array_map(static fn (int $index): string => 'd-'.$index, range(1, 60)))
+        ->and($perCall)->toBeLessThan(60)
+        ->and($commands->names())->toBe(array_fill(0, (int) ceil(60 / $perCall), 'EVAL'));
+});
+
+it('skips entries whose score or push time is not a finite number', function (): void {
+    $redis = delayedJobStoreTestRedis();
+    QueuePayloads::delay($redis, 'default', delayedJobStoreTestJob('d-corrupt-push', overrides: ['pushedAt' => '1e999']), DELAYED_JOB_STORE_TEST_NOW + 10);
+    $redis->zadd('queues:default:delayed', '+inf', QueuePayloads::encode(delayedJobStoreTestJob('d-never')));
+
+    expect($redis->zcount('queues:default:delayed', '(1e300', '+inf'))->toBe(1)
+        ->and(delayedJobStoreTestRows(queues: ['default']))->toBe([
+            ['id' => 'd-corrupt-push', 'name' => 'App\Jobs\SendReminder', 'queue' => 'default', 'attempts' => 0, 'pushed_at' => null, 'available_at' => 1700000010.0],
+        ]);
+});
+
 it('skips queues whose connection does not use redis, and reads a shared key once', function (): void {
     config()->set('queue.connections.redis-copy', config('queue.connections.redis'));
     QueuePayloads::delay(delayedJobStoreTestRedis(), 'default', delayedJobStoreTestJob('d-1'), DELAYED_JOB_STORE_TEST_NOW + 10);
