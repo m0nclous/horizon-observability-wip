@@ -35,6 +35,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Queue\Events\JobTimedOut;
 use Illuminate\Routing\Route;
+use Illuminate\Routing\RouteCollectionInterface;
 use Illuminate\Routing\Router;
 use LogicException;
 use PDO;
@@ -49,12 +50,13 @@ use Throwable;
  * carries exactly one actionable fix line. Secrets are never part of a result: tokens are reported as set or missing.
  *
  * The checks: configuration problems; access mode (locked outside `local` is an error, open in `local` and IP-only
- * access are warnings); route precedence against the live router; the storage and reader Redis connections (reachable,
- * latency, client, cluster, persistent flag, braces in the prefix); the timeouts of Horizon's `horizon` connection, of
- * the default cache store and of the batching database connection (a store without a timeout can cost a scrape its
- * budget); Horizon (version, status, topology, the Grafana link in the `horizon` group); capabilities; batches; the
- * job-class cache and cap; a dry run of every collector; the live block (enabled, stream URL, token, stream id, the
- * last push, and with `$livePushTest` one `tiles` frame pushed to the stream `<id>_check`).
+ * access are warnings); route precedence against the live router, on the host of the package domain as Laravel binds
+ * it; the storage and reader Redis connections (reachable, latency, client, cluster, persistent flag, braces in the
+ * prefix); the timeouts of Horizon's `horizon` connection, of the default cache store (a `failover` store by the stores
+ * it tries, a `storage` store by its disk) and of the batching database connection (a store without a timeout can cost
+ * a scrape its budget); Horizon (version, status, topology, the Grafana link in the `horizon` group); capabilities;
+ * batches; the job-class cache and cap; a dry run of every collector; the live block (enabled, stream URL, token,
+ * stream id, the last push, and with `$livePushTest` one `tiles` frame pushed to the stream `<id>_check`).
  *
  * Database timeouts are connect timeouts (`PDO::ATTR_TIMEOUT`, `login_timeout` on SQL Server): PDO has no portable
  * read timeout.
@@ -111,6 +113,29 @@ final readonly class Diagnostics
      * (5 s scrape timeout minus the 0.5 s margin, Addendum R3.2).
      */
     public const SLOW_SCRAPE_SECONDS = 4.5;
+
+    /**
+     * A domain (after Laravel drops `http://` or `https://`) that can equal a request host: host characters and route
+     * parameters such as `{tenant}` or `{tenant?}`, or a bracketed IPv6 address. A port, a path or anything else never
+     * matches, as Laravel compares the domain with the request host alone.
+     */
+    private const DOMAIN_PATTERN = '/^(?:\[[0-9A-Fa-f:.]+\]|(?:[A-Za-z0-9_-]|\{\w+\??\}|\.)+)$/';
+
+    /**
+     * Values tried for the parameters of a domain such as `{tenant}.example.com`, in this order: a word, a number, a
+     * UUID.
+     *
+     * @var list<string>
+     */
+    public const DOMAIN_SAMPLES = ['acme', '1', '00000000-0000-4000-8000-000000000000'];
+
+    /**
+     * Cache drivers that keep their data in the process, a local file or the request's session: a call never waits on
+     * the network.
+     *
+     * @var list<string>
+     */
+    private const LOCAL_CACHE_DRIVERS = ['array', 'file', 'null', 'apc', 'octane', 'session'];
 
     /**
      * @var Closure(): float
@@ -275,7 +300,9 @@ final readonly class Diagnostics
 
     /**
      * Route precedence (Arch Q2.2): every endpoint must be answered by the package route, matched against the live
-     * router (cached or not).
+     * router (cached or not) on the host the routes are bound to: `app.url`'s host without a domain, else the domain as
+     * `Route::getDomain()` returns it (a sample host for a domain with parameters). A domain no request host can equal
+     * is one error with the domain fix.
      *
      * @return list<CheckResult>
      */
@@ -292,7 +319,32 @@ final readonly class Diagnostics
         /** @var Router $router */
         $router = $this->container->make('router');
         $routes = $router->getRoutes();
-        $host = $config->domain ?? $this->appHost();
+        $endpoints = CheckResult::info($section, 'Endpoints', implode(', ', array_map(
+            fn (string $path): string => EndpointUrl::to($repository, $path),
+            $config->liveEnabled ? ['/metrics', '/jobs/{list}', '/live'] : ['/metrics', '/jobs/{list}'],
+        )));
+        // The domain as the routes are bound to it: Route::getDomain() drops a scheme written in it.
+        $domain = $config->domain === null ? null : str_replace(['http://', 'https://'], '', $config->domain);
+
+        if ($domain !== null && preg_match(self::DOMAIN_PATTERN, $domain) !== 1) {
+            return [CheckResult::error($section, 'Domain', sprintf(
+                'the routes are bound to the domain "%s", which no request host equals: Laravel compares it with the host alone (no port, path or upper-case scheme), so every endpoint gets a 404',
+                $domain,
+            ), 'Set HORIZON_OBSERVABILITY_DOMAIN to the host alone, e.g. metrics.example.com.'), $endpoints];
+        }
+
+        $first = '/'.$base.'/metrics';
+        [$host, $sampled] = $domain === null ? [$this->appHost(), false] : $this->domainHost($routes, $domain, $first);
+        $where = $domain === null ? '' : ' on '.$host.($sampled ? sprintf(' (a sample host of %s)', $domain) : '');
+
+        if ($host === null) {
+            return [CheckResult::info($section, 'Precedence', sprintf(
+                'not checked: no sample value (%s) for the parameters of the domain %s matches the package route',
+                implode(', ', self::DOMAIN_SAMPLES),
+                $domain,
+            ), sprintf('Run php artisan route:list --path=%s and check that the package routes come first for your hosts.', $base)), $endpoints];
+        }
+
         $expected = ['metrics' => 'horizon-observability.metrics'];
 
         foreach (JobList::cases() as $list) {
@@ -322,24 +374,53 @@ final readonly class Diagnostics
             }
 
             $results[] = match (true) {
-                ! $route instanceof Route => CheckResult::error($section, 'GET '.$uri, 'no route answers it', $cached
-                    ? 'The route cache predates the package: run php artisan route:cache again (or route:clear).'
+                ! $route instanceof Route => CheckResult::error($section, 'GET '.$uri, 'no route answers it'.$where, $cached
+                    ? 'The route cache predates the package or its path and domain settings: run php artisan route:cache again (or route:clear).'
                     : 'Register the package provider (package discovery, or bootstrap/providers.php), not from another provider\'s boot().'),
-                $actual === 'horizon.index' => CheckResult::error($section, 'GET '.$uri, "shadowed by Horizon's catch-all route (horizon.index)", 'Let package discovery register the provider (not App::register() at runtime), then run php artisan route:cache again if routes are cached.'),
-                default => CheckResult::error($section, 'GET '.$uri, sprintf('answered by %s (%s) instead of %s', $actual ?? 'an unnamed route', $route->uri(), $name), 'Set HORIZON_OBSERVABILITY_PATH to a path no other route uses, e.g. internal/horizon-observability.'),
+                $actual === 'horizon.index' => CheckResult::error($section, 'GET '.$uri, "shadowed by Horizon's catch-all route (horizon.index)".$where, 'Let package discovery register the provider (not App::register() at runtime), then run php artisan route:cache again if routes are cached.'),
+                default => CheckResult::error($section, 'GET '.$uri, sprintf('answered by %s (%s) instead of %s%s', $actual ?? 'an unnamed route', $route->uri(), $name, $where), 'Set HORIZON_OBSERVABILITY_PATH to a path no other route uses, e.g. internal/horizon-observability.'),
             };
         }
 
         if ($results === []) {
-            $results[] = CheckResult::ok($section, 'Precedence', sprintf('%s/{metrics,jobs/*%s} answer the package routes%s', '/'.$base, $config->liveEnabled ? ',live' : '', $cached ? ' (cached)' : ''));
+            $results[] = CheckResult::ok($section, 'Precedence', sprintf('%s/{metrics,jobs/*%s} answer the package routes%s%s', '/'.$base, $config->liveEnabled ? ',live' : '', $where, $cached ? ' (cached)' : ''));
         }
 
-        $results[] = CheckResult::info($section, 'Endpoints', implode(', ', array_map(
-            fn (string $path): string => EndpointUrl::to($repository, $path),
-            $config->liveEnabled ? ['/metrics', '/jobs/{list}', '/live'] : ['/metrics', '/jobs/{list}'],
-        )));
+        $results[] = $endpoints;
 
         return $results;
+    }
+
+    /**
+     * The host the precedence is checked on for a domain: the domain itself, or for a domain with route parameters
+     * (`{tenant}.example.com`) the domain with the first of {@see self::DOMAIN_SAMPLES} the package route accepts
+     * (global patterns such as `Route::pattern('tenant', '[0-9]+')` constrain it). [host, whether it is a sample]; the
+     * host is null when the package route accepts no sample. Without the package route the first sample is used, and
+     * the check reports that no route answers.
+     *
+     * @return array{0: string|null, 1: bool}
+     */
+    private function domainHost(RouteCollectionInterface $routes, string $domain, string $uri): array
+    {
+        if (! str_contains($domain, '{')) {
+            return [$domain, false];
+        }
+
+        $package = $routes->getByName('horizon-observability.metrics');
+
+        foreach (self::DOMAIN_SAMPLES as $sample) {
+            $host = (string) preg_replace('/\{\w+\??\}/', $sample, $domain);
+
+            try {
+                if (! $package instanceof Route || $package->matches(Request::create('http://'.$host.$uri, 'GET'))) {
+                    return [$host, true];
+                }
+            } catch (Throwable) {
+                // A domain Symfony cannot compile: the next sample fails the same way.
+            }
+        }
+
+        return [null, true];
     }
 
     /**
@@ -514,17 +595,38 @@ final readonly class Diagnostics
         return $results;
     }
 
+    /**
+     * The default cache store: it backs the throttled logs, the batching detection and the job-class runtime cache.
+     */
     private function cacheTimeout(string $section, string $client): CheckResult
     {
-        $repository = $this->repository();
-        $store = $repository->get('cache.default');
+        $store = $this->repository()->get('cache.default');
         $store = is_string($store) && $store !== '' ? $store : 'file';
-        $settings = $repository->get('cache.stores.'.$store);
-        $driver = is_array($settings) && is_string($settings['driver'] ?? null) ? $settings['driver'] : 'unknown';
-        $name = 'Default cache store';
+
+        return $this->storeTimeout($section, 'Default cache store', $store, $client);
+    }
+
+    /**
+     * Whether a call to the cache store can wait on the network, judged by its driver: a `failover` store by the stores
+     * it tries in order, a `storage` store by its filesystem disk. A driver this check does not know is info, never
+     * "no network".
+     *
+     * @param  list<string>  $failovers  the failover stores that lead to this one, outermost first
+     */
+    private function storeTimeout(string $section, string $name, string $store, string $client, array $failovers = []): CheckResult
+    {
+        $settings = $this->repository()->get('cache.stores.'.$store);
+
+        if (! is_array($settings)) {
+            return CheckResult::warning($section, $name, sprintf('the cache store %s is not configured: every call to it fails', $store), $failovers === []
+                ? sprintf('Add cache.stores.%s to config/cache.php, or set CACHE_STORE to a configured store.', $store)
+                : sprintf('Add cache.stores.%s to config/cache.php, or remove it from cache.stores.%s.stores.', $store, $failovers[count($failovers) - 1]));
+        }
+
+        $driver = is_string($settings['driver'] ?? null) ? $settings['driver'] : 'unknown';
 
         if ($driver === 'redis') {
-            $connection = is_array($settings) && is_string($settings['connection'] ?? null) && $settings['connection'] !== '' ? $settings['connection'] : 'default';
+            $connection = is_string($settings['connection'] ?? null) && $settings['connection'] !== '' ? $settings['connection'] : 'default';
             $redis = $this->redisSettings($connection);
 
             if ($redis === null) {
@@ -543,16 +645,136 @@ final readonly class Diagnostics
         }
 
         if ($driver === 'database') {
-            $connection = is_array($settings) && is_string($settings['connection'] ?? null) && $settings['connection'] !== '' ? $settings['connection'] : $this->defaultDatabase();
+            $connection = is_string($settings['connection'] ?? null) && $settings['connection'] !== '' ? $settings['connection'] : $this->defaultDatabase();
 
             return $this->databaseTimeout($section, $name, $connection, $store);
+        }
+
+        if ($driver === 'failover') {
+            return $this->failoverTimeout($section, $name, $store, $settings, $client, $failovers);
+        }
+
+        if ($driver === 'storage') {
+            $disk = is_string($settings['disk'] ?? null) && $settings['disk'] !== '' ? $settings['disk'] : $this->repository()->get('filesystems.default');
+
+            return $this->diskTimeout($section, $name, $store, is_string($disk) && $disk !== '' ? $disk : 'local');
         }
 
         if (in_array($driver, ['memcached', 'dynamodb'], true)) {
             return CheckResult::info($section, $name, sprintf('%s (%s): its client timeouts apply to the package\'s throttled logs and detection caches', $store, $driver));
         }
 
-        return CheckResult::ok($section, $name, sprintf('%s (%s, no network)', $store, $driver));
+        if (in_array($driver, self::LOCAL_CACHE_DRIVERS, true)) {
+            return CheckResult::ok($section, $name, sprintf('%s (%s, no network)', $store, $driver));
+        }
+
+        return CheckResult::info($section, $name, sprintf('%s (%s): a driver this check does not know, so its timeouts are not checked', $store, $driver), 'Give its client connect and read timeouts of about 2 s: a hung store can cost a scrape its budget.');
+    }
+
+    /**
+     * A `failover` store tries its stores in order on every call, so each store in front of the first local one can
+     * hold the call (a hung one until its timeout, then the next one is tried). The worst of them, the first on a tie.
+     *
+     * @param  array<array-key, mixed>  $settings
+     * @param  list<string>  $failovers
+     */
+    private function failoverTimeout(string $section, string $name, string $store, array $settings, string $client, array $failovers): CheckResult
+    {
+        $stores = is_array($settings['stores'] ?? null) ? array_values(array_filter($settings['stores'], is_string(...))) : [];
+
+        if ($stores === []) {
+            return CheckResult::warning($section, $name, sprintf('%s (failover) lists no stores: every call to it fails', $store), sprintf("List the stores to try in cache.stores.%s.stores, e.g. ['redis', 'array'].", $store));
+        }
+
+        $failovers[] = $store;
+        $tried = [];
+        $results = [];
+
+        foreach ($stores as $child) {
+            $tried[] = $child;
+
+            if (in_array($child, $failovers, true)) {
+                $results[] = CheckResult::warning($section, $name, sprintf('%s lists the failover store %s, which leads back to itself', $store, $child), sprintf('Remove %s from cache.stores.%s.stores.', $child, $store));
+
+                break;
+            }
+
+            $results[] = $this->storeTimeout($section, $name, $child, $client, $failovers);
+            $driver = $this->repository()->get('cache.stores.'.$child.'.driver');
+
+            if (in_array($driver, self::LOCAL_CACHE_DRIVERS, true)) {
+                break; // a local store answers: the stores after it are not reached
+            }
+        }
+
+        $worst = $results[0];
+
+        foreach ($results as $result) {
+            if ($result->status->severity() > $worst->status->severity()) {
+                $worst = $result;
+            }
+        }
+
+        $label = sprintf('%s (failover: %s)', $store, implode(', then ', $tried));
+
+        if ($worst->status->severity() > 0) {
+            return new CheckResult($section, $name, $worst->status, $label.': '.$worst->message, $worst->fix);
+        }
+
+        $info = array_values(array_filter($results, static fn (CheckResult $result): bool => $result->status === CheckStatus::Info));
+        $message = $label.': '.implode('; ', array_map(static fn (CheckResult $result): string => $result->message, $results));
+
+        return $info === []
+            ? CheckResult::ok($section, $name, $message)
+            : CheckResult::info($section, $name, $message, $info[0]->fix);
+    }
+
+    /**
+     * A `storage` store keeps the cache on a filesystem disk; a network disk waits as long as its client lets it.
+     */
+    private function diskTimeout(string $section, string $name, string $store, string $disk, int $depth = 0): CheckResult
+    {
+        $settings = $this->repository()->get('filesystems.disks.'.$disk);
+        $label = sprintf('%s (storage on disk %s', $store, $disk);
+
+        if (! is_array($settings)) {
+            return CheckResult::warning($section, $name, $label.'): the disk is not configured, so every call fails', sprintf('Add filesystems.disks.%s to config/filesystems.php, or set the disk of cache.stores.%s (CACHE_STORAGE_DISK) to a configured disk.', $disk, $store));
+        }
+
+        $driver = is_string($settings['driver'] ?? null) ? $settings['driver'] : 'unknown';
+
+        if ($driver === 'scoped' && $depth < 5 && is_string($settings['disk'] ?? null) && $settings['disk'] !== '') {
+            return $this->diskTimeout($section, $name, $store, $settings['disk'], $depth + 1);
+        }
+
+        if ($driver === 'local') {
+            return CheckResult::ok($section, $name, $label.', local, no network)');
+        }
+
+        if ($driver === 's3') {
+            $http = is_array($settings['http'] ?? null) ? $settings['http'] : [];
+            $missing = array_values(array_filter(['connect_timeout', 'timeout'], static fn (string $key): bool => ! self::positive($http[$key] ?? null)));
+
+            return $missing === []
+                ? CheckResult::ok($section, $name, sprintf('%s, s3) has an HTTP connect_timeout of %s s and a timeout of %s s', $label, $this->scalarText($http['connect_timeout']), $this->scalarText($http['timeout'])))
+                : CheckResult::warning($section, $name, sprintf('%s, s3) has no HTTP %s (the AWS SDK waits without a limit): a hung endpoint can cost a scrape its budget', $label, implode(' or ', $missing)), sprintf(
+                    "Add 'http' => ['connect_timeout' => 2, 'timeout' => 2] to filesystems.disks.%s in config/filesystems.php.",
+                    $disk,
+                ));
+        }
+
+        if (in_array($driver, ['ftp', 'sftp'], true)) {
+            return self::positive($settings['timeout'] ?? null)
+                ? CheckResult::ok($section, $name, sprintf('%s, %s) has a timeout of %s s', $label, $driver, $this->scalarText($settings['timeout'])))
+                : CheckResult::warning($section, $name, sprintf(
+                    '%s, %s) has no timeout, so the driver\'s default of %d s applies: a hung server can cost a scrape its budget',
+                    $label,
+                    $driver,
+                    $driver === 'ftp' ? 90 : 10,
+                ), sprintf("Add 'timeout' => 2 to filesystems.disks.%s in config/filesystems.php.", $disk));
+        }
+
+        return CheckResult::info($section, $name, sprintf('%s, %s): a disk driver this check does not know, so its timeouts are not checked', $label, $driver), 'Give its client connect and read timeouts of about 2 s: a hung disk can cost a scrape its budget.');
     }
 
     private function databaseTimeout(string $section, string $name, string $connection, ?string $store = null): CheckResult
