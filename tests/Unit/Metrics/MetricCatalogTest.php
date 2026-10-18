@@ -25,7 +25,7 @@ const APPENDIX_B = [
     ['QueueOldestPendingJobAge', 'queue_oldest_pending_job_age_seconds', 'gauge', ['connection', 'queue'], 'queues', 'Seconds the oldest ready first-attempt job has waited since it became available; 0 when nothing is waiting.'],
     ['QueueJobsPending', 'queue_jobs_pending', 'gauge', ['connection', 'queue', 'job_class'], 'queues', 'Ready jobs per job class in the scanned head of the queue; (unscanned) counts the rest.'],
     ['QueueJobsReserved', 'queue_jobs_reserved', 'gauge', ['connection', 'queue', 'job_class'], 'queues', 'Jobs currently reserved by workers per job class.'],
-    ['JobsTotal', 'queue_jobs_total', 'counter', ['connection', 'queue', 'job_class', 'status'], 'attempts', 'Finished job attempts by outcome: completed, released, retried, failed, timed_out.'],
+    ['JobsTotal', 'queue_jobs_total', 'counter', ['connection', 'queue', 'job_class', 'status'], 'attempts', 'Finished job attempts by outcome: completed, released, retried, failed, timed_out; a new series reads 0 for its first 90 seconds.'],
     ['JobDuration', 'queue_job_duration_seconds', 'histogram', ['connection', 'queue', 'job_class'], 'attempts', 'Duration of job attempts, seconds.'],
     ['JobWait', 'queue_job_wait_seconds', 'histogram', ['connection', 'queue'], 'attempts', 'Seconds a job waited in the queue before its first attempt started.'],
     ['JobDurationMin', 'queue_job_duration_min_seconds', 'gauge', ['connection', 'queue', 'job_class'], 'attempts', 'Shortest job attempt during the last 150 seconds, seconds.'],

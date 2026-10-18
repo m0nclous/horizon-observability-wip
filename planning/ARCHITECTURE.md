@@ -642,6 +642,7 @@ These are used only in Grafana provisioning, never by PHP: `HORIZON_OBSERVABILIT
 | `horizon_supervisor_min_processes` | same | gauge | `supervisor` | – |
 | `horizon_supervisor_max_processes` | same | gauge | `supervisor` | – |
 | `horizon_supervisor_info` | same | gauge (1) | `supervisor`, `balance`, `connection` | – |
+| – | `horizon_supervisor_queues` | gauge (1) | `supervisor`, `queue`, `pool` | **New** (T16): one series per queue a supervisor works, `pool` = the `queue` label of its processes in `horizon_supervisor_processes` (the queue itself, or Horizon's comma-joined option for balance=false, as written, e.g. `mail,sms,mail`). PromQL cannot split a pooled label, so the queue table, the processes per queue and the busy workers join through it. |
 | `horizon_wait_threshold_seconds` | same | gauge | `connection`, `queue` | – (default 60 s; 0 is not emitted, as today) |
 | `horizon_info{url,tts_url}` | `horizon_info` | gauge (1) | `url`, `api_path`, `tts_url` | **+`api_path`**, the job-list base path. The dashboard reads it with a 7-day lookback. |
 | `queue_pending_jobs` | same | gauge | `connection`, `queue` | – (includes due delayed jobs) |
@@ -651,9 +652,9 @@ These are used only in Grafana provisioning, never by PHP: `HORIZON_OBSERVABILIT
 | `queue_jobs_pending` | same | gauge | `connection`, `queue`, `job_class` | English sentinels; top-100 per queue plus `(other)` |
 | `queue_jobs_reserved` | same | gauge | `connection`, `queue`, `job_class` | same as above |
 | `queue_job_classes` | same | gauge (1) | `job_class` | – (cached discovery) |
-| `queue_jobs_total` | same | counter | `connection`, `queue`, `job_class`, `status` | – (zero-filled for all 5 statuses of every known tuple, as today) |
-| `queue_job_duration_seconds_{bucket,sum,count}` (3 fake counter families) | `queue_job_duration_seconds` | **histogram** | `connection`, `queue`, `job_class` (+`le`) | Correct `TYPE`; series unchanged |
-| `queue_job_wait_seconds_*` | `queue_job_wait_seconds` | **histogram** | `connection`, `queue` (+`le`) | Correct `TYPE`; series unchanged |
+| `queue_jobs_total` | same | counter | `connection`, `queue`, `job_class`, `status` | Zero-filled for all 5 statuses of every known tuple, as today. **New series start at 0** (T16, owner decision 13): a tuple whose first attempt was recorded less than 90 s ago (`AttemptsCollector::NEW_SERIES_HOLD_SECONDS`, hash `created`) reads 0 for every status, then every attempt since its creation, so Prometheus sees each series start at 0 and `increase()` and the dashboard count its first attempts. The first attempts of a new tuple therefore appear up to 90 s late and are counted at the end of the hold: a range that starts inside a hold also counts that tuple's attempts from before the range, one that ends inside it misses them. Sized for scrape intervals ≤ 60 s, scrapes ≤ 7.5 s off their slots and worker clocks ≤ 15 s off the exporter's. Tuples without a creation time (data from before it, a scrape job or replica added later) are exported as they are. |
+| `queue_job_duration_seconds_{bucket,sum,count}` (3 fake counter families) | `queue_job_duration_seconds` | **histogram** | `connection`, `queue`, `job_class` (+`le`) | Correct `TYPE`. Every tuple of `queue_jobs_total` has a series, zero-filled (every bucket, sum and count 0) until its first duration (T16), and it is held with its tuple. |
+| `queue_job_wait_seconds_*` | `queue_job_wait_seconds` | **histogram** | `connection`, `queue` (+`le`) | Correct `TYPE`. Every queue of `queue_jobs_total` has a series, zero-filled until its first wait (T16); a new queue's is held for 90 s like a new tuple. A known queue's is not held, so for up to 90 s it counts the first waits of a new class whose attempts still read 0 (more waits than attempts while that class is held). |
 | `queue_job_duration_min_seconds` | same | gauge | `connection`, `queue`, `job_class` | – |
 | `queue_job_duration_max_seconds` | same | gauge | `connection`, `queue`, `job_class` | – |
 | `queue_batches_running` | same | gauge | `batch` | caps |
@@ -746,6 +747,7 @@ No label value is empty, because Prometheus treats an empty value as an absent l
 | Apps with more than 500 live job names see `(other)` | Config key, a throttled overflow warning, and the cap usage shown in `check`. |
 | Office's ad-hoc queries on `office_horizon_current_processes` or `office_queue_oldest_pending_job_age` | Listed in UPGRADE with replacements. |
 | Batch names may contain PII | Documented in SECURITY.md; the kind resolver hook can hash or strip them. |
+| The new-series hold (T16) delays the first attempts of a new tuple by up to 90 s and moves them to the end of the hold; outside its budget (interval > 60 s, scrapes > 7.5 s off their slots, clocks > 15 s apart, every scrape of the hold failing) a new series can again start without its 0 sample | Bounded by the hold; stated in the README (T15) for users with their own alerts and dashboards; proven by `tests/Truth/FirstValueTruthTest` at the worst alignment and skew. |
 
 ---
 
@@ -1145,11 +1147,11 @@ There is no toggle: a reset to 0 is always handled correctly by `rate()` and `in
 | Path | Worst-case work |
 |---|---|
 | Job start | 0 Redis calls |
-| Job end | 1 `EVAL` (about 10–14 commands inside, plus 2 for the live ring buffer when `live.enabled`, Addendum R4.5), O(1) |
+| Job end | 1 `EVAL` (about 11–15 commands inside, plus 2 for the live ring buffer when `live.enabled`, Addendum R4.5), O(1). T16 adds 1 `HEXISTS wait:sum` per first attempt with a wait; the first attempt of a new status of a tuple adds up to 4 `HEXISTS` (the other statuses) and, for a new tuple, 1 `HSET created`; a new queue adds 1 `HSET created` |
 | Dispatch | Modern stack: at most 1 `ZADD` per (kind, connection, queue, class) per hour per process, for batched jobs only, plus 1 `ZREMRANGEBYSCORE` prune on the first link write of each hour per process (phase B). Legacy stack: +1 `SET` per delayed dispatch. Both through the breaker. |
 | Scrape `horizon` | the Horizon master and supervisor repository reads |
 | Scrape `queues` | 1 `EVAL` per queue: `LLEN`, `LRANGE` ≤ `queue_scan_limit` (and ≤ 16 MB), `ZRANGE` reserved ≤ 1000 and ≤ 16 MB (`ZCARD` beyond; the byte cap since the T05 review), `ZCARD`/`ZCOUNT` delayed, `ZRANGEBYSCORE … LIMIT 0 1` |
-| Scrape `attempts` | 1 guard `EVAL` + 5 `HGETALL` (counters, histograms) + 1 `extremes_read` `EVAL` (20 `HGETALL` inside, Addendum R3.4) + 1 `HGETALL meta` + 1 `ZRANGE job_classes`, i.e. 9 commands, + lazy `HDEL`s of at most 1000 fields of classes no longer in the class set, bounded by `max_job_classes` × queues (measured in T04; the scrape never prunes the class set, only `record_attempt` does when it is full) |
+| Scrape `attempts` | 1 guard `EVAL` + 5 `HGETALL` (counters, histograms) + 1 `extremes_read` `EVAL` (20 `HGETALL` inside, Addendum R3.4) + 1 `HGETALL created` (T16) + 1 `HGETALL meta` + 1 `ZRANGE job_classes`, i.e. 10 commands, + lazy `HDEL`s of at most 1000 fields of classes no longer in the class set, bounded by `max_job_classes` × queues (measured in T04; the scrape never prunes the class set, only `record_attempt` does when it is full) |
 | Scrape `job_classes` | a cache file read |
 | Scrape `batches` | 2 SQL queries with `LIMIT 5000` (plus 1 table check per 10 minutes in auto mode), 1 `ZRANGE` of at most the 10 000 most recently seen links and 1 `ZREMRANGEBYSCORE` prune |
 | Job-list request | Horizon lists: ≤ 20 `ZRANGEBYSCORE` calls (10 000 ids / 500; only the first read is cut to the page, later reads take whole chunks), pipelined light `HMGET`s, ≤ 10 `job_details` `EVAL`s (100 hashes each, final page only). Delayed list: ≤ 20 `delayed_jobs` `EVAL`s per queue, each ≤ 500 entries and ≤ 8 MB of payload (T06 review). An empty filter: 0 commands (C13). |
@@ -2122,7 +2124,7 @@ return [
 | QueueOldestPendingJobAge | `queue_oldest_pending_job_age_seconds` | gauge | connection, queue | queues | Seconds the oldest ready first-attempt job has waited since it became available; 0 when nothing is waiting. |
 | QueueJobsPending | `queue_jobs_pending` | gauge | connection, queue, job_class | queues | Ready jobs per job class in the scanned head of the queue; (unscanned) counts the rest. |
 | QueueJobsReserved | `queue_jobs_reserved` | gauge | connection, queue, job_class | queues | Jobs currently reserved by workers per job class. |
-| JobsTotal | `queue_jobs_total` | counter | connection, queue, job_class, status | attempts | Finished job attempts by outcome: completed, released, retried, failed, timed_out. |
+| JobsTotal | `queue_jobs_total` | counter | connection, queue, job_class, status | attempts | Finished job attempts by outcome: completed, released, retried, failed, timed_out; a new series reads 0 for its first 90 seconds. |
 | JobDuration | `queue_job_duration_seconds` | histogram | connection, queue, job_class | attempts | Duration of job attempts, seconds. |
 | JobWait | `queue_job_wait_seconds` | histogram | connection, queue | attempts | Seconds a job waited in the queue before its first attempt started. |
 | JobDurationMin | `queue_job_duration_min_seconds` | gauge | connection, queue, job_class | attempts | Shortest job attempt during the last 150 seconds, seconds. |
@@ -2145,7 +2147,7 @@ return [
 | BuildInfo | `exporter_build_info` | gauge | version, php, laravel, horizon, redis_client | self | Versions of the package, PHP, Laravel, Horizon and the Redis client; always 1. |
 | ConfigProblems | `exporter_config_problems` | gauge | – | self | Number of invalid configuration values replaced by defaults; see php artisan horizon-observability:check. |
 
-`since()` is `0.1.0` for every case. The self-metric names, the two live cases and the min/max HELP texts come from Addendum R1, R3.4 and Appendix B′. `SupervisorQueues` was added in T16 (2026-10-17): PromQL cannot split the pooled `queue` label of a balance=false supervisor, so the dashboard had no supervisor, processes or table row for its queues. Example names with the default namespace: `ho_queue_jobs_total`, `ho_exporter_collector_success`.
+`since()` is `0.1.0` for every case. The self-metric names, the two live cases and the min/max HELP texts come from Addendum R1, R3.4 and Appendix B′. `SupervisorQueues` was added in T16 (2026-10-17): PromQL cannot split the pooled `queue` label of a balance=false supervisor, so the dashboard had no supervisor, processes or table row for its queues. The `JobsTotal` HELP names the new-series hold (T16 QA round 1). Example names with the default namespace: `ho_queue_jobs_total`, `ho_exporter_collector_success`.
 
 ## Appendix C. Frozen interfaces (land in WP0b)
 
@@ -2509,7 +2511,7 @@ All keys sit under `{horizon-observability}:v1:` on the storage connection, whic
 | `duration:sum` | hash | `conn␟queue␟class` → float | – |
 | `wait:buckets` | hash | `conn␟queue␟le` → count | – |
 | `wait:sum` | hash | `conn␟queue` → float | – |
-| `created` | hash | `conn␟queue␟class` (attempt series) and `conn␟queue` (wait histogram) → creation time, Unix seconds (T16: a series created less than 75 s ago is exported as 0, so Prometheus sees it start at 0) | – (deleted with the counters; class fields pruned with their class) |
+| `created` | hash | `conn␟queue␟class` (attempt series) and `conn␟queue` (wait histogram) → creation time, Unix seconds (T16: a series created less than 90 s ago is exported as 0, so Prometheus sees it start at 0) | – (deleted with the counters; class fields pruned with their class) |
 | `extremes:<unix div 15>:min`, `…:max` | hash | `conn␟queue␟class` → seconds (15-second buckets, Addendum R3.4) | 300 s |
 | `job_classes` | zset | class → last seen | idle members pruned after 30 d |
 | `meta` | hash | `run_id`, `reset_at`, `dropped`, `live_push_at` (Unix float), `live_push_failures` | – |

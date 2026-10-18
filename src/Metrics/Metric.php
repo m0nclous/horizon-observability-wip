@@ -84,7 +84,7 @@ enum Metric: string
             self::QueueOldestPendingJobAge => 'Seconds the oldest ready first-attempt job has waited since it became available; 0 when nothing is waiting.',
             self::QueueJobsPending => 'Ready jobs per job class in the scanned head of the queue; (unscanned) counts the rest.',
             self::QueueJobsReserved => 'Jobs currently reserved by workers per job class.',
-            self::JobsTotal => 'Finished job attempts by outcome: completed, released, retried, failed, timed_out.',
+            self::JobsTotal => 'Finished job attempts by outcome: completed, released, retried, failed, timed_out; a new series reads 0 for its first 90 seconds.',
             self::JobDuration => 'Duration of job attempts, seconds.',
             self::JobWait => 'Seconds a job waited in the queue before its first attempt started.',
             self::JobDurationMin => 'Shortest job attempt during the last 150 seconds, seconds.',
