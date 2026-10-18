@@ -7,9 +7,10 @@
 //
 // A tile counts when it shows a value (not "No data", "Live unavailable" or the em dash of an unknown value) and its
 // live caption has replaced the series name; the Completed tile must count more than 0 (the demo jobs went through
-// Horizon, the exporter and Prometheus). Exit 0 when every Overview tile does within
-// --timeout seconds, 1 otherwise (with the last texts), 2 without Playwright
-// (`npm i --no-save playwright@1.56.1 && npx playwright install chromium`).
+// Horizon, the exporter and Prometheus). Grafana's home page must be the provisioned dashboard itself (uid --uid, or a
+// redirect to it), not a copy, so the alert annotations linked to that uid show there too. Exit 0 when every Overview
+// tile does within --timeout seconds and the home page is right, 1 otherwise (with the last texts), 2 without
+// Playwright (`npm i --no-save playwright@1.56.1 && npx playwright install chromium`).
 
 const options = {};
 for (let i = 2; i < process.argv.length; i++) {
@@ -100,12 +101,28 @@ if (options.screenshot) {
 }
 await browser.close();
 
+// 3. The home page: the stack sets the organisation's home dashboard once Grafana answers (a redirect to /d/<uid>/).
+let home = null;
+const homeDeadline = Math.max(deadline, Date.now() + 30000);
+while (Date.now() < homeDeadline) {
+  try {
+    const answer = await (await fetch(`${grafana}/api/dashboards/home`)).json();
+    home = answer.redirectUri ?? answer.dashboard?.uid ?? null;
+    if (home === uid || String(home).startsWith(`/d/${uid}/`)) {
+      break;
+    }
+  } catch {}
+  await sleep(1000);
+}
+const homeOk = home === uid || String(home).startsWith(`/d/${uid}/`);
+
 const report = {
-  ok,
+  ok: ok && homeOk,
   dashboard: uid,
+  home,
   tiles: Object.fromEntries(tiles.map((tile) => [tile.title, values(last[`panel-${tile.id}`], tile.title)])),
   provisionedAfterSeconds: Math.round((provisioned - started) / 100) / 10,
   tilesAfterSeconds: Math.round((Date.now() - started) / 100) / 10,
 };
 console.log(JSON.stringify(report, null, 2));
-process.exit(ok ? 0 : 1);
+process.exit(ok && homeOk ? 0 : 1);

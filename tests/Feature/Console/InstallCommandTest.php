@@ -177,6 +177,52 @@ it('rejects a short --token', function (): void {
         ->and(installToken($this->base))->toBeNull();
 });
 
+it('accepts only a --token of the bearer token syntax, which .env reads back unchanged', function (string $token, bool $valid): void {
+    [$code, $output] = install(['--token' => $token]);
+
+    if ($valid) {
+        expect($code)->toBe(0)
+            ->and(installToken($this->base))->toBe($token)
+            ->and(Dotenv\Dotenv::parse((string) file_get_contents($this->base.'/.env'))['HORIZON_OBSERVABILITY_TOKEN'])->toBe($token);
+
+        return;
+    }
+
+    expect($code)->toBe(1)
+        ->and($output)->toContain('--token may only contain letters, digits, - . _ ~ + / and = at the end')
+        ->and(installToken($this->base))->toBeNull();
+})->with([
+    'letters, digits and - . _ ~ + /' => ['Ab-0.1_2~3+4/5678901', true],
+    'base64 padding' => ['YWJjZGVmZ2hpamtsbW5vcA==', true],
+    'a space' => ['abcd efgh ijkl mnop', false],
+    'a comment' => ['abcdefgh#ijklmnopqrst', false],
+    'a quote' => ['"abcdefghijklmnopq', false],
+    'a comma (a rotation list)' => ['first-token-0123456,second-token-01234', false],
+    'a dollar sign' => ['abc$defghijklmnopq', false],
+    'padding inside' => ['abc=defghijklmnopq', false],
+]);
+
+it('fails when .env does not read the written token back', function (): void {
+    // A line phpdotenv cannot parse: the next start of the app would fail as well.
+    file_put_contents($this->base.'/.env', "APP_NAME=\"My Shop\nAPP_ENV=local\n");
+
+    [$code, $output] = install();
+
+    expect($code)->toBe(1)
+        ->and($output)->toContain('The next start of the app reads HORIZON_OBSERVABILITY_TOKEN from .env as missing, not as written')
+        ->and($output)->not->toContain('(written to .env)');
+
+    // An .env phpdotenv rejects outright (the first run applied its token to this process).
+    file_put_contents($this->base.'/.env', "APP_NAME=My Shop\n");
+    config()->set('horizon-observability.token');
+    $this->app->forgetInstance(Config::class);
+    [$code, $output] = install();
+
+    expect($code)->toBe(1)
+        ->and($output)->toContain('InvalidFileException')
+        ->and($output)->not->toContain('(written to .env)');
+});
+
 it('prints the token instead of writing it with --no-env', function (): void {
     [$code, $output] = install(['--no-env' => true, '--token' => 'printed-token-0123456789']);
 
@@ -244,16 +290,113 @@ it('writes the Docker stack pointed at the app, with the dashboard rendered for 
         ->and(is_file($this->base.'/docker/observability/grafana/alerting/horizon-observability.json'))->toBeTrue()
         ->and($output)->toContain('php artisan serve --host=0.0.0.0 --port=8000')
         ->and($output)->toContain('docker compose -f docker-compose.observability.yml up -d')
-        ->and(trim($output))->toEndWith('Open http://localhost:3000.');
+        // The provisioned dashboard itself, which the alert annotations are linked to, not Grafana's home page.
+        ->and(trim($output))->toEndWith('Open http://localhost:3000/d/horizon-observability.');
 
     if (FakeGrafanaCommand::$calls !== []) {
         expect(FakeGrafanaCommand::$calls[array_key_last(FakeGrafanaCommand::$calls)])->toMatchArray([
             'path' => $this->base.'/docker/observability/grafana',
             'job' => 'my-shop-horizon',
             'datasource-uid' => 'prometheus',
+            'live' => 'poll',
             'check' => false,
         ]);
     }
+});
+
+it('renders --live=off and offers no live mode when live is disabled', function (): void {
+    config()->set('horizon-observability.live.enabled', false);
+    $this->app->forgetInstance(Config::class);
+
+    [$code, $output] = install(['--docker' => true]);
+
+    expect($code)->toBe(0)
+        ->and($output)->toContain('http://localhost/horizon/observability/{metrics,jobs/*}')
+        ->and($output)->not->toContain('{metrics,jobs/*,live}')
+        ->and($output)->toContain('php artisan horizon-observability:grafana grafana --job=my-shop-horizon --live=off')
+        ->and($output)->toContain('HORIZON_OBSERVABILITY_LIVE_ENABLED=true enables the poll and stream modes')
+        ->and($output)->not->toContain('--live=stream')
+        ->and($output)->not->toContain('/api/serviceaccounts')
+        ->and($output)->toContain('rendered (--live=off)');
+
+    if (FakeGrafanaCommand::$calls !== []) {
+        expect(array_unique(array_column(FakeGrafanaCommand::$calls, 'live')))->toBe(['off']);
+    }
+
+    // Live enabled again: the default render (poll) differs from the --live=off one only with the real command.
+    config()->set('horizon-observability.live.enabled', true);
+    $this->app->forgetInstance(Config::class);
+    FakeGrafanaCommand::$calls = [];
+    [, $output] = install(['--docker' => true]);
+
+    expect($output)->toContain('{metrics,jobs/*,live}')
+        ->and($output)->toContain('--job=my-shop-horizon --live=stream');
+
+    if (FakeGrafanaCommand::$calls !== []) {
+        expect(array_unique(array_column(FakeGrafanaCommand::$calls, 'live')))->toBe(['poll']);
+    }
+});
+
+it('keeps a dashboard that differs from the render unless --force, and asks when interactive', function (): void {
+    install(['--docker' => true]);
+    $dashboard = $this->base.'/docker/observability/grafana/dashboards/horizon-observability.json';
+    file_put_contents($dashboard, "{\"rendered\": \"--live=stream by hand\"}\n");
+
+    [$code, $output] = install(['--docker' => true]);
+
+    expect($code)->toBe(0)
+        ->and(file_get_contents($dashboard))->toBe("{\"rendered\": \"--live=stream by hand\"}\n")
+        ->and($output)->toContain('kept (differs from the --live=poll render; --force renders it again)');
+
+    $this->artisan('horizon-observability:install', ['--docker' => true, '--app-url' => 'http://host.docker.internal:8000'])
+        ->expectsConfirmation('The dashboard in docker/observability/grafana differs from the --live=poll render. Render it again?', 'no')
+        ->assertExitCode(0);
+
+    expect(file_get_contents($dashboard))->toBe("{\"rendered\": \"--live=stream by hand\"}\n");
+
+    [, $output] = install(['--docker' => true, '--force' => true]);
+
+    expect(file_get_contents($dashboard))->not->toContain('by hand')
+        ->and($output)->toContain('rendered (--live=poll)');
+});
+
+it('points the endpoints, the scrape jobs and the Infinity URL at the package domain', function (): void {
+    config()->set('horizon-observability.domain', 'metrics.shop.test');
+    config()->set('app.url', 'http://localhost:8080');
+    $this->app->forgetInstance(Config::class);
+
+    [, $output] = install();
+
+    // The routes answer only on the domain: the scheme and port of APP_URL, the domain as the host.
+    expect($output)->toContain('http://metrics.shop.test:8080/horizon/observability/{metrics,jobs/*,live}')
+        ->and($output)->toContain("targets: ['metrics.shop.test:8080']")
+        ->and($output)->toContain('customHealthCheckUrl: http://metrics.shop.test:8080/horizon/observability/jobs/pending?limit=1');
+
+    // Docker with a local APP_URL: the containers reach the domain on the Docker host.
+    [$code, $output] = install(['--docker' => true]);
+    $compose = Yaml::parseFile($this->base.'/'.DockerStack::COMPOSE_FILE);
+    $prometheus = Yaml::parseFile($this->base.'/docker/observability/prometheus/prometheus.yml');
+
+    expect($code)->toBe(0)
+        ->and($prometheus['scrape_configs'][0]['static_configs'][0]['targets'])->toBe(['metrics.shop.test:8080'])
+        ->and($compose['services']['grafana']['environment']['HORIZON_OBSERVABILITY_APP_URL'])->toBe('http://metrics.shop.test:8080')
+        ->and($compose['services']['prometheus']['extra_hosts'])->toBe(['host.docker.internal:host-gateway', 'metrics.shop.test:host-gateway'])
+        ->and($compose['services']['grafana']['extra_hosts'])->toBe(['host.docker.internal:host-gateway', 'metrics.shop.test:host-gateway'])
+        ->and($output)->toContain('php artisan serve --host=0.0.0.0 --port=8080');
+
+    // A domain without a port in APP_URL gets the port of php artisan serve; a public APP_URL keeps DNS.
+    config()->set('app.url', 'http://localhost');
+    install(['--docker' => true, '--force' => true]);
+
+    expect(Yaml::parseFile($this->base.'/docker/observability/prometheus/prometheus.yml')['scrape_configs'][0]['static_configs'][0]['targets'])->toBe(['metrics.shop.test:8000']);
+
+    config()->set('app.url', 'https://shop.example.com');
+    config()->set('horizon-observability.domain', 'metrics.example.com');
+    install(['--docker' => true, '--force' => true]);
+    $compose = Yaml::parseFile($this->base.'/'.DockerStack::COMPOSE_FILE);
+
+    expect($compose['services']['grafana']['environment']['HORIZON_OBSERVABILITY_APP_URL'])->toBe('https://metrics.example.com')
+        ->and($compose['services']['prometheus']['extra_hosts'])->toBe(['host.docker.internal:host-gateway']);
 });
 
 it('asks where Docker reaches the app when interactive', function (): void {
@@ -338,8 +481,10 @@ it('writes a stack that docker compose config accepts, and that names the token 
 
     expect($resolved['services']['prometheus']['environment']['HORIZON_OBSERVABILITY_TOKEN'])->toBe($token)
         ->and($resolved['services']['grafana']['environment']['HORIZON_OBSERVABILITY_API_TOKEN'])->toBe($token)
-        // Escaped for compose: the shell in the container reads the variable, so the token is in no file of the stack.
-        ->and($resolved['services']['prometheus']['command'][0])->toContain('"$$HORIZON_OBSERVABILITY_TOKEN"');
+        // Escaped for compose: the shell in the container reads the variable (its first entry), so the token is in no
+        // file of the stack.
+        ->and($resolved['services']['prometheus']['command'][0])->toContain('"$${HORIZON_OBSERVABILITY_TOKEN%%,*}"')
+        ->and($resolved['services']['grafana']['command'][0])->toContain('export HORIZON_OBSERVABILITY_API_TOKEN="$${HORIZON_OBSERVABILITY_API_TOKEN%%,*}";');
 
     file_put_contents($this->base.'/.env', "APP_NAME=Shop\n");
     $missing = new Process(['docker', 'compose', '-f', DockerStack::COMPOSE_FILE, 'config', '-q'], $this->base);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use DF\HorizonObservability\Install\AppUrl;
 use DF\HorizonObservability\Install\DockerStack;
+use Symfony\Component\Process\Process;
 use Symfony\Component\Yaml\Yaml;
 
 /*
@@ -38,10 +39,11 @@ it('runs Prometheus and Grafana of the chosen major, local only', function (stri
         ->and($compose['services']['prometheus']['ports'])->toBe(['127.0.0.1:${PROMETHEUS_PORT:-9090}:9090'])
         ->and($compose['services']['grafana']['environment'])->toMatchArray([
             'GF_AUTH_ANONYMOUS_ORG_ROLE' => 'Viewer',
-            'GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH' => '/etc/grafana/dashboards/horizon-observability/horizon-observability.json',
             'GF_UNIFIED_ALERTING_STATE_HISTORY_PROMETHEUS_TARGET_DATASOURCE_UID' => 'prometheus',
             'HORIZON_OBSERVABILITY_PROMETHEUS_UID' => 'prometheus',
         ])
+        // Grafana 13 serves a default home dashboard file as a copy with another uid (no alert annotations).
+        ->and($compose['services']['grafana']['environment'])->not->toHaveKey('GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH')
         ->and($compose['services']['prometheus']['command'][0])->toContain('--web.enable-remote-write-receiver');
 })->with([['12', 'grafana/grafana:12.4.13'], ['13', 'grafana/grafana:13.2.4']]);
 
@@ -54,6 +56,43 @@ it('starts Grafana once Prometheus has scraped the app, so the dashboard variabl
         ->toContain('http://prometheus:9090/api/v1/query?query=count(ho_horizon_info)')
         ->toEndWith('exec /run.sh')
         ->and($office['services']['grafana']['command'][0])->toContain('count(office_horizon_info)');
+});
+
+it('makes the provisioned dashboard the home page unless the organisation has one', function (): void {
+    $command = Yaml::parse(dockerStack()->files()[DockerStack::COMPOSE_FILE])['services']['grafana']['command'][0];
+
+    expect($command)->toContain('http://localhost:3000/api/org/preferences) || continue;')
+        ->toContain('grep -q \'"homeDashboardUID":"[^"]\' && break;')
+        ->toContain('-X PATCH')
+        ->toContain('-d \'{"homeDashboardUID":"horizon-observability"}\'')
+        ->toContain('-u "admin:$$GF_SECURITY_ADMIN_PASSWORD"')
+        // In the background, so Grafana starts (as PID 1) at once.
+        ->toContain('done) & exec /run.sh');
+});
+
+it('sends the first token of a rotation list from both containers', function (): void {
+    $services = Yaml::parse(dockerStack()->files()[DockerStack::COMPOSE_FILE])['services'];
+
+    expect($services['prometheus']['command'][0])->toStartWith('printf \'%s\' "$${HORIZON_OBSERVABILITY_TOKEN%%,*}" > /tmp/horizon-observability-token && exec ')
+        ->and($services['grafana']['command'][0])->toStartWith('export HORIZON_OBSERVABILITY_API_TOKEN="$${HORIZON_OBSERVABILITY_API_TOKEN%%,*}"; ');
+
+    // What the container shells do with a list, a single token and a token with = padding.
+    foreach (['a-0123456789abcdef,b-0123456789abcdef' => 'a-0123456789abcdef', 'single-0123456789abcdef' => 'single-0123456789abcdef', 'pad+/0123456789abc==' => 'pad+/0123456789abc=='] as $value => $first) {
+        $shell = new Process(['/bin/sh', '-c', 'printf "%s" "${T%%,*}"'], null, ['T' => $value]);
+        $shell->mustRun();
+
+        expect($shell->getOutput())->toBe($first);
+    }
+});
+
+it('maps a host alias to the Docker host in both containers', function (): void {
+    $stack = new DockerStack('p', 'j', AppUrl::parse('http://metrics.shop.test:8000'), '/horizon/observability', '13', 'ho_', 'metrics.shop.test');
+    $services = Yaml::parse($stack->files()[DockerStack::COMPOSE_FILE])['services'];
+
+    expect($services['prometheus']['extra_hosts'])->toBe(['host.docker.internal:host-gateway', 'metrics.shop.test:host-gateway'])
+        ->and($services['grafana']['extra_hosts'])->toBe(['host.docker.internal:host-gateway', 'metrics.shop.test:host-gateway'])
+        ->and(Yaml::parse(dockerStack()->files()[DockerStack::COMPOSE_FILE])['services']['grafana']['extra_hosts'])->toBe(['host.docker.internal:host-gateway'])
+        ->and(static fn (): DockerStack => new DockerStack('p', 'j', AppUrl::parse('http://app'), '/h', '13', 'ho_', "x'] , evil"))->toThrow(InvalidArgumentException::class);
 });
 
 it('rejects an unsupported Grafana', function (): void {

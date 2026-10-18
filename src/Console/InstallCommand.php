@@ -14,7 +14,9 @@ use DF\HorizonObservability\Install\SetupGuide;
 use DF\HorizonObservability\Support\CheckResult;
 use DF\HorizonObservability\Support\CheckStatus;
 use DF\HorizonObservability\Support\Diagnostics;
+use DF\HorizonObservability\Support\EndpointUrl;
 use DF\HorizonObservability\Support\FailureReporter;
+use Dotenv\Dotenv;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Filesystem\Filesystem;
@@ -29,14 +31,19 @@ use Throwable;
  * so a newcomer gets from `composer require` to a dashboard with data in minutes.
  *
  * 1. Publishes `config/horizon-observability.php` (asks; keeps an existing file unless `--force` or confirmed).
- * 2. Writes a 40-character `HORIZON_OBSERVABILITY_TOKEN` to `.env` (or `--token`), plus an empty placeholder to
- *    `.env.example`; an existing value is never overwritten; `--no-env` prints the token instead.
+ * 2. Writes a 40-character `HORIZON_OBSERVABILITY_TOKEN` to `.env` (or `--token`, which must be an RFC 6750 bearer
+ *    token: written unquoted, anything else would not read back the same), checks that `.env` reads it back, and adds
+ *    an empty placeholder to `.env.example`; an existing value is never overwritten; `--no-env` prints the token
+ *    instead.
  * 3. Prints the endpoints, the Prometheus scrape job at 10 s, the Infinity datasource, the render command of each live
- *    mode and the stream mode steps (Grafana service account with role Editor).
+ *    mode and the stream mode steps (Grafana service account with role Editor); with `live.enabled` false only the
+ *    `--live=off` render. The endpoints are where the routes answer: `APP_URL`, or the package domain.
  * 4. `--docker` writes `docker-compose.observability.yml` and `docker/observability/**`: Prometheus with the bearer
- *    token and Grafana 13 (`--grafana=12`: 12.4.13) with the plugins, both datasources, the rendered dashboard (its
- *    home page) and the alert rules, pointed at the app (`--app-url`, by default `APP_URL` with a local host as
- *    `host.docker.internal`, port 8000 unless `APP_URL` has one). A changed file is kept unless `--force` or confirmed.
+ *    token and Grafana 13 (`--grafana=12`: 12.4.13) with the plugins, both datasources, the rendered dashboard (the
+ *    home page; `--live=off` when live is disabled) and the alert rules, pointed at the app (`--app-url`, by default
+ *    `APP_URL` with a local host as `host.docker.internal`, port 8000 unless `APP_URL` has one; with a package domain
+ *    and a local `APP_URL`, the domain, which the containers resolve to the Docker host). A changed file, and a
+ *    dashboard that differs from the render, are kept unless `--force` or confirmed.
  * 5. `--demo` dispatches a burst of sample jobs (`horizon-observability:demo`).
  * 6. Runs the checks of `horizon-observability:check`, prints the problems with their fix lines, and ends with the next
  *    steps and the URL to open.
@@ -50,6 +57,12 @@ final class InstallCommand extends Command
     public const TOKEN_LENGTH = 40;
 
     public const DEFAULT_GRAFANA_URL = 'http://localhost:3000';
+
+    /**
+     * The bearer token syntax of RFC 6750 (b64token): what `.env`, Docker Compose and the `Authorization` header
+     * carry unquoted. No comma, so a token is never read as a rotation list.
+     */
+    public const TOKEN_PATTERN = '/^[A-Za-z0-9._~+\/-]+=*$/';
 
     /**
      * @var string
@@ -88,6 +101,12 @@ final class InstallCommand extends Command
             return self::FAILURE;
         }
 
+        if ($tokenOption !== '' && preg_match(self::TOKEN_PATTERN, $tokenOption) !== 1) {
+            $this->components->error('--token may only contain letters, digits, - . _ ~ + / and = at the end (an RFC 6750 bearer token), so .env and the Authorization header carry it unchanged.');
+
+            return self::FAILURE;
+        }
+
         try {
             $app = $this->appUrl($config, $docker);
         } catch (InvalidArgumentException $e) {
@@ -100,20 +119,22 @@ final class InstallCommand extends Command
 
         $this->publishConfig($files);
         $token = $this->token($tokenOption === '' ? null : $tokenOption, $config);
-        $this->endpoints($config);
+        $live = $this->laravel->make(Config::class)->liveEnabled;
+        $this->endpoints($config, $live);
 
         $job = $this->jobName($config);
         $apiPath = RoutePath::apiPath($config);
+        $alias = $docker ? $this->hostAlias($config, $app) : null;
 
         if ($docker) {
             $prefix = $this->laravel->make(Config::class)->prefix();
-            $this->docker($files, new DockerStack($this->projectName($config), $job, $app, $apiPath, $grafana, $prefix), $token);
+            $this->docker($files, new DockerStack($this->projectName($config), $job, $app, $apiPath, $grafana, $prefix, $alias), $token, $live);
         }
 
         $grafanaUrl = $docker ? self::DEFAULT_GRAFANA_URL : $this->grafanaBase();
-        // Your own Prometheus reaches the app at APP_URL (or --app-url), not through Docker's host gateway.
-        $own = $docker && $this->text('app-url') === '' ? $this->configuredAppUrl($config) : $app;
-        $this->guide(new SetupGuide($job, $own, $apiPath, $grafanaUrl), $docker, $job);
+        // Your own Prometheus reaches the app where the endpoints answer (or --app-url), not through Docker's host gateway.
+        $own = $docker && $this->text('app-url') === '' ? $this->endpointsUrl($config) : $app;
+        $this->guide(new SetupGuide($job, $own, $apiPath, $grafanaUrl, live: $live), $docker, $job);
 
         if ($this->option('demo') === true) {
             $this->newLine();
@@ -124,7 +145,7 @@ final class InstallCommand extends Command
         }
 
         $this->checks();
-        $this->nextSteps($docker, $app, $grafanaUrl);
+        $this->nextSteps($docker, $app, $grafanaUrl, $alias);
 
         return $this->failed ? self::FAILURE : self::SUCCESS;
     }
@@ -205,8 +226,20 @@ final class InstallCommand extends Command
         } else {
             try {
                 EnvFile::write($env, self::TOKEN_ENV, $token);
-                $this->components->twoColumnDetail('Token', self::TOKEN_ENV.' <fg=green>(written to .env)</>');
-                $this->placeholder();
+
+                $read = $this->readBack($env);
+
+                if ($read === $token) {
+                    $this->components->twoColumnDetail('Token', self::TOKEN_ENV.' <fg=green>(written to .env)</>');
+                    $this->placeholder();
+                } else {
+                    $this->failed = true;
+                    $this->components->error(sprintf(
+                        'The next start of the app reads %s from .env as %s, not as written: fix .env (e.g. an unclosed quote above that line).',
+                        self::TOKEN_ENV,
+                        $read === null ? 'missing' : 'another value',
+                    ));
+                }
             } catch (Throwable $e) {
                 $this->failed = true;
                 $this->components->error(FailureReporter::describe($e).' Add '.self::TOKEN_ENV.'='.$token.' to the environment yourself.');
@@ -216,6 +249,18 @@ final class InstallCommand extends Command
         $this->apply($config, $token);
 
         return $token;
+    }
+
+    /**
+     * The token as the next start of the application reads `.env` (phpdotenv, as Laravel loads it), or null.
+     *
+     * @throws Throwable when `.env` cannot be parsed
+     */
+    private function readBack(string $env): ?string
+    {
+        $value = Dotenv::parse((string) file_get_contents($env))[self::TOKEN_ENV] ?? null;
+
+        return is_string($value) ? $value : null;
     }
 
     /**
@@ -252,14 +297,13 @@ final class InstallCommand extends Command
         }
     }
 
-    private function endpoints(Repository $config): void
+    private function endpoints(Repository $config, bool $live): void
     {
-        $base = url(RoutePath::apiPath($config));
-        $this->components->twoColumnDetail('Endpoints', $base.'/{metrics,jobs/*,live}');
+        $this->components->twoColumnDetail('Endpoints', EndpointUrl::to($config).($live ? '/{metrics,jobs/*,live}' : '/{metrics,jobs/*}'));
         $this->components->twoColumnDetail('Horizon', (new HorizonUrl($config))->url());
     }
 
-    private function docker(Filesystem $files, DockerStack $stack, ?string $token): void
+    private function docker(Filesystem $files, DockerStack $stack, ?string $token, bool $live): void
     {
         $this->newLine();
         $this->line(sprintf('  <options=bold>Docker stack</> (Prometheus and %s, the app at %s):', $stack->grafanaImage(), OutputFormatter::escape($stack->app->toString())));
@@ -268,7 +312,7 @@ final class InstallCommand extends Command
             $this->components->twoColumnDetail($relative, $this->writeFile($files, $relative, $contents));
         }
 
-        $this->components->twoColumnDetail(DockerStack::RENDER_DIRECTORY.'/{dashboards,alerting}', $this->render($files, $stack));
+        $this->components->twoColumnDetail(DockerStack::RENDER_DIRECTORY.'/{dashboards,alerting}', $this->render($files, $stack, $live ? 'poll' : 'off'));
 
         if ($token === null) {
             $this->components->warn('No token is set: docker compose needs '.self::TOKEN_ENV.' in .env.');
@@ -307,23 +351,30 @@ final class InstallCommand extends Command
 
     /**
      * The dashboard and alert rules of the Docker stack: rendered by `horizon-observability:grafana` with the app's
-     * config, the Prometheus job and the provisioned datasource uid (only when they changed), or else copied from
-     * the package's committed render.
+     * config, the Prometheus job, the provisioned datasource uid and the live mode (`off` when live is disabled, so no
+     * tile asks for a missing `/live`), or else copied from the package's committed render (a `poll` render). A render
+     * that differs (another live mode rendered by hand, or an older package) is kept unless `--force` or confirmed.
      */
-    private function render(Filesystem $files, DockerStack $stack): string
+    private function render(Filesystem $files, DockerStack $stack, string $live): string
     {
         $directory = $this->laravel->basePath(DockerStack::RENDER_DIRECTORY);
+        $render = ['dashboards/horizon-observability.json', 'alerting/horizon-observability.json'];
+        $rendered = array_filter($render, static fn (string $file): bool => $files->isFile($directory.'/'.$file)) === $render;
 
         if ($this->getApplication()?->has('horizon-observability:grafana') === true) {
-            $arguments = ['path' => $directory, '--job' => $stack->job, '--datasource-uid' => DockerStack::PROMETHEUS_UID];
+            $arguments = ['path' => $directory, '--job' => $stack->job, '--datasource-uid' => DockerStack::PROMETHEUS_UID, '--live' => $live];
 
             try {
-                if ($files->isDirectory($directory) && $this->callSilently('horizon-observability:grafana', [...$arguments, '--check' => true]) === self::SUCCESS) {
+                if ($rendered && $this->callSilently('horizon-observability:grafana', [...$arguments, '--check' => true]) === self::SUCCESS) {
                     return '<fg=gray>unchanged</>';
                 }
 
+                if ($rendered && $this->option('force') !== true && ! $this->confirm(sprintf('The dashboard in %s differs from the --live=%s render. Render it again?', DockerStack::RENDER_DIRECTORY, $live), false)) {
+                    return sprintf('<fg=yellow>kept (differs from the --live=%s render; --force renders it again)</>', $live);
+                }
+
                 if ($this->callSilently('horizon-observability:grafana', $arguments) === self::SUCCESS) {
-                    return '<fg=green>rendered</>';
+                    return '<fg=green>rendered (--live='.$live.')</>';
                 }
             } catch (Throwable $e) {
                 $this->failed = true;
@@ -333,16 +384,15 @@ final class InstallCommand extends Command
 
             $this->failed = true;
 
-            return '<fg=red>failed: run php artisan horizon-observability:grafana '.DockerStack::RENDER_DIRECTORY.' --job='.$stack->job.'</>';
+            return '<fg=red>failed: run php artisan horizon-observability:grafana '.DockerStack::RENDER_DIRECTORY.' --job='.$stack->job.' --live='.$live.'</>';
         }
 
         $source = dirname(__DIR__, 2).'/resources/grafana';
-        $render = ['dashboards/horizon-observability.json', 'alerting/horizon-observability.json'];
 
-        if ($this->laravel->make(Config::class)->prefix() !== Config::DEFAULT_NAMESPACE.'_' || ! $files->isFile($source.'/'.$render[0]) || ! $files->isFile($source.'/'.$render[1])) {
+        if ($live !== 'poll' || $this->laravel->make(Config::class)->prefix() !== Config::DEFAULT_NAMESPACE.'_' || ! $files->isFile($source.'/'.$render[0]) || ! $files->isFile($source.'/'.$render[1])) {
             $this->failed = true;
 
-            return '<fg=red>no render available in this version</>';
+            return '<fg=red>no --live='.$live.' render available in this version</>';
         }
 
         $statuses = array_map(fn (string $file): string => strip_tags($this->writeFile($files, DockerStack::RENDER_DIRECTORY.'/'.$file, $files->get($source.'/'.$file))), $render);
@@ -372,6 +422,10 @@ final class InstallCommand extends Command
         foreach ($guide->renderCommands() as $command => $meaning) {
             $this->line('    '.$command);
             $this->line('      <fg=gray># '.$meaning.'</>');
+        }
+
+        if (! $guide->live) {
+            return;
         }
 
         if ($docker) {
@@ -434,14 +488,14 @@ final class InstallCommand extends Command
         }
     }
 
-    private function nextSteps(bool $docker, AppUrl $app, string $grafanaUrl): void
+    private function nextSteps(bool $docker, AppUrl $app, string $grafanaUrl, ?string $alias): void
     {
         $this->newLine();
         $this->line('  <options=bold>Next steps</>:');
         $steps = [];
 
         if ($docker) {
-            if ($app->host === 'host.docker.internal') {
+            if ($app->host === 'host.docker.internal' || $alias !== null) {
                 $steps[] = sprintf('php artisan serve --host=0.0.0.0 --port=%d   <fg=gray># so Docker reaches the app at %s</>', $app->port ?? 80, OutputFormatter::escape($app->toString()));
             }
 
@@ -458,13 +512,18 @@ final class InstallCommand extends Command
         }
 
         $this->newLine();
-        $open = $docker ? $grafanaUrl : (is_string($url = $this->laravel->make(Config::class)->grafanaUrl) ? $url : rtrim($grafanaUrl, '/').'/d/'.DockerStack::DASHBOARD_UID);
+        // The provisioned dashboard itself: the alert annotations are linked to its uid (Grafana 13 serves a default
+        // home dashboard file as a copy with another uid).
+        $dashboard = rtrim($grafanaUrl, '/').'/d/'.DockerStack::DASHBOARD_UID;
+        $open = $docker ? $dashboard : (is_string($url = $this->laravel->make(Config::class)->grafanaUrl) ? $url : $dashboard);
         $this->components->info('Open '.$open);
     }
 
     /**
-     * The app as Prometheus and Grafana reach it: `--app-url`, else `APP_URL`; with `--docker` a local host becomes
-     * `host.docker.internal` (asked interactively).
+     * The app as Prometheus and Grafana reach it: `--app-url`, else where the endpoints answer ({@see EndpointUrl}:
+     * `APP_URL`, or the package domain); with `--docker` a local host becomes `host.docker.internal`, and a package
+     * domain of a local `APP_URL` is kept with port 8000 (resolved to the Docker host, {@see self::hostAlias()});
+     * asked interactively.
      *
      * @throws InvalidArgumentException for an invalid `--app-url`
      */
@@ -476,13 +535,13 @@ final class InstallCommand extends Command
             return AppUrl::parse($option);
         }
 
-        $app = $this->configuredAppUrl($config);
+        $app = $this->endpointsUrl($config);
 
         if (! $docker) {
             return $app;
         }
 
-        $default = $app->forDocker()->toString();
+        $default = ($this->localDomain($config) === null ? $app->forDocker() : new AppUrl($app->scheme, $app->host, $app->port ?? 8000, $app->path))->toString();
         $answer = $this->ask('At which URL do Prometheus and Grafana in Docker reach the app?', $default);
 
         try {
@@ -492,6 +551,43 @@ final class InstallCommand extends Command
 
             return AppUrl::parse($default);
         }
+    }
+
+    /**
+     * Where the endpoints answer: `APP_URL`, or the package domain with the scheme and port of `APP_URL`.
+     */
+    private function endpointsUrl(Repository $config): AppUrl
+    {
+        try {
+            return AppUrl::parse(EndpointUrl::root($config));
+        } catch (InvalidArgumentException) {
+            return AppUrl::parse('http://localhost');
+        }
+    }
+
+    /**
+     * The package domain when the app runs locally (a local `APP_URL`) and the domain is a host name that is not
+     * itself local: the containers must resolve it to the Docker host, because the routes answer only on it.
+     */
+    private function localDomain(Repository $config): ?string
+    {
+        $domain = EndpointUrl::domain($config);
+
+        if ($domain === null || ! $this->configuredAppUrl($config)->isLocal() || in_array(strtolower($domain), AppUrl::LOCAL_HOSTS, true)) {
+            return null;
+        }
+
+        return preg_match(DockerStack::HOST_PATTERN, $domain) === 1 ? $domain : null;
+    }
+
+    /**
+     * The host the Docker stack maps to the Docker host: the local package domain, when the stack reaches the app on it.
+     */
+    private function hostAlias(Repository $config, AppUrl $app): ?string
+    {
+        $domain = $this->localDomain($config);
+
+        return $domain !== null && strcasecmp($domain, $app->host) === 0 ? $domain : null;
     }
 
     /**

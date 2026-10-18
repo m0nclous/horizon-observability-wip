@@ -9,11 +9,18 @@ use InvalidArgumentException;
 /**
  * The files of `horizon-observability:install --docker` (owner decision 12): a small local stack with Prometheus
  * (scraping the app every 10 s with the bearer token, Addendum R3.2) and Grafana (Infinity and Business Text plugins,
- * both datasources, the rendered dashboard as the home dashboard, and the alert rules), pointed at the app.
+ * both datasources, the rendered dashboard, which becomes the organisation's home dashboard, and the alert rules),
+ * pointed at the app.
  *
  * Nothing secret is written: Docker Compose reads `HORIZON_OBSERVABILITY_TOKEN` (and an optional
  * `HORIZON_OBSERVABILITY_API_TOKEN`) from the `.env` file next to the compose file, which is the application's own.
+ * Both may be comma-separated lists (rotation, config/horizon-observability.php); the containers send the first
+ * entry, because one `Authorization: Bearer` header carries one token.
  * Ports listen on 127.0.0.1 only; Grafana allows anonymous viewers and `admin`/`admin`, so the stack is for local use.
+ *
+ * The home dashboard is set through Grafana's API once Grafana runs (the organisation preference, on 12 and 13 a
+ * redirect to `/d/<uid>`): `GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH` would make Grafana 13 serve a copy with another
+ * uid, without the alert annotations, which are linked to the provisioned uid.
  *
  * The dashboard and the alert rules are rendered by `horizon-observability:grafana` into {@see self::RENDER_DIRECTORY}.
  *
@@ -46,6 +53,11 @@ final readonly class DockerStack
     public const DASHBOARD_UID = 'horizon-observability';
 
     /**
+     * A host name the containers can map with `extra_hosts`.
+     */
+    public const HOST_PATTERN = '/^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/';
+
+    /**
      * How long Grafana waits for Prometheus' first scrape of the app before it starts anyway.
      */
     public const FIRST_SCRAPE_WAIT_SECONDS = 60;
@@ -57,8 +69,10 @@ final readonly class DockerStack
      * @param  string  $apiPath  the endpoints' base path, e.g. /horizon/observability
      * @param  string  $grafana  Grafana major, a key of {@see self::GRAFANA_IMAGES}
      * @param  string  $metricPrefix  the metric name prefix of the app, e.g. `ho_`
+     * @param  string|null  $hostAlias  a host name the containers resolve to the Docker host, e.g. the package
+     *                                  domain of an app served locally (its routes answer only on that host)
      *
-     * @throws InvalidArgumentException for an unsupported Grafana major
+     * @throws InvalidArgumentException for an unsupported Grafana major or a host alias that is not a host name
      */
     public function __construct(
         public string $project,
@@ -67,9 +81,14 @@ final readonly class DockerStack
         public string $apiPath,
         public string $grafana = '13',
         public string $metricPrefix = 'ho_',
+        public ?string $hostAlias = null,
     ) {
         if (! isset(self::GRAFANA_IMAGES[$grafana])) {
             throw new InvalidArgumentException('--grafana must be 12 or 13.');
+        }
+
+        if ($hostAlias !== null && preg_match(self::HOST_PATTERN, $hostAlias) !== 1) {
+            throw new InvalidArgumentException(sprintf('[%s] is not a host name.', $hostAlias));
         }
     }
 
@@ -108,20 +127,25 @@ final readonly class DockerStack
         $plugins = self::PLUGINS;
         $uid = self::PROMETHEUS_UID;
         $app = $this->app->toString();
-        $dashboard = '/etc/grafana/dashboards/horizon-observability/'.self::DASHBOARD_UID.'.json';
         $missing = 'set HORIZON_OBSERVABILITY_TOKEN in .env (php artisan horizon-observability:install)';
         $wait = self::FIRST_SCRAPE_WAIT_SECONDS;
+        $home = self::DASHBOARD_UID;
+        $hosts = "['".implode("', '", array_map(
+            static fn (string $host): string => $host.':host-gateway',
+            array_values(array_unique(['host.docker.internal', ...($this->hostAlias === null ? [] : [$this->hostAlias])])),
+        ))."']";
 
         return <<<YAML
             # Local Prometheus and Grafana for Horizon Observability, written by
             # php artisan horizon-observability:install --docker (run it again with --force to rewrite this file).
             #
             #   docker compose -f docker-compose.observability.yml up -d
-            #   open http://localhost:3000 (the dashboard is Grafana's home page; admin/admin to edit)
+            #   open http://localhost:3000/d/{$home} (also Grafana's home page; admin/admin to edit)
             #
             # Prometheus scrapes {$app} every 10 s, so serve the app there, e.g.
             # php artisan serve --host=0.0.0.0 --port=8000, and run php artisan horizon.
-            # The bearer token is HORIZON_OBSERVABILITY_TOKEN from the .env file next to this file.
+            # The bearer token is HORIZON_OBSERVABILITY_TOKEN from the .env file next to this file (the first one
+            # of a comma-separated list).
             # Local use only: the ports listen on 127.0.0.1 and Grafana lets anonymous visitors view.
             name: {$this->project}
 
@@ -131,12 +155,12 @@ final readonly class DockerStack
                 entrypoint: [/bin/sh, -c]
                 command:
                   - >-
-                    printf '%s' "\$\$HORIZON_OBSERVABILITY_TOKEN" > /tmp/horizon-observability-token &&
+                    printf '%s' "\$\${HORIZON_OBSERVABILITY_TOKEN%%,*}" > /tmp/horizon-observability-token &&
                     exec /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus
                     --storage.tsdb.retention.time=7d --web.enable-remote-write-receiver
                 environment:
                   HORIZON_OBSERVABILITY_TOKEN: \${HORIZON_OBSERVABILITY_TOKEN:?{$missing}}
-                extra_hosts: ['host.docker.internal:host-gateway']
+                extra_hosts: {$hosts}
                 volumes:
                   - ./docker/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
                   - prometheus-data:/prometheus
@@ -147,20 +171,28 @@ final readonly class DockerStack
                 image: {$grafana}
                 depends_on: [prometheus]
                 # The dashboard reads its hidden variables (the job, the API path) from Prometheus when it loads, so
-                # Grafana starts once Prometheus has scraped the app (or after {$wait} s).
+                # Grafana starts once Prometheus has scraped the app (or after {$wait} s). Once it answers, the
+                # dashboard becomes the home page of the organisation unless it has one. The Infinity datasource
+                # sends the first token of a list.
                 entrypoint: [/bin/sh, -c]
                 command:
                   - >-
+                    export HORIZON_OBSERVABILITY_API_TOKEN="\$\${HORIZON_OBSERVABILITY_API_TOKEN%%,*}";
                     for i in \$\$(seq 1 {$wait}); do
                     wget -qO- 'http://prometheus:9090/api/v1/query?query=count({$this->metricPrefix}horizon_info)' 2>/dev/null
-                    | grep -q '"value"' && break; sleep 1; done; exec /run.sh
-                extra_hosts: ['host.docker.internal:host-gateway']
+                    | grep -q '"value"' && break; sleep 1; done;
+                    (for i in \$\$(seq 1 120); do sleep 2;
+                    p=\$\$(curl -sf -u "admin:\$\$GF_SECURITY_ADMIN_PASSWORD" http://localhost:3000/api/org/preferences) || continue;
+                    echo "\$\$p" | grep -q '"homeDashboardUID":"[^"]' && break;
+                    curl -sf -o /dev/null -u "admin:\$\$GF_SECURITY_ADMIN_PASSWORD" -X PATCH -H 'Content-Type: application/json'
+                    -d '{"homeDashboardUID":"{$home}"}' http://localhost:3000/api/org/preferences && break; done) &
+                    exec /run.sh
+                extra_hosts: {$hosts}
                 environment:
                   GF_SECURITY_ADMIN_PASSWORD: admin
                   GF_AUTH_ANONYMOUS_ENABLED: 'true'
                   GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
                   GF_PLUGINS_PREINSTALL_SYNC: {$plugins}
-                  GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: {$dashboard}
                   # The Alerts tile and the alert sound read Grafana's alert state history from Prometheus.
                   GF_UNIFIED_ALERTING_STATE_HISTORY_ENABLED: 'true'
                   GF_UNIFIED_ALERTING_STATE_HISTORY_BACKEND: multiple
