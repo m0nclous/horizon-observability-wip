@@ -52,7 +52,8 @@ it('names truth tests that exist and reference their family', function (): void 
 
             $code = (string) file_get_contents($file);
 
-            expect(str_contains($code, 'Metric::'.$case) || str_contains($code, "'".$family."'"))
+            // A whole case name: Metric::JobDurationMin alone does not cover JobDuration.
+            expect(preg_match('/Metric::'.$case.'\b/', $code) === 1 || str_contains($code, "'".$family."'"))
                 ->toBeTrue(sprintf('%s does not reference %s', $test, $family));
         }
     }
