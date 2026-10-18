@@ -32,11 +32,12 @@ use Throwable;
  *   3 completed attempts counted 0 of them. The exporter knows when a series was created
  *   ({@see Keys::created()}, written by `record_attempt.lua` with its first count) and exports a series created less
  *   than {@see self::NEW_SERIES_HOLD_SECONDS} ago as 0: every scraper (5-60 s intervals, every replica, clocks
- *   within 15 s) records at least one 0 sample before the real value, which then counts in full. Series without a creation time (the
- *   counters of a scrape job added later, of a replica that starts later, data from before the creation times)
- *   are exported as they are, so their old totals are never counted as new. The cost: the first attempts of a new
- *   (connection, queue, job_class) and the first waits of a new queue show up to 90 s late, and while a new class
- *   of a known queue is held, that queue's wait histogram (not held) already counts its first waits.
+ *   within 15 s) records at least one 0 sample before the real value, which then counts in full. Series without a
+ *   creation time (the counters of a scrape job added later, of a replica that starts later, data from before the
+ *   creation times) are exported as they are, so their old totals are never counted as new. The cost: the first
+ *   attempts of a new (connection, queue, job_class) and the first waits of a new queue show up to 90 s late, and
+ *   while a new class of a known queue is held, that queue's wait histogram (not held) already counts its first
+ *   waits.
  * - Fields of classes that left the class set (idle for 30 days and pruned by `record_attempt.lua` when the full set
  *   needed room for a new class, Arch Q4) are not exported and are deleted lazily, at most
  *   {@see self::FORGET_LIMIT} per scrape; `(other)` always stays.
