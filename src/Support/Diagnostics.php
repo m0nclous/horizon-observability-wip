@@ -21,6 +21,7 @@ use DF\HorizonObservability\Live\LiveSnapshot;
 use DF\HorizonObservability\Live\Stream\GrafanaLivePusher;
 use DF\HorizonObservability\Live\Stream\LineProtocol;
 use DF\HorizonObservability\Metrics\Exporter;
+use DF\HorizonObservability\Metrics\InvalidMetric;
 use DF\HorizonObservability\Metrics\MetricFamily;
 use DF\HorizonObservability\Metrics\ScrapeContext;
 use DF\HorizonObservability\Metrics\TextFormat;
@@ -111,7 +112,18 @@ final readonly class Diagnostics
      */
     public const SLOW_SCRAPE_SECONDS = 4.5;
 
-    public function __construct(private Container $container) {}
+    /**
+     * @var Closure(): float
+     */
+    private Closure $clock;
+
+    /**
+     * @param  (Closure(): float)|null  $clock  monotonic seconds for the dry-run durations, for tests; default `hrtime()`
+     */
+    public function __construct(private Container $container, ?Closure $clock = null)
+    {
+        $this->clock = $clock ?? static fn (): float => hrtime(true) / 1e9;
+    }
 
     /**
      * The `about` section. Reads the configuration only and never throws: a value that cannot be computed reads
@@ -124,7 +136,7 @@ final readonly class Diagnostics
         return [
             'Version' => $this->safely(fn (): string => $this->container->make(Versions::class)->package() ?? 'unknown'),
             'Enabled' => $this->safely(fn (): string => $this->config()->enabled ? 'yes' : 'no'),
-            'Endpoints' => $this->safely(fn (): string => url(RoutePath::apiPath($this->repository()))),
+            'Endpoints' => $this->safely(fn (): string => EndpointUrl::to($this->repository())),
             'Access' => $this->safely(fn (): string => $this->container->make(AccessPolicy::class)->mode()),
             'Namespace' => $this->safely(fn (): string => $this->config()->namespace === '' ? '(none)' : $this->config()->namespace),
             'Storage' => $this->safely(fn (): string => sprintf(
@@ -322,7 +334,10 @@ final readonly class Diagnostics
             $results[] = CheckResult::ok($section, 'Precedence', sprintf('%s/{metrics,jobs/*%s} answer the package routes%s', '/'.$base, $config->liveEnabled ? ',live' : '', $cached ? ' (cached)' : ''));
         }
 
-        $results[] = CheckResult::info($section, 'Endpoints', url('/'.$base.'/metrics').', '.url('/'.$base.'/jobs/{list}').($config->liveEnabled ? ', '.url('/'.$base.'/live') : ''));
+        $results[] = CheckResult::info($section, 'Endpoints', implode(', ', array_map(
+            fn (string $path): string => EndpointUrl::to($repository, $path),
+            $config->liveEnabled ? ['/metrics', '/jobs/{list}', '/live'] : ['/metrics', '/jobs/{list}'],
+        )));
 
         return $results;
     }
@@ -585,7 +600,7 @@ final readonly class Diagnostics
             $supervisors = $this->container->make(Supervisors::class);
             $status = $supervisors->status();
             $results[] = match ($status) {
-                1 => CheckResult::ok($section, 'Status', sprintf('running (%d supervisors)', count($supervisors->all()))),
+                1 => CheckResult::ok($section, 'Status', sprintf('running (%s)', $this->plural(count($supervisors->all()), 'supervisor', 'supervisors'))),
                 0 => CheckResult::warning($section, 'Status', 'paused: no job is processed', 'Run php artisan horizon:continue.'),
                 default => CheckResult::warning($section, 'Status', 'not running: no job is processed and the dashboard shows Horizon as down', 'Start it with php artisan horizon (under supervisord or systemd in production).'),
             };
@@ -779,37 +794,28 @@ final readonly class Diagnostics
             }
 
             $context = new ScrapeContext(now()->toImmutable(), Exporter::BUDGET);
-            $started = hrtime(true);
+            $started = ($this->clock)();
 
             try {
-                $collector = $this->container->make(Exporter::COLLECTORS[$id]);
-
-                if (! $collector instanceof Collector) {
-                    throw new LogicException(sprintf('%s does not implement %s.', Exporter::COLLECTORS[$id], Collector::class));
-                }
-
-                $families = [];
-
-                foreach ($collector->collect($context) as $family) {
-                    $families[] = $family;
-                }
-
-                /** @var list<MetricFamily> $families */
-                $lines = explode("\n", $format->render($families, $config->prefix()));
+                // What the scrape renders of the collector: the families with samples (TextFormat leaves out the empty
+                // ones), checked against the catalog as Exporter::scrape() checks them.
+                $lines = explode("\n", $format->render($this->families($id, $context), $config->prefix()));
+                $families = count(array_filter($lines, static fn (string $line): bool => str_starts_with($line, '# TYPE ')));
                 $samples = count(array_filter($lines, static fn (string $line): bool => $line !== '' && ! str_starts_with($line, '#')));
                 $failures = $context->takeFailures();
             } catch (Throwable $e) {
-                $total += (hrtime(true) - $started) / 1e9;
+                $context->takeFailures();
+                $total += ($this->clock)() - $started;
                 $results[] = $this->collectorFailure($section, $id, null, $e, $config);
 
                 continue;
             }
 
-            $seconds = (hrtime(true) - $started) / 1e9;
+            $seconds = ($this->clock)() - $started;
             $total += $seconds;
 
             $results[] = $failures === []
-                ? CheckResult::ok($section, $id, sprintf('%s, %s in %s s', $this->plural(count($families), 'family', 'families'), $this->plural($samples, 'sample', 'samples'), number_format($seconds, 3, '.', '')))
+                ? CheckResult::ok($section, $id, sprintf('%s, %s in %s s', $this->plural($families, 'family', 'families'), $this->plural($samples, 'sample', 'samples'), number_format($seconds, 3, '.', '')))
                 : $this->collectorFailure($section, $id, $failures[0]['source'], $failures[0]['exception'], $config, count($failures));
         }
 
@@ -818,6 +824,37 @@ final readonly class Diagnostics
         }
 
         return $results;
+    }
+
+    /**
+     * The collector's families, checked as {@see Exporter::scrape()} checks them: only families of this collector, each
+     * once (a second one makes {@see TextFormat::render()} throw); otherwise the scrape drops all of them.
+     *
+     * @return list<MetricFamily>
+     */
+    private function families(string $id, ScrapeContext $context): array
+    {
+        $collector = $this->container->make(Exporter::COLLECTORS[$id]);
+
+        if (! $collector instanceof Collector) {
+            throw new LogicException(sprintf('%s does not implement %s.', Exporter::COLLECTORS[$id], Collector::class));
+        }
+
+        $families = [];
+
+        foreach ($collector->collect($context) as $family) {
+            if (! $family instanceof MetricFamily) {
+                throw new InvalidMetric(sprintf('The %s collector yielded %s instead of a MetricFamily.', $id, get_debug_type($family)));
+            }
+
+            if ($family->metric()->collector() !== $id) {
+                throw new InvalidMetric(sprintf('The %s collector yielded %s, a family of the %s collector.', $id, $family->metric()->value, $family->metric()->collector()));
+            }
+
+            $families[] = $family;
+        }
+
+        return $families;
     }
 
     private function collectorFailure(string $section, string $id, ?string $source, Throwable $e, Config $config, int $count = 1): CheckResult
@@ -861,7 +898,7 @@ final readonly class Diagnostics
             return $results;
         }
 
-        $results[] = CheckResult::ok($section, 'Enabled', sprintf('poll endpoint %s (shared for %s s)', url(RoutePath::apiPath($this->repository()).'/live'), TextFormat::number($config->liveCacheTtl)));
+        $results[] = CheckResult::ok($section, 'Enabled', sprintf('poll endpoint %s (shared for %s s)', EndpointUrl::to($this->repository(), '/live'), TextFormat::number($config->liveCacheTtl)));
 
         if ($config->hasProblem('live.stream.id')) {
             $results[] = CheckResult::error($section, 'Stream id', sprintf('invalid: using "%s"', $config->liveStreamId), 'Set HORIZON_OBSERVABILITY_LIVE_STREAM_ID to 1-64 characters of A-Z, a-z, 0-9, _ and -, and render the dashboard with the same --live-stream-id.');

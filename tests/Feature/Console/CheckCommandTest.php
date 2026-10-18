@@ -2,26 +2,34 @@
 
 declare(strict_types=1);
 
+use Carbon\CarbonImmutable;
 use DF\HorizonObservability\Collectors\Collector;
 use DF\HorizonObservability\Collectors\QueueCollector;
 use DF\HorizonObservability\Config\Config;
+use DF\HorizonObservability\Discovery\JobClassCache;
+use DF\HorizonObservability\HorizonObservabilityServiceProvider;
 use DF\HorizonObservability\Metrics\ScrapeContext;
 use DF\HorizonObservability\Queues\UnsupportedTopology;
 use DF\HorizonObservability\Redis\Keys;
 use DF\HorizonObservability\Redis\RedisClients;
 use DF\HorizonObservability\Support\CheckResult;
+use DF\HorizonObservability\Support\CheckStatus;
 use DF\HorizonObservability\Support\Diagnostics;
+use DF\HorizonObservability\Support\Versions;
 use DF\HorizonObservability\Tests\Support\Apps;
 use DF\HorizonObservability\Tests\Support\HorizonState;
 use DF\HorizonObservability\Tests\Support\RegistersInBootProvider;
 use DF\HorizonObservability\Tests\TestCase;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
+use Illuminate\Queue\Events\JobTimedOut;
 use Illuminate\Routing\RouteCollection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\ServiceProvider;
 use Laravel\Horizon\HorizonServiceProvider;
 use Predis\Client;
 
@@ -340,15 +348,186 @@ it('reports a queue in an unsupported cluster topology with the hash tag fix', f
         ->and($queues['fix'])->toContain('hash tag');
 });
 
-it('shows Horizon running and a valid Grafana link', function (): void {
+it('shows Horizon running with the number of its supervisors', function (): void {
     HorizonState::using($this->app)
         ->master('host-a', 'running', ['host-a:supervisor-1'])
         ->supervisor('host-a:supervisor-1', HorizonState::options('host-a:supervisor-1'), ['redis:default' => 2]);
 
     [, $report] = checkReport();
 
-    expect(checkItem($report, 'Horizon', 'Status'))->toMatchArray(['status' => 'ok', 'message' => 'running (1 supervisors)'])
-        ->and(checkItem($report, 'Horizon', 'Grafana link')['status'])->toBe('info');
+    expect(checkItem($report, 'Horizon', 'Status'))->toMatchArray(['status' => 'ok', 'message' => 'running (1 supervisor)']);
+
+    HorizonState::using($this->app)
+        ->master('host-a', 'running', ['host-a:supervisor-1', 'host-a:supervisor-2'])
+        ->supervisor('host-a:supervisor-2', HorizonState::options('host-a:supervisor-2', queue: 'emails'), ['redis:emails' => 1]);
+
+    [, $report] = checkReport();
+
+    expect(checkItem($report, 'Horizon', 'Status'))->toMatchArray(['status' => 'ok', 'message' => 'running (2 supervisors)']);
+});
+
+it('reports the Grafana link as off, invalid or not on the route, each with its fix', function (): void {
+    [, $report] = checkReport();
+
+    expect(checkItem($report, 'Horizon', 'Grafana link'))->toMatchArray([
+        'status' => 'info',
+        'message' => 'off',
+        'fix' => "Set HORIZON_OBSERVABILITY_GRAFANA_URL to the dashboard URL to add a Grafana link to Horizon's sidebar.",
+    ]);
+
+    config()->set('horizon-observability.grafana.url', '/d/horizon-observability');
+    [, $report] = checkReport();
+
+    expect(checkItem($report, 'Horizon', 'Grafana link'))->toMatchArray([
+        'status' => 'warning',
+        'message' => 'off: grafana.url is not a valid URL',
+        'fix' => 'Set HORIZON_OBSERVABILITY_GRAFANA_URL to the dashboard URL, e.g. http://localhost:3000/d/horizon-observability.',
+    ]);
+
+    // Set after Horizon registered its routes (a cached config or route list from before the URL).
+    config()->set('horizon-observability.grafana.url', 'http://localhost:3000/d/horizon-observability');
+    [, $report] = checkReport();
+
+    expect(checkItem($report, 'Horizon', 'Grafana link'))->toMatchArray([
+        'status' => 'warning',
+        'message' => "grafana.url is set but Horizon's route does not run the link middleware",
+        'fix' => 'Run php artisan config:clear and php artisan route:clear (or cache both again): the cached Horizon routes predate the URL.',
+    ]);
+
+    config()->set('horizon-observability.enabled', false);
+    [, $report] = checkReport();
+
+    expect(checkItem($report, 'Horizon', 'Grafana link'))->toMatchArray([
+        'status' => 'warning',
+        'fix' => 'Set HORIZON_OBSERVABILITY_ENABLED=true: a disabled package adds no link.',
+    ]);
+
+    config()->set('horizon-observability.enabled', true);
+    $this->app['router']->setRoutes(new RouteCollection);
+    [, $report] = checkReport();
+
+    expect(checkItem($report, 'Horizon', 'Grafana link'))->toMatchArray([
+        'status' => 'warning',
+        'message' => "Horizon's horizon.index route is not registered",
+    ]);
+});
+
+it('reports the Grafana link as active when Horizon runs the link middleware', function (array $providers): void {
+    $url = 'http://localhost:3000/d/horizon-observability?orgId=1';
+    $link = Apps::inspect(
+        $providers,
+        ['horizon-observability.token' => CHECK_TOKEN, 'horizon-observability.grafana.url' => $url],
+        static fn (Application $app): array => array_values(array_filter(
+            array_map(static fn (CheckResult $result): array => $result->toArray(), $app->make(Diagnostics::class)->check()),
+            static fn (array $result): bool => $result['section'] === 'Horizon' && $result['name'] === 'Grafana link',
+        ))[0],
+    );
+
+    expect($link)->toMatchArray(['status' => 'ok', 'message' => 'active: '.$url, 'fix' => null]);
+})->with([
+    'Horizon first' => [[HorizonServiceProvider::class, HorizonObservabilityServiceProvider::class]],
+    'package first' => [[HorizonObservabilityServiceProvider::class, HorizonServiceProvider::class]],
+]);
+
+it('reports the capabilities of the installed Laravel and Horizon', function (string $laravel, ?string $horizon, string $delay): void {
+    $this->app->instance(Versions::class, new Versions(
+        $this->app['config'],
+        $laravel,
+        static fn (string $package): ?string => $package === 'laravel/horizon' ? $horizon : null,
+    ));
+
+    [, $report] = checkReport();
+    $timedOut = property_exists(JobTimedOut::class, 'timeout');
+    $optimize = Versions::hasOptimize(ServiceProvider::class);
+
+    expect(checkItem($report, 'Capabilities', 'Payload delay'))->toMatchArray($delay === 'native'
+        ? ['status' => 'ok', 'message' => 'native: payloads carry createdAt and delay', 'fix' => null]
+        : ['status' => 'info', 'message' => 'legacy: workers keep a ready_at key per delayed job (Laravel < 12.11 or Horizon < 5.49)', 'fix' => null])
+        ->and(checkItem($report, 'Capabilities', 'JobTimedOut::$timeout'))->toMatchArray($timedOut
+            ? ['status' => 'ok', 'message' => 'yes: timed-out attempts record the job timeout as their duration']
+            : ['status' => 'info', 'message' => 'no (Laravel < 13.25): timed-out attempts record the measured duration'])
+        ->and(checkItem($report, 'Capabilities', 'optimize'))->toMatchArray($optimize
+            ? ['status' => 'ok', 'message' => 'php artisan optimize caches the job classes (horizon-observability:cache)', 'fix' => null]
+            : ['status' => 'info', 'fix' => 'Add php artisan horizon-observability:cache to your deploy.'])
+        ->and(Diagnostics::worst(array_map(
+            static fn (array $check): CheckResult => new CheckResult($check['section'], $check['name'], CheckStatus::from($check['status']), $check['message'], $check['fix']),
+            array_values(array_filter($report['checks'], static fn (array $check): bool => $check['section'] === 'Capabilities')),
+        )))->toBe(CheckStatus::Ok);
+})->with([
+    'Laravel 12.11 and Horizon 5.49' => ['12.11.0', '5.49.0.0', 'native'],
+    'Laravel 12.10' => ['12.10.2', '5.49.0.0', 'legacy'],
+    'Horizon 5.48' => ['13.0.0', '5.48.1.0', 'legacy'],
+    'Horizon unknown' => ['13.0.0', null, 'legacy'],
+]);
+
+it('reports the job-class cache file with the time it was written', function (): void {
+    $bootstrap = sys_get_temp_dir().'/ho-check-cache-'.getmypid().'-'.bin2hex(random_bytes(3));
+    mkdir($bootstrap.'/cache', 0755, true);
+    $this->app->useBootstrapPath($bootstrap);
+    $this->app->forgetInstance(JobClassCache::class);
+
+    try {
+        [, $report] = checkReport();
+
+        expect(checkItem($report, 'Job classes', 'Cache file'))->toMatchArray([
+            'status' => 'info',
+            'message' => 'none: discovered at runtime and cached for 1 h in the default cache store',
+            'fix' => 'Run php artisan horizon-observability:cache on deploy (php artisan optimize runs it on Laravel >= 11.27.1).',
+        ]);
+
+        $this->travelTo(CarbonImmutable::parse('2026-10-18 01:02:03', 'UTC'));
+        expect(Artisan::call('horizon-observability:cache'))->toBe(0);
+        $this->travelBack();
+        $this->app->forgetInstance(JobClassCache::class);
+
+        [, $report] = checkReport();
+
+        expect(checkItem($report, 'Job classes', 'Cache file'))->toMatchArray([
+            'status' => 'ok',
+            'message' => 'written 2026-10-18 01:02:03 UTC ('.$bootstrap.'/cache/horizon-observability.php)',
+            'fix' => null,
+        ]);
+    } finally {
+        (new Filesystem)->deleteDirectory($bootstrap);
+    }
+});
+
+it('warns about the attempt-class cap from 90 % and says when classes become (other)', function (int $used, string $status, string $message): void {
+    config()->set('horizon-observability.max_job_classes', 10);
+    $index = TestCase::redisPrefix().'horizon:'.(new Keys)->jobClasses();
+    $raw = new Client(['host' => '127.0.0.1', 'port' => 6379]);
+
+    for ($i = 1; $i <= $used; $i++) {
+        $raw->zadd($index, [sprintf('App\\Jobs\\Job%02d', $i) => 1_760_000_000 + $i]);
+    }
+
+    [, $report] = checkReport();
+    $cap = checkItem($report, 'Job classes', 'Cap');
+
+    expect($cap['status'])->toBe($status)
+        ->and($cap['message'])->toBe($message)
+        ->and($cap['fix'])->toBe($status === 'ok' ? null : 'Raise max_job_classes in config/horizon-observability.php (at most 10000); classes idle for 30 days are pruned.');
+})->with([
+    'none' => [0, 'ok', '0 of 10 attempt classes in use (max_job_classes)'],
+    '80 %' => [8, 'ok', '8 of 10 attempt classes in use (max_job_classes)'],
+    '90 %' => [9, 'warning', '9 of 10 attempt classes in use (max_job_classes): close to the cap'],
+    '100 %' => [10, 'warning', '10 of 10 attempt classes in use (max_job_classes): further classes are counted as (other)'],
+]);
+
+it('names the package domain in the endpoints of check and about', function (): void {
+    config()->set('horizon-observability.domain', 'metrics.shop.test');
+    config()->set('app.url', 'https://shop.test:8443');
+
+    [, $report] = checkReport();
+
+    expect(checkItem($report, 'Routes', 'Endpoints')['message'])->toBe('https://metrics.shop.test:8443/horizon/observability/metrics, https://metrics.shop.test:8443/horizon/observability/jobs/{list}, https://metrics.shop.test:8443/horizon/observability/live')
+        ->and(checkItem($report, 'Live', 'Enabled')['message'])->toStartWith('poll endpoint https://metrics.shop.test:8443/horizon/observability/live ')
+        ->and(app(Diagnostics::class)->about()['Endpoints'])->toBe('https://metrics.shop.test:8443/horizon/observability');
+
+    config()->set('horizon-observability.live.enabled', false);
+    [, $report] = checkReport();
+
+    expect(checkItem($report, 'Routes', 'Endpoints')['message'])->not->toContain('/live');
 });
 
 it('reports Horizon paused with the command that continues it', function (): void {
