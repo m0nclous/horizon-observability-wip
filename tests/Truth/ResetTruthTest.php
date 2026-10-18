@@ -11,12 +11,11 @@ use DF\HorizonObservability\Tests\Fixtures\Attempts\Storage;
 use DF\HorizonObservability\Tests\Support\LogRecorder;
 use DF\HorizonObservability\Tests\Truth\Support\Invariants;
 use DF\HorizonObservability\Tests\Truth\Support\Model;
+use DF\HorizonObservability\Tests\Truth\Support\PrivateRedis;
 use DF\HorizonObservability\Tests\Truth\Support\Samples;
 use DF\HorizonObservability\Tests\Truth\Support\Scenario;
 use DF\HorizonObservability\Tests\Truth\Support\Scenarios;
 use DF\HorizonObservability\Tests\Truth\Support\TruthJob;
-use Symfony\Component\Process\ExecutableFinder;
-use Symfony\Component\Process\Process;
 
 /*
 | Exporter truth (T16): counters never decrease, except in a documented reset. A Redis restart without persistence
@@ -75,38 +74,14 @@ it('decreases a counter only at the documented reset of a restored dataset', fun
 });
 
 it('starts the counters at 0 after a real Redis restart, with and without the old dataset', function (): void {
-    $server = (new ExecutableFinder)->find('redis-server');
+    $redis = PrivateRedis::create();
 
-    if ($server === null) {
-        $this->markTestSkipped('No redis-server binary to restart a private Redis.');
+    if (! $redis instanceof PrivateRedis) {
+        // On CI the real restart is a gate (tests.yml runs it with the server image of every leg), never a skip.
+        expect(PrivateRedis::onCi())->toBeFalse(PrivateRedis::unavailable());
+        $this->markTestSkipped(PrivateRedis::unavailable());
     }
 
-    $directory = sys_get_temp_dir().'/ho-truth-redis-'.getmypid().'-'.bin2hex(random_bytes(3));
-    mkdir($directory);
-    $socket = stream_socket_server('tcp://127.0.0.1:0');
-    $port = (int) substr((string) strrchr((string) stream_socket_get_name($socket, false), ':'), 1);
-    fclose($socket);
-    $redis = null;
-    $start = static function () use ($server, $port, $directory, &$redis): void {
-        $redis = new Process([$server, '--port', (string) $port, '--dir', $directory, '--save', '', '--appendonly', 'no']);
-        $redis->start();
-        $deadline = microtime(true) + 10;
-
-        while (@fsockopen('127.0.0.1', $port) === false) {
-            if (microtime(true) > $deadline) {
-                throw new RuntimeException('The private Redis did not start: '.$redis->getErrorOutput());
-            }
-
-            usleep(20_000);
-        }
-    };
-    $stop = static function (string $mode) use ($port, &$redis): void {
-        // SAVE keeps the dataset in dump.rdb for the next start, like a restore of an older snapshot.
-        $command = $mode === 'save' ? "*1\r\n$4\r\nSAVE\r\n*2\r\n$8\r\nSHUTDOWN\r\n$6\r\nNOSAVE\r\n" : "*2\r\n$8\r\nSHUTDOWN\r\n$6\r\nNOSAVE\r\n";
-        $connection = fsockopen('127.0.0.1', $port);
-        fwrite($connection, $command);
-        $redis->wait();
-    };
     $reconnect = static function (): void {
         foreach ([Config::class, RedisClients::class, AttemptStore::class] as $abstract) {
             app()->forgetInstance($abstract);
@@ -114,14 +89,15 @@ it('starts the counters at 0 after a real Redis restart, with and without the ol
     };
 
     $this->app->instance('log', $log = new LogRecorder);
-    config()->set('database.redis.truth-private', ['host' => '127.0.0.1', 'port' => $port, 'database' => 0]);
+    config()->set('database.redis.truth-private', ['host' => '127.0.0.1', 'port' => $redis->port, 'database' => 0]);
     config()->set('horizon-observability.redis.connection', 'truth-private');
     $reconnect();
-    $start();
+    $redis->start();
 
     try {
         $scenario = Scenario::start($this);
         $completed = static fn (): ?float => (new Samples($scenario->scrape()))->value(Metric::JobsTotal->value, ['connection' => 'redis', 'queue' => 'default', 'job_class' => 'Truth\\Invoice', 'status' => 'completed']);
+        $runId = static fn (): string => (string) (Storage::store()->reader()->hget((new Keys)->meta(), 'run_id') ?? '');
 
         foreach (range(1, 3) as $ignored) {
             $scenario->dispatch(new TruthJob('Truth\\Invoice'));
@@ -131,12 +107,16 @@ it('starts the counters at 0 after a real Redis restart, with and without the ol
 
         expect($completed())->toBe(3.0);
 
+        $before = $runId();
+
         // Restart with the old dataset: the counters come back under a new run id and are reset at once.
-        $stop('save');
-        $start();
+        $redis->stop(save: true);
+        $redis->start();
         $reconnect();
 
-        expect($completed())->toBeNull()
+        expect(Storage::hash((new Keys)->attempts()))->not->toBe([], 'the restarted server loaded the old dataset ('.$redis->describe().')')
+            ->and($completed())->toBeNull()
+            ->and($runId())->not->toBe($before)
             ->and($log->messages('info'))->toContain('horizon-observability: the Redis run_id changed (restart or restore); the attempt counters were reset.');
 
         $scenario->dispatch(new TruthJob('Truth\\Invoice'))->work();
@@ -148,12 +128,12 @@ it('starts the counters at 0 after a real Redis restart, with and without the ol
         expect($completed())->toBe(1.0);
 
         // Restart without the dataset: nothing to reset, the counters are simply gone and start at 0 again.
-        $stop('nosave');
-        @unlink($directory.'/dump.rdb');
-        $start();
+        $redis->stop(save: false);
+        $redis->start();
         $reconnect();
 
-        expect($completed())->toBeNull();
+        expect(Storage::hash((new Keys)->attempts()))->toBe([])
+            ->and($completed())->toBeNull();
 
         $scenario->dispatch(new TruthJob('Truth\\Invoice'))->dispatch(new TruthJob('Truth\\Invoice'))->work();
 
@@ -163,11 +143,14 @@ it('starts the counters at 0 after a real Redis restart, with and without the ol
 
         expect($completed())->toBe(2.0);
     } finally {
-        if ($redis instanceof Process && $redis->isRunning()) {
-            $redis->stop(0);
-        }
-
-        array_map(unlink(...), glob($directory.'/*') ?: []);
-        rmdir($directory);
+        $redis->close();
     }
+});
+
+it('runs the real restart on every CI leg with the server image of the leg', function (): void {
+    // The runners have no redis-server: PrivateRedis starts the image in Docker, and CI fails instead of skipping.
+    $workflow = (string) file_get_contents(dirname(__DIR__, 2).'/.github/workflows/tests.yml');
+
+    expect($workflow)->toContain('TRUTH_REDIS_IMAGE: ${{ matrix.redis }}')
+        ->and($workflow)->toContain('TRUTH_REDIS_IMAGE: redis:7.4-alpine');
 });
