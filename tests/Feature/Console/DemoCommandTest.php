@@ -99,6 +99,9 @@ it('dispatches the burst and a batch to the default Horizon queue', function ():
 
 it('gives the outcomes it promises when a worker runs them', function (): void {
     Sleep::fake();
+    // The queue's clock: the retries and the release come due 1 s after their first attempt, so on a wall clock a slow
+    // first worker run (parallel load) would already run them again. Only travel() moves the frozen clock.
+    $this->freezeTime();
     Artisan::call('horizon-observability:demo', ['--jobs' => 20]);
 
     $this->runWorker();
