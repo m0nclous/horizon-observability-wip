@@ -46,8 +46,9 @@ function firstValueCounts(Scenario $scenario, string $class = 'Truth\\Invoice', 
     ];
 }
 
-it('restates the collector hold in the model', function (): void {
-    expect(Model::HOLD_SECONDS)->toBe(AttemptsCollector::NEW_SERIES_HOLD_SECONDS);
+it('restates the collector hold in the model and in the HELP text of queue_jobs_total', function (): void {
+    expect(Model::HOLD_SECONDS)->toBe(AttemptsCollector::NEW_SERIES_HOLD_SECONDS)
+        ->and(Metric::JobsTotal->help())->toContain('a new series reads 0 for its first '.AttemptsCollector::NEW_SERIES_HOLD_SECONDS.' seconds');
 });
 
 it('exports a new series as 0 for the hold, then with every attempt it was created with', function (): void {
