@@ -247,6 +247,19 @@ Reference stack, medium profile, `--live=off`, all filters "All". Wall times are
 
 O6 (combined attempts query) is required in WP8C to give the 1-hour p50 a margin of at least 30 % and to absorb the O2 scope cost. Expected, not measured end to end: about −0.3 s of PromQL.
 
+**Measured after T13 QA round 2** (2026-10-18, `planning/perf/T13/r3-*.txt`; medium profile, `--live=off`, the shared 4-vCPU sandbox with the workbench load and other sessions running):
+
+| Metric | 12.4.13 | 13.2.4 | Before round 3 (WP8C final) |
+|---|---|---|---|
+| Refresh p50, 1 h, cycles 2–4 (two runs) | 0.72 s, 0.76 s | 1.05 s, 0.95 s | 1.15–1.20 s |
+| Refresh p50, 1 h, cycles 2–11 | 0.85 s | 0.79 s | – |
+| Refresh p95, 1 h | 0.72–0.91 s | 1.08–1.13 s | 1.25–1.31 s |
+| Refresh p50, 6 h | 1.23 s | 1.28 s | – |
+| Sequential PromQL, 1 h (replay) | 0.75–0.80 s | 0.76–0.84 s | 1.10–1.15 s |
+| Requests, variable requests, interpolated KB, largest panel KB | 12, 2, 64.3, 16.7 | 12, 2, 64.3, 16.7 | 12, 2, 73.4, 20.9 |
+
+The PromQL replay has a 44–50 % margin under its 1.5 s budget, and the 1-hour p50 is within the 1.0 s budget in five of the six measurements. The 30 % end-to-end margin (0.7 s) is not shown on this sandbox: browser-side request times are 2–4 times the replayed PromQL (six connections per host, Grafana and Chromium sharing the CPU with Prometheus), and runs of the same render differ by up to 0.3 s. **Open for the owner:** re-measure on the reference stack, or accept the measured p50 as the margin.
+
 `planning/TASKS.md` (T01) states a target of "Overview < 0.3 s, whole dashboard < 1.5 s". The whole-dashboard target matches the p95 budget. The Overview target is not reachable by a refresh-driven render: the tiles wait for the variables and for Prometheus. The owner's need for an always-current Overview is met by R4 instead: in stream mode the live tiles update every second, independent of the refresh cycle; in poll mode they show values computed at request time (no scrape lag) at every refresh, but a Mixed tile still waits for its Prometheus sparkline query because Mixed joins its sub-queries.
 
 #### 2.4 Optimisation catalogue (WP8C, each one a commit with a screenshot diff and a perf report)
@@ -256,12 +269,12 @@ O6 (combined attempts query) is required in WP8C to give the 1-hour p50 a margin
 | **O1** | **Counter baseline lookback** `LOOKBACK = max(10m, 10×S)` (10m for S ≤ 60 s) replaces `[1d]` in `attempts_delta()` and `attempts_per_step()` (start = last value within LOOKBACK before the period, else the first value in the period, as today). Attempts are lost only if Prometheus had a gap longer than LOOKBACK right before the period start, the same as legacy behaviour inside a gap. | #4 A/B/C, #8 A/B, #5 C/E/H/I/J, #6 B/C/D/H, #14 A/B, #17 D/G/H, #16 | 6.8 → 3.6 s; 14.8 → 5.1 s of PromQL | none |
 | **O2** | **`job_class` "All" = `.+`** (`allValue`). The legacy "All" list also carried the Batch scope (its options are the classes of the selected batch kinds), so the scope moves into the PromQL. Every job-filtered per-series vector `V` (after its range function, before aggregation to queue level) becomes `V unless on (job_class) BATCH_EXCLUDED`; see the expression after this table. `__batch_scope__` is a label no stored series can carry (Prometheus drops `__`-prefixed labels after relabelling). With Batch=All, `$batch_kind` is `.*`, the matcher `__batch_scope__!~".*"` selects nothing and the set is empty and almost free. With kinds selected, it selects every job series and the set is the classes outside those kinds: the classes the legacy list left out. **Do not** use the `batch_filtered()` pattern `(X and on (job_class) …) or (X and on () BATCH_IS_ALL)` or an always-evaluated exclusion set: Prometheus evaluates both `or` branches (2× the cost of X) or the set at every step (#8 A 52 → 403 ms). Equality with the legacy output is a contract test with Batch=All and with Batch=one kind. | every job-filtered selector | 3.6 → 3.0 s; 2,143 → 150 KB, measured without the scope. Scope cost (review): #8 A 52 → 96 ms at Batch=All, 308 ms at Batch=one kind; with one kind the set excluded 157 classes and kept the 4 (queue, class) rows of that kind | none |
 | **O3** | **Variable refresh policy.** On dashboard load (`refresh: 1`): `supervisor`, `queue`, `job_class`, `supervisor_title`, `horizon_url`, `tts_url`, `api_path`, `prometheus_job`, `datasource` and `app_api`. These are instant or `[1d]`/`[7d]` lookbacks that do not depend on the range. On time range change (`refresh: 2`): only `batch_kind` and `batch_title`, which use `$__range`. | all panels | all on load: 3.0 → 2.55 s, 19 → 13 requests; shipped policy (v5b): +0.2–0.3 s against all on load | Supervisor, queue and class lists no longer follow a changed time range until reload (documented) |
-| **O4** | **Aggregate-first per-step deltas** for the tile sparklines (#8 A, #4 A). See the expression after this table. Values are identical to legacy on continuous data. The only difference: a series that disappears (a job class pruned after 30 idle days) zeroes one step instead of being ignored. | #8 A, #4 A | #8 775 → 43 ms; #4 1,665 → 79 ms; 2.55 → 1.5 s | none |
-| **O5** | **Shared queue source.** A new **hidden top-level panel #24** ("Queues source", table, 12 targets) evaluates the #5 targets once for all supervisors. The trailing `and on (queue) …{supervisor=~"$supervisor_title"}` becomes `* on (queue) group_left (supervisor) group by (queue, supervisor) (last_over_time(<ns>_horizon_supervisor_processes{…}[1d]))`. #5 keeps `repeat: supervisor_title`. Its datasource becomes `{"type":"datasource","uid":"-- Dashboard --"}` with `targets: [{"refId":"A","panelId":24,"withTransforms":false}]`, its first transformation is `filterByValue` on `supervisor == ${supervisor_title}`, and its organise step excludes `supervisor`. #24 sits in the hidden top grid row next to #23, whose `afterRender` hides `panel-23` and `panel-24` and shifts the grid once. **#24 must set `"maxDataPoints": 100`** (any explicit value; its targets are instant): without it, a source that is `display: none` before its first render never runs and every #5 repeat stays empty (verified on 12 and 13); with it, the hidden source runs once per refresh whatever the timing of #23's script. | #5 (+ #24) | 1.5 → 0.73 s; 2.7 → 1.45 s of PromQL; pixel-identical | none |
-| **O6** | **One attempts query per table.** #24 gets one target `sum by (queue, supervisor, status) (<attempts_delta aggregated by queue and status, statuses completed\|failed\|timed_out\|retried>)` instead of C, E, H, I and J. In #5, "Grouping to matrix" (rows `queue`, columns `status`) pivots it, then `calculateField` builds Failed = failed + timed_out and Success rate = completed / (completed + failed + timed_out). #6 does the same with (queue, job_class, status). Column names and order are kept by the existing organise step. | #5/#24, #6 | replay: 374 → 50 ms per evaluation | none (screenshot gate) |
-| O7 | **The full-range start fallback is kept; no optimisation.** `min_over_time(sel[$__range])` (C-P7) stays. Bounding it to the first LOOKBACK of the period (`min_over_time(sel[LOOKBACK] @ ${__from:date:seconds} offset -LOOKBACK)`, with series lacking a start counted from 0) is cheaper but **rejected**: after a Prometheus outage longer than LOOKBACK covering the period start, it would count a series' whole cumulative value. The cost is contained instead by O5 and O6: the fallback is evaluated about twice per refresh instead of 12 or more times. Long ranges get O9. | #5/#24, #6, #4 B/C, #17 | – | none |
+| **O4** | **Per-step deltas from one subquery** for the tile sparklines (#8 A, #4 A). See the expression after this table. *Amended in T13 QA round 2:* the aggregate-first form (difference of the sums) counted every series that appears inside the range with its whole value (a scrape job or replica added later: 100,024 attempts instead of 24, `AdversarialRound2TileTest`), against owner decision 13. The steps now match series one to one: per series, the increase between two subquery points (`idelta` over two steps, clamped at 0), summed; a series has no step before its first sample, so a new series counts from the 0 the exporter exports first (T16 rule), and a counter reset or a pruned class costs only its own step. The first step is clipped to `${__from}` and the last extended to `${__to}`, so the points add up to the table count (`Attempts::delta()`); steps before the period are dropped. | #8 A, #4 A | #8 A 71 ms, #4 A 147 ms (replay, 1 h); 2.55 → 1.5 s | none |
+| **O5** | **Shared queue source.** A new **hidden top-level panel #24** ("Queues source", table, 12 targets) evaluates the #5 targets once for all supervisors. The trailing `and on (queue) …{supervisor=~"$supervisor_title"}` becomes `* on (queue) group_left (supervisor) group by (queue, supervisor) (last_over_time(<ns>_horizon_supervisor_processes{…}[1d]))`. #5 keeps `repeat: supervisor_title`. Its datasource becomes `{"type":"datasource","uid":"-- Dashboard --"}` with `targets: [{"refId":"A","panelId":24,"withTransforms":false}]`, its first transformation is `filterByValue` on `supervisor == ${supervisor_title}`, and its organise step excludes `supervisor`. #24 sits in the hidden top grid row next to #23, whose `afterRender` hides `panel-23` and `panel-24` and shifts the grid once. *Amended in T13 (O5 commit and QA round 2):* `value * on (queue) group_left (supervisor) supervisors` fails with duplicate series when two supervisors work a queue, so #24 has the rows once, in its first target M (`group by (queue, supervisor) (last_over_time(<ns>_horizon_supervisor_processes{…}[1d])) and on (queue) <the queues>`, a series query), and every other target is per queue. #5 transforms `labelsToFields` (no frame filter, `valueLabel: status`), `merge`, `filterByValue` on `supervisor == ${supervisor_title}`, then the calculations and the organise step, which hides M's `Value`. Grafana's merge adds a frame's values to each earlier row of the same key (Time, queue), so M's frames must come first: the Prometheus datasource returns series frames before tables, in query order, and Grafana moves the output of a transformation with a frame filter to the front, so M is the first series query and nothing before the merge has a filter (`QueueTableTest`; `QueueSourceE2eTest` checks a queue of two supervisors on 12 and 13). **#24 must set `"maxDataPoints": 100`** (any explicit value; its targets are instant): without it, a source that is `display: none` before its first render never runs and every #5 repeat stays empty (verified on 12 and 13); with it, the hidden source runs once per refresh whatever the timing of #23's script. | #5 (+ #24) | 1.5 → 0.73 s; 2.7 → 1.45 s of PromQL; pixel-identical | none |
+| **O6** | **One attempts query per table.** #24 gets one target `sum by (queue, status) (<attempts_delta aggregated by queue and status, statuses completed\|failed\|timed_out\|retried>)` instead of C, E, H, I and J (per queue; the merge gives it to each supervisor row of M, O5). In #5, "Labels to fields" (`valueLabel: status`; amended in T13: "Grouping to matrix" pivots a single frame only and names its row field `queue\status`, which the merge cannot join on) pivots it, then `calculateField` builds Failed = failed + timed_out and Success rate = completed / (completed + failed + timed_out). #6 does the same with (queue, job_class, status). Column names and order are kept by the existing organise step. | #5/#24, #6 | replay: 374 → 50 ms per evaluation | none (screenshot gate) |
+| O7 | **The full-range start fallback is kept; no optimisation.** `min_over_time(sel[$__range])` (C-P7) stays. Bounding it to the first LOOKBACK of the period (`min_over_time(sel[LOOKBACK] @ ${__from:date:seconds} offset -LOOKBACK)`, with series lacking a start counted from 0) is cheaper but **rejected**: after a Prometheus outage longer than LOOKBACK covering the period start, it would count a series' whole cumulative value. The cost is contained instead by O5 and O6: the fallback is evaluated about twice per refresh instead of 12 or more times. Long ranges get O9. *T13:* `attempts_delta` writes `(now - start) >= 0 or now` instead of `… or (now < start)`: every series with a value now has a start (LOOKBACK covers Prometheus' 5-minute lookback), so `or now` adds exactly the series after a counter reset, with the same result, and the start with its fallback is evaluated once instead of twice (`AttemptsDeltaTest`). | #5/#24, #6, #4 B/C, #17 | – | none |
 | **O8** | #3 B (colour mappings) becomes an **instant** query at `${__to}`, because only the last value's colour is shown. | #3 | small | none |
-| O9 | **Optional recording rules** (opt-in `--recording-rules`; lowest priority in WP8C; the default render never depends on them, which overrides the Q5 rejected alternative as `planning/TASKS.md` requires). `ho:queue_jobs:sum_by_queue_status = sum by (job, connection, queue, status) (max by (job, connection, queue, job_class, status) (ho_queue_jobs_total))` and the equivalent for histograms, rendered to `{path}/prometheus/horizon-observability.rules.yml`. The recorded series have no `job_class`, so they can only serve panels while Job and Batch are "All"; whether the flagged render switches selectors is decided by a WP8C measurement at 6 h and longer ranges. | long ranges | not measured | none |
+| O9 | **Optional recording rules** (opt-in `--recording-rules`; lowest priority in WP8C; the default render never depends on them, which overrides the Q5 rejected alternative as `planning/TASKS.md` requires). `ho:queue_jobs:sum_by_queue_status = sum by (job, connection, queue, status) (max by (job, connection, queue, job_class, status) (ho_queue_jobs_total))` and the equivalent for histograms, rendered to `{path}/prometheus/horizon-observability.rules.yml`. The recorded series have no `job_class`, so they can only serve panels while Job and Batch are "All"; whether the flagged render switches selectors is decided by a WP8C measurement at 6 h and longer ranges. *Decided in T13:* the flagged render does not switch selectors; the 6-hour refresh is 1.23–1.28 s without the rules (budget 2.0 s, R2.3). The file has one group `horizon-observability` evaluated every S with `<ns>:queue_jobs:sum_by_queue_status` and `<ns>:queue_job_duration_seconds_{bucket,sum,count}:sum_by_queue` (`le` kept for the buckets), scoped to `J` like the alert rules; `resources/grafana/prometheus/` carries the `--defaults` render and `composer test:grafana` checks it. | long ranges | 6 h within budget without them | none |
 
 The O2 exclusion set (the builder renders `<ns>` and the job scope):
 
@@ -273,17 +286,18 @@ BATCH_EXCLUDED =
     group by (job_class) (<ns>_queue_batch_job_classes{job=~"$prometheus_job", batch=~"$batch_kind"})
 ```
 
-The O4 per-step expression:
+The O4 per-step expression (amended in T13 QA round 2; `Attempts::perStepTotal()`):
 
 ```
-clamp_min(
-    clamp_max(sum(last_over_time(S[LOOKBACK] offset -$__interval)), scalar(sum(last_over_time(S[LOOKBACK] @ ${__to:date:seconds}))))
-  - clamp_min(sum(last_over_time(S[LOOKBACK])),
-              scalar(sum(last_over_time(S[LOOKBACK] @ ${__from:date:seconds}) or min_over_time(S[$__range] @ ${__to:date:seconds})))),
-  0) or on () 0 * group(<ns>_horizon_status)
+  sum(clamp_min(idelta(V[$__interval${__interval_ms}ms:$__interval] offset -$__interval), 0))
+- (sum(V @ ${__from:date:seconds} - last_over_time(V[$__interval:$__interval] @ ${__from:date:seconds}))
+     and on () ((PREV <= ${__from:date:seconds}) + STEP > ${__from:date:seconds}) or vector(0))
++ (sum(V @ ${__to:date:seconds} - last_over_time(V[$__interval:$__interval] offset -$__interval @ end()))
+     and on () (vector(time()) + STEP > ${__to:date:seconds}) or vector(0))
+unless on () (PREV + STEP <= ${__from:date:seconds})
 ```
 
-In this expression, `S` is `<ns>_queue_jobs_total{…filters…, status=~"…"}` wrapped in `max by (job, connection, queue, job_class, status)` (Q5.6 step 10), and each of its `last_over_time(S[…])` and `min_over_time(S[…])` vectors is followed by `unless on (job_class) BATCH_EXCLUDED` (O2) before `sum`.
+In this expression, `V` is `max by (job, connection, queue, job_class, status) (last_over_time(<ns>_queue_jobs_total{…filters…, status=~"…"}[LOOKBACK]))` (Q5.6 step 10) followed by `unless on (job_class) BATCH_EXCLUDED` (O2), with the scope taken at the same time as the vector (`@` on both selectors of `BATCH_EXCLUDED` when `V` has one). `STEP` is `($__interval_ms / 1000)` and `PREV` is `floor(vector(time()) / STEP) * STEP`. `$__interval${__interval_ms}ms` is a valid duration of two steps (`10s10000ms`). The subquery points lie on multiples of the step since the epoch, while Grafana aligns its steps to the browser's UTC offset; the `@ ${__from}` and `offset -$__interval @ end()` anchors take the subquery point before the period start and after the end, so the points add up to the period count for any offset (`TileSparklineTest`).
 
 #### 2.5 Grafana and Prometheus settings (shipped examples and README)
 
@@ -460,7 +474,9 @@ Filters:
 - **Poll mode** passes the dashboard filters to the endpoint (4.3).
   - Supervisor and Queue scope the snapshot.
   - An active Job or Batch filter sets `pending.value` and `delayed.value` to `null`. `merge` then falls back to the Prometheus value, which keeps today's class-filtered semantics (verified on 12 and 13), and the caption is "Oldest: —" with level 0, as today's B and C targets give under a filter.
-  - The Supervisor tile counts only workers busy with the selected classes (reserved jobs by class).
+  - The Supervisor tile counts only workers busy with the selected classes (reserved jobs by class), and lists only the supervisors with such workers (T13 QA round 2: listing every supervisor with 0 under a filter disagreed with the off-mode tile).
+  - The #8 caption "RPM: n" has no class scope in the snapshot, so under a Job or Batch filter it comes from the off-mode query B, the Prometheus RPM of the selected classes (R4.8).
+- `--live` defaults to `off`, with a warning, while `horizon-observability.live.enabled` is false (not with `--defaults`): the live tiles would read a route the application does not serve. An explicit poll or stream render of such an application is kept, with a warning (T13 QA round 2).
 - **Stream mode** shows the whole application. Filters apply to every other panel (documented).
 
 #### 4.2 Live snapshot service and cache
@@ -634,12 +650,18 @@ delayed value=0.0 1792201716123000000
 
 Only the properties that differ from the `--live=off` render of the same panel are shown. All other properties (gridPos, fieldConfig defaults, `textMode`, `text.titleSize`, `colorMode`) are unchanged. `FILTERS` = `${supervisor:queryparam}&${batch_kind:queryparam}&${queue:queryparam}&${job_class:queryparam}`.
 
+*Amended in T13 QA round 2* (the shapes below include it; `tests/Grafana/Support/LiveShapes.php` writes them out):
+- **`interval`** (`$scrape_interval`, R2.5) stays only on tiles with a Prometheus query: poll #3 and stream #2, #3 and #9 have none.
+- **Caption fallbacks:** a failed `/live` call (C missing) left the tile caption as the PromQL of A, the default display name of a series without labels. Poll #2 sets `fieldConfig.defaults.displayName` to `"Oldest: —"` and #8 to `"RPM: —"`; `configFromData` replaces them while the snapshot answers (`AdversarialRound2LiveE2eTest`).
+- **#8 under a Job or Batch filter:** the snapshot has no class-scoped throughput, so #8 keeps the off-mode target B, the Prometheus RPM of the selected classes, as `B unless on () <All jobs selected>` (empty without a filter), with the off-mode transformations that turn B into the display name. The live caption applies to A only (`applyTo: byFrameRefID A`): a caption on the other config frame would hide its field from the next "Config from query results".
+
 **Poll #2 Pending** (verified shape: probe P201/P206 on 13.2.4; review R801/R805/R806 on 12.4.13 and 13.2.4, including the forced-red colour and the `null` fallback):
 
 ```json
 {
   "datasource": { "type": "datasource", "uid": "-- Mixed --" },
   "interval": "$scrape_interval",
+  "fieldConfig": { "defaults": { "displayName": "Oldest: —" } },
   "targets": [
     { "refId": "A", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "editorMode": "code",
       "expr": "<off-mode #2 expression A, unchanged>", "legendFormat": "__auto", "range": true, "instant": false },
@@ -669,17 +691,21 @@ Notes:
 
 **Poll #9 Delayed:** the same A and L, with `delayed.value` instead of `pending.value`. No C. Transformations: only `merge` with `A|L`.
 
-**Poll and stream #8 Completed:** A is unchanged (O4). B (Prometheus RPM) and its three transformations are replaced by:
+**Poll and stream #8 Completed:** A is unchanged (O4). B (Prometheus RPM) is kept for a Job or Batch filter only, its three transformations follow the live caption:
 
 ```json
 { "datasource": { "type": "datasource", "uid": "-- Mixed --" },
-  "targets": [ "<A unchanged>",
+  "interval": "$scrape_interval",
+  "fieldConfig": { "defaults": { "displayName": "RPM: —" } },
+  "targets": [ "<A unchanged>", "<off-mode B> unless on () <All jobs selected>",
     { "refId": "C", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "${app_api}" },
       "type": "json", "source": "url", "parser": "backend", "format": "table",
       "url": "${api_path}/live?FILTERS", "url_options": { "method": "GET", "data": "" }, "root_selector": "",
       "columns": [ { "selector": "throughput.caption", "text": "caption", "type": "string" } ] } ],
   "transformations": [ { "id": "configFromData", "options": { "configRefId": "C", "mappings": [
-      { "fieldName": "caption", "handlerKey": "displayName" } ] } } ] }
+      { "fieldName": "caption", "handlerKey": "displayName" } ],
+      "applyTo": { "id": "byFrameRefID", "options": "A" } } },
+    "<the off-mode transformations of B>" ] }
 ```
 
 **Poll #3 Supervisor Processes** (verified: P204 on 13.2.4; review R802 with `key` and `groupBy` on 12.4.13 and 13.2.4):

@@ -768,7 +768,8 @@ No label value is empty, because Prometheus treats an empty value as an absent l
       {--folder=Horizon}
       {--scrape-interval=10s}       S: default of the scrape_interval variable; busy_window = max(15s, 2×S), LOOKBACK = max(10m, 10×S),
                                     refresh = S in off and stream modes (Addendum R3.3)
-      {--live=poll}                 Live Overview: off | poll | stream (Addendum R4.1)
+      {--live=poll}                 Live Overview: off | poll | stream (Addendum R4.1); off, with a warning, while
+                                    horizon-observability.live.enabled is false (not with --defaults)
       {--live-poll-interval=5s}     poll: dashboard refresh (>= Grafana min_refresh_interval)
       {--live-stream-id=}           stream: Grafana Live stream id; default config('horizon-observability.live.stream.id')
       {--prometheus-datasource=}    optional name regex for the hidden datasource variable
@@ -777,7 +778,7 @@ No label value is empty, because Prometheus treats an empty value as an absent l
       {--recording-rules}           opt-in recording rules (Addendum R2.4 O9); the default render never depends on them
   ```
 - It writes `{path}/dashboards/horizon-observability.json` and `{path}/alerting/horizon-observability.json` (plus `{path}/prometheus/horizon-observability.rules.yml` with `--recording-rules`). `path` is relative to `base_path()`. The prefix comes from `config('horizon-observability.namespace')` and is unaffected by `--defaults`.
-- **Committed assets.** `resources/grafana/dashboards/horizon-observability.json` and `resources/grafana/alerting/horizon-observability.json` are the `--defaults` render: prefix `ho_`, uid `horizon-observability`, job `.+`, live mode `poll` (Addendum R4.1), datasource placeholder. CI runs `testbench horizon-observability:grafana resources/grafana --defaults --check`.
+- **Committed assets.** `resources/grafana/dashboards/horizon-observability.json`, `resources/grafana/alerting/horizon-observability.json` and `resources/grafana/prometheus/horizon-observability.rules.yml` are the `--defaults --recording-rules` render: prefix `ho_`, uid `horizon-observability`, job `.+`, live mode `poll` (Addendum R4.1), datasource placeholder. CI runs `testbench horizon-observability:grafana resources/grafana --defaults --recording-rules --check` (`composer test:grafana`).
 - **JSON printer.** `Grafana\Json` prints 2-space indentation, `JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRESERVE_ZERO_FRACTION` and a trailing newline. Objects and lists stay distinct (an empty object is `{}`). This matches Python's `json.dump(indent=2, ensure_ascii=False)`, so byte equality with the legacy file is a target, not just decoded equality.
 
 #### 5.2 Runtime variables versus baked values
@@ -842,6 +843,7 @@ The rules are emitted by `AlertRulesBuilder` from the same constants and panel r
 - Titles, uids and labels are env-interpolated, so they must never contain `$`; the builder asserts this.
 - With All jobs, "No queue metrics" fires only when no job reports at all. The README says to pin `--job` for per-app absence alerts.
 - **Office continuity:** rendering with `--uid=horizon` produces exactly the old rule uids `horizon-no-metrics`, `horizon-down`, `horizon-long-wait` and `horizon-failures`, so `GRAFANA_ALERTS` history and bookmarks continue.
+- **Rules a render leaves out** (T13): Grafana keeps a provisioned rule that disappears from the provisioning file, so after a switch from `--live=stream` to poll the stall rule `<uid>-live` stayed and fired once the stream command stopped (the same for the health rules after a render without `--health-rules`). The file lists the optional rule uids it does not render (`<uid>-live`, `<uid>-collector`, `<uid>-duplicates`) under `deleteRules` (`orgId: 1`). Probed on 12.4.13 and 13.2.4 (reload and restart): the switch removes the rule, deleting a rule that does not exist is a no-op, no provisioning error is logged.
 
 #### 5.4 Sound and TTS
 
