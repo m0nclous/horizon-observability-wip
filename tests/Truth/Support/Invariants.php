@@ -60,7 +60,9 @@ final class Invariants
         $names = [Metric::JobsTotal->value, Metric::AttemptsDropped->value, Metric::LivePushFailures->value];
 
         foreach ([Metric::JobDuration->value, Metric::JobWait->value] as $histogram) {
-            array_push($names, $histogram.'_bucket', $histogram.'_count', $histogram.'_sum');
+            $names[] = $histogram.'_bucket';
+            $names[] = $histogram.'_count';
+            $names[] = $histogram.'_sum';
         }
 
         foreach ($names as $name) {

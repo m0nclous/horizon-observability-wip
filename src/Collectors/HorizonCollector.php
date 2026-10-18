@@ -186,7 +186,7 @@ final readonly class HorizonCollector implements Collector
 
         if ($snapshot->queues === []) {
             foreach ($labels as $label) {
-                foreach (self::queues($label) as $queue) {
+                foreach ($this->queues($label) as $queue) {
                     $pools[$queue] ??= $label;
                 }
             }
@@ -198,7 +198,7 @@ final readonly class HorizonCollector implements Collector
             $pool = $snapshot->balance === 'off' ? implode(',', $snapshot->queues) : $queue;
 
             foreach ($labels as $label) {
-                if ($snapshot->balance === 'off' ? self::queues($label) === $snapshot->queues : trim($label) === $queue) {
+                if ($snapshot->balance === 'off' ? $this->queues($label) === $snapshot->queues : trim($label) === $queue) {
                     $pool = $label;
 
                     break;
@@ -217,7 +217,7 @@ final readonly class HorizonCollector implements Collector
      *
      * @return list<string>
      */
-    private static function queues(string $label): array
+    private function queues(string $label): array
     {
         $queues = [];
 

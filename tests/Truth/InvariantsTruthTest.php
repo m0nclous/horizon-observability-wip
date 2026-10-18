@@ -120,14 +120,10 @@ it('allows more waits than attempts only while a series of the queue is held', f
                 $lines[] = sprintf('ho_queue_jobs_total{connection="redis",queue="default",job_class="Truth\\\\New",status="%s"} 0', $status);
             }
         }
-
-        array_push(
-            $lines,
-            '# TYPE ho_queue_job_wait_seconds histogram',
-            'ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="+Inf"} 3',
-            'ho_queue_job_wait_seconds_sum{connection="redis",queue="default"} 1.5',
-            'ho_queue_job_wait_seconds_count{connection="redis",queue="default"} 3',
-        );
+        $lines[] = '# TYPE ho_queue_job_wait_seconds histogram';
+        $lines[] = 'ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="+Inf"} 3';
+        $lines[] = 'ho_queue_job_wait_seconds_sum{connection="redis",queue="default"} 1.5';
+        $lines[] = 'ho_queue_job_wait_seconds_count{connection="redis",queue="default"} 3';
 
         return new Samples(Exposition::parse(implode("\n", $lines)."\n"));
     };

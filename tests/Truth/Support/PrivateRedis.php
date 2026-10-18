@@ -37,7 +37,7 @@ final class PrivateRedis
         private readonly string $name,
         private readonly string $directory,
     ) {
-        $this->port = self::freePort();
+        $this->port = $this->freePort();
     }
 
     /**
@@ -101,9 +101,9 @@ final class PrivateRedis
             $this->process->start();
         } elseif ($this->created) {
             // The stopped container keeps its /data volume, and so a saved dump.rdb.
-            self::docker(['start', $this->name]);
+            $this->docker(['start', $this->name]);
         } else {
-            self::docker(['run', '-d', '--name', $this->name, '-p', '127.0.0.1:'.$this->port.':6379', (string) $this->image, 'redis-server', '--save', '', '--appendonly', 'no']);
+            $this->docker(['run', '-d', '--name', $this->name, '-p', '127.0.0.1:'.$this->port.':6379', (string) $this->image, 'redis-server', '--save', '', '--appendonly', 'no']);
             $this->created = true;
         }
 
@@ -145,7 +145,7 @@ final class PrivateRedis
         if ($this->process instanceof Process) {
             $this->process->wait();
         } else {
-            self::docker(['wait', $this->name]);
+            $this->docker(['wait', $this->name]);
         }
 
         if (! $save) {
@@ -163,7 +163,7 @@ final class PrivateRedis
         }
 
         if ($this->created) {
-            self::docker(['rm', '-f', '-v', $this->name], check: false);
+            $this->docker(['rm', '-f', '-v', $this->name], check: false);
             $this->created = false;
         }
 
@@ -179,7 +179,7 @@ final class PrivateRedis
             @unlink($this->directory.'/dump.rdb');
         } else {
             // A new container with an empty volume on the same port.
-            self::docker(['rm', '-v', $this->name]);
+            $this->docker(['rm', '-v', $this->name]);
             $this->created = false;
         }
     }
@@ -205,7 +205,7 @@ final class PrivateRedis
 
     private function logs(): string
     {
-        return $this->created ? self::docker(['logs', $this->name], check: false) : '';
+        return $this->created ? $this->docker(['logs', $this->name], check: false) : '';
     }
 
     private static function dockerAvailable(): bool
@@ -223,7 +223,7 @@ final class PrivateRedis
     /**
      * @param  list<string>  $arguments
      */
-    private static function docker(array $arguments, bool $check = true): string
+    private function docker(array $arguments, bool $check = true): string
     {
         $process = new Process(['docker', ...$arguments]);
         $process->setTimeout(300)->run();
@@ -235,7 +235,7 @@ final class PrivateRedis
         return $process->getOutput().$process->getErrorOutput();
     }
 
-    private static function freePort(): int
+    private function freePort(): int
     {
         $socket = stream_socket_server('tcp://127.0.0.1:0');
 
