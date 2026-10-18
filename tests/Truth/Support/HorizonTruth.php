@@ -69,7 +69,7 @@ final readonly class HorizonTruth
             $families['horizon_supervisor_info'][Model::key(['supervisor' => $name, 'balance' => $balance, 'connection' => $connection])] = 1.0;
             $queueOption = (string) ($options['queue'] ?? '');
 
-            foreach (array_filter(array_map(trim(...), explode(',', $queueOption))) as $queue) {
+            foreach (array_filter(array_map(trim(...), explode(',', $queueOption)), static fn (string $queue): bool => $queue !== '') as $queue) {
                 $pool = $balance === 'off' ? $queueOption : $queue;
                 $families['horizon_supervisor_queues'][Model::key(['supervisor' => $name, 'queue' => $queue, 'pool' => $pool])] = 1.0;
             }

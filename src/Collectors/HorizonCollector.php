@@ -135,11 +135,13 @@ final readonly class HorizonCollector implements Collector
             ];
         }
 
-        /** @var array<string, array<string, string>> $pools supervisor => queue => pool label */
+        /** @var array<string, array<array-key, string>> $pools supervisor => queue => pool label */
         $pools = [];
 
         foreach ($snapshots as $snapshot) {
-            $pools[$snapshot->name] = [...$this->pools($snapshot), ...($pools[$snapshot->name] ?? [])];
+            // `+`, not a spread: queue names like "1" are integer keys, which a spread would renumber. The first
+            // master by name wins, as for the settings.
+            $pools[$snapshot->name] = ($pools[$snapshot->name] ?? []) + $this->pools($snapshot);
         }
 
         $processFamily = MetricFamily::of(Metric::SupervisorProcesses);
@@ -169,11 +171,13 @@ final readonly class HorizonCollector implements Collector
 
     /**
      * Queue => the queue label of the process pool that works it (Horizon's `Supervisor::createProcessPools()`): a pool
-     * per queue when the supervisor balances (auto, simple), else one pool for the whole `queue` option. The label is
-     * taken from the process map, where Horizon wrote it; without processes it is rebuilt from the option. A
-     * supervisor without a `queue` option maps the queues of its process labels.
+     * per queue when the supervisor balances (auto, simple), else one pool for the whole `queue` option, labelled with
+     * the option as it is (`mail,sms,mail` stays). The label is taken from the process map, where Horizon writes every
+     * pool, even one without processes: for balance=false the label whose queue list ({@see self::queues()}) is the
+     * supervisor's. Only a record without a matching label gets one rebuilt from the queue list. A supervisor
+     * without a `queue` option maps the queues of its process labels. Numeric queue names are integer keys.
      *
-     * @return array<string, string>
+     * @return array<array-key, string>
      */
     private function pools(SupervisorSnapshot $snapshot): array
     {
@@ -182,25 +186,19 @@ final readonly class HorizonCollector implements Collector
 
         if ($snapshot->queues === []) {
             foreach ($labels as $label) {
-                foreach (explode(',', $label) as $queue) {
-                    $queue = trim($queue);
-
-                    if ($queue !== '') {
-                        $pools[$queue] ??= $label;
-                    }
+                foreach (self::queues($label) as $queue) {
+                    $pools[$queue] ??= $label;
                 }
             }
 
             return $pools;
         }
 
-        $split = static fn (string $label): array => array_values(array_filter(array_map(trim(...), explode(',', $label)), static fn (string $queue): bool => $queue !== ''));
-
         foreach ($snapshot->queues as $queue) {
             $pool = $snapshot->balance === 'off' ? implode(',', $snapshot->queues) : $queue;
 
             foreach ($labels as $label) {
-                if ($snapshot->balance === 'off' ? $split($label) === $snapshot->queues : trim($label) === $queue) {
+                if ($snapshot->balance === 'off' ? self::queues($label) === $snapshot->queues : trim($label) === $queue) {
                     $pool = $label;
 
                     break;
@@ -211,6 +209,27 @@ final readonly class HorizonCollector implements Collector
         }
 
         return $pools;
+    }
+
+    /**
+     * The queues of a pool label or `queue` option as {@see Supervisors::snapshot()} splits them: comma-separated,
+     * trimmed, without empty names and repeats, in order.
+     *
+     * @return list<string>
+     */
+    private static function queues(string $label): array
+    {
+        $queues = [];
+
+        foreach (explode(',', $label) as $queue) {
+            $queue = trim($queue);
+
+            if ($queue !== '' && ! in_array($queue, $queues, true)) {
+                $queues[] = $queue;
+            }
+        }
+
+        return $queues;
     }
 
     /**

@@ -113,6 +113,31 @@ it('maps the queues of a balance=false pool to its supervisor and its pool (#5)'
     }
 });
 
+it('maps numeric queue names and a balance=false option that repeats a queue as Horizon labels their pools', function (): void {
+    // Numeric queue names are integer array keys in PHP; Horizon's single pool takes the option as it is.
+    $scenario = Scenario::start($this);
+    HorizonState::using(app())
+        ->master('host-a', 'running', ['host-a:supervisor-shards', 'host-a:supervisor-zero', 'host-a:supervisor-pool'])
+        ->supervisor('host-a:supervisor-shards', HorizonState::options('host-a:supervisor-shards', queue: '1,2,7'), ['redis:1' => 1, 'redis:2' => 2, 'redis:7' => 1])
+        ->supervisor('host-a:supervisor-zero', HorizonState::options('host-a:supervisor-zero', queue: '0,5', balance: false), ['redis:0,5' => 2])
+        ->supervisor('host-a:supervisor-pool', HorizonState::options('host-a:supervisor-pool', queue: 'mail,sms,mail', balance: false), ['redis:mail,sms,mail' => 2])
+        ->master('host-b', 'running', ['host-b:supervisor-shards'], pid: 2000)
+        ->supervisor('host-b:supervisor-shards', HorizonState::options('host-b:supervisor-shards', queue: '1,2,7'), ['redis:1' => 2, 'redis:2' => 1, 'redis:7' => 1], pid: 2001);
+    $samples = new Samples($scenario->scrape());
+
+    expect(horizonTruthScraped($samples))->toBe(horizonTruthExpected())
+        ->and($samples->series(Metric::SupervisorQueues->value))->toBe([
+            Model::key(['supervisor' => 'supervisor-zero', 'queue' => '0', 'pool' => '0,5']) => 1.0,
+            Model::key(['supervisor' => 'supervisor-zero', 'queue' => '5', 'pool' => '0,5']) => 1.0,
+            Model::key(['supervisor' => 'supervisor-shards', 'queue' => '1', 'pool' => '1']) => 1.0,
+            Model::key(['supervisor' => 'supervisor-shards', 'queue' => '2', 'pool' => '2']) => 1.0,
+            Model::key(['supervisor' => 'supervisor-shards', 'queue' => '7', 'pool' => '7']) => 1.0,
+            Model::key(['supervisor' => 'supervisor-pool', 'queue' => 'mail', 'pool' => 'mail,sms,mail']) => 1.0,
+            Model::key(['supervisor' => 'supervisor-pool', 'queue' => 'sms', 'pool' => 'mail,sms,mail']) => 1.0,
+        ])
+        ->and($samples->value(Metric::SupervisorProcesses->value, ['supervisor' => 'supervisor-shards', 'queue' => '1']))->toBe(3.0);
+});
+
 it('exports the status of the masters: running, paused, none', function (string $state, float $status): void {
     $scenario = Scenario::start($this);
 
