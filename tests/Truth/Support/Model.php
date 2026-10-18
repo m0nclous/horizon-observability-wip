@@ -21,8 +21,8 @@ use LogicException;
  * - the duration extremes of the attempts in the 150 s window;
  * - the queue state: pending (incl. due delayed), delayed, due, the oldest wait (C8), ready and reserved jobs per class.
  *
- * New series are exported as 0 for their first 75 s (`AttemptsCollector::NEW_SERIES_HOLD_SECONDS`, T16): the model
- * applies the same rule from the time each series got its first count.
+ * New series are exported as 0 for their first 90 s (`AttemptsCollector::NEW_SERIES_HOLD_SECONDS`, T16): the model
+ * applies the same rule from the time each series got its first count (one clock: the scenario's).
  */
 final class Model
 {
@@ -35,7 +35,7 @@ final class Model
     /**
      * `AttemptsCollector::NEW_SERIES_HOLD_SECONDS`, restated.
      */
-    public const HOLD_SECONDS = 75;
+    public const HOLD_SECONDS = 90;
 
     /**
      * The extremes cover the current 15-second bucket and the 9 before it (Addendum R3.4).

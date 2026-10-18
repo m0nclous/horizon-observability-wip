@@ -23,7 +23,7 @@ REDIS_CLIENT=predis vendor/bin/pest --group=truth
 - **Expected-value model** (`Support/Model.php`): restates the documented semantics (Arch Q4, Q6.2, Q6.3 C8,
   Appendix B), not the package code. It follows every job through the ready list, the delayed set and the reserved
   set, logs every attempt with its outcome, planned duration, start and wait (`max(pushedAt, dispatch + delay)` from
-  the stored payload), and computes the expected samples of a scrape at any time, including the 75 s hold of new
+  the stored payload), and computes the expected samples of a scrape at any time, including the 90 s hold of new
   series. Durations are the only real-time values: buckets are exact because planned durations keep
   `Model::OVERHEAD_SECONDS` (0.2 s) away from every bound, and sums lie within the planned total plus 0.2 s per
   attempt.
@@ -87,7 +87,9 @@ REDIS_CLIENT=predis vendor/bin/pest --group=truth
 
 Also covered: sync, deferred, background and database-queue jobs are never counted (`ExclusionTruthTest`); a Redis
 restart with and without the old dataset and a restored dataset reset the counters, documented by `meta.reset_at`
-and one info line (`ResetTruthTest`; the real restart needs a `redis-server` binary and is skipped without one).
+and one info line (`ResetTruthTest`). The real restart runs a private Redis from a `redis-server` binary or, without
+one, from a Docker image (`TRUTH_REDIS_IMAGE`, default `redis:7.4-alpine`; CI passes the server image of each leg); it
+is skipped only outside CI when neither exists, and fails on CI.
 
 ## Decisions taken with this suite (T13 QA round 1, the pilot's honesty bugs)
 
@@ -109,14 +111,36 @@ The dashboard cannot tell a series born inside the window (count its first value
 the first time (a scrape job or a replica added later, a Prometheus outage longer than the lookback: never count it).
 Only the exporter knows which series are new, so the fix is in the exporter: `record_attempt.lua` writes the creation
 time of a (connection, queue, job_class) with its first attempt and of a queue with its first wait (hash `created`,
-only for series without counts), and `AttemptsCollector` exports a series created less than 75 s ago
-(`NEW_SERIES_HOLD_SECONDS`: the longest supported scrape interval plus 15 s for jitter and clock skew) as 0. Every
+only for series without counts), and `AttemptsCollector` exports a series created less than 90 s ago as 0. Every
 scraper records a 0 first and then counts the attempts in full, with Prometheus' own `increase()` as well as with the
-dashboard's queries, which stay as they are. The cost: the first attempts of a new series show up to 75 s late
-(the live overview's ring buffer is not delayed). Series without a creation time are exported as they are, so old
+dashboard's queries, which stay as they are. Series without a creation time are exported as they are, so old
 totals never count as new. `probes/first-value/run.sh` repeats the probe with the real exporter and real workers of
 two checkouts, the integration branch before the fix and this one (3 attempts of a new class, then 2; truth 5):
-before `increase()` 2.10 and `delta()` 2, after 5.06 and 5 (`probes/first-value/results-real.txt`).
+before `increase()` 2.10 and `delta()` 2, after 5.06 and 5 (`probes/first-value/results-real.txt`). Both probes ran
+with the first hold of 75 s; its length does not change their results, which need only one 0 sample per scraper.
+
+The hold (`NEW_SERIES_HOLD_SECONDS`) is sized for a stated budget. The first scrape that sees a series comes less
+than S + 2j after its creation (the scrape before it j early, the next one j late), and the creation time is the
+worker's clock while the age is the exporter's, so a worker clock k behind adds k: 90 s = S 60 s (the longest
+supported interval, Add §R3) + 2 × 7.5 s (the scrape deviation budget of Add §R3.4) + k 15 s. A worker clock ahead,
+or a series created during a scrape (after its request time), gives a negative age, which is held too while
+|age| < 90 s. `FirstValueTruthTest` checks every schedule of 5-60 s with slots at, between and 7.5 s after the
+creation, deviations of ±7.5 s in four patterns (including the worst: the scrape before the creation 7.5 s early,
+1 ms before it, and the next one 7.5 s late) and worker clocks 15 s behind, in sync and 15 s ahead; the worst case
+(89.999 s) is held by 1 ms. Outside the budget (a slower interval, scrapes further off their slots, clocks further
+apart than 15 s, all scrapes of the hold failing) a new series can start without its 0 sample, as without the hold;
+NTP keeps clocks within milliseconds, and a creation time far in the future is not trusted (a series is never held
+for more than 2 × 90 s of the exporter's clock).
+
+The cost, all bounded by the hold:
+- the first attempts of a new (connection, queue, job_class), and the first waits of a new queue, show up to 90 s
+  late (the live overview's ring buffer is not delayed);
+- they are counted when the hold ends, so a range that starts inside a hold also counts that series' attempts from
+  before the range, and a range that ends inside it misses them;
+- the families lag each other while a series is held: a new class on a known queue has its attempts and durations
+  held, but the queue's wait histogram (an existing series) counts its first waits at once, so for up to 90 s that
+  queue exports more waits than attempts (the waits invariant above allows that only while a series of the queue is
+  held).
 
 ### 2. balance=false pooled queues need the exporter's queue map
 

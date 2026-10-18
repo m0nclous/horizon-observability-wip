@@ -12,9 +12,9 @@ use DF\HorizonObservability\Tests\TestCase;
 final class Scenarios
 {
     /**
-     * Seconds after the last attempt at which the attempt counters are compared: past the 75 s hold of new series.
+     * Seconds after the last attempt at which the attempt counters are compared: past the hold of new series.
      */
-    public const SETTLED = 80;
+    public const SETTLED = Model::HOLD_SECONDS + 5;
 
     /**
      * Every attempt outcome on four queues, on the scenario clock T (whole seconds):
