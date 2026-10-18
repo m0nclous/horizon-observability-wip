@@ -623,7 +623,8 @@
               }
             ]
           },
-          "unit": "locale"
+          "unit": "locale",
+          "displayName": "Oldest: —"
         },
         "overrides": []
       },
@@ -778,7 +779,8 @@
               }
             ]
           },
-          "unit": "locale"
+          "unit": "locale",
+          "displayName": "RPM: —"
         },
         "overrides": []
       },
@@ -824,6 +826,18 @@
           "refId": "A"
         },
         {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(round(sum(((sum by (queue, job_class, status) ((max by (job, connection, queue, job_class, status) (ho_queue_jobs_total{job=~\"$prometheus_job\", queue=~\"$queue\", job_class=~\"$job_class\", status=~\"completed\"}) unless on (job_class) (group by (job_class) ({__name__=~\"ho_queue_jobs_total|ho_queue_jobs_pending|ho_queue_jobs_reserved\", job=~\"$prometheus_job\", __batch_scope__!~\"$batch_kind\"}) unless on (job_class) group by (job_class) ({__name__=~\"ho_queue_batch_job_classes\", job=~\"$prometheus_job\", batch=~\"$batch_kind\", __batch_scope__!~\"$batch_kind\"})))) - (sum by (queue, job_class, status) ((max by (job, connection, queue, job_class, status) (last_over_time(ho_queue_jobs_total{job=~\"$prometheus_job\", queue=~\"$queue\", job_class=~\"$job_class\", status=~\"completed\"}[10m] offset 5m)) unless on (job_class) (group by (job_class) ({__name__=~\"ho_queue_jobs_total|ho_queue_jobs_pending|ho_queue_jobs_reserved\", job=~\"$prometheus_job\", __batch_scope__!~\"$batch_kind\"}) unless on (job_class) group by (job_class) ({__name__=~\"ho_queue_batch_job_classes\", job=~\"$prometheus_job\", batch=~\"$batch_kind\", __batch_scope__!~\"$batch_kind\"})))) or sum by (queue, job_class, status) ((max by (job, connection, queue, job_class, status) (min_over_time(ho_queue_jobs_total{job=~\"$prometheus_job\", queue=~\"$queue\", job_class=~\"$job_class\", status=~\"completed\"}[5m])) unless on (job_class) (group by (job_class) ({__name__=~\"ho_queue_jobs_total|ho_queue_jobs_pending|ho_queue_jobs_reserved\", job=~\"$prometheus_job\", __batch_scope__!~\"$batch_kind\"}) unless on (job_class) group by (job_class) ({__name__=~\"ho_queue_batch_job_classes\", job=~\"$prometheus_job\", batch=~\"$batch_kind\", __batch_scope__!~\"$batch_kind\"})))))) >= 0 or sum by (queue, job_class, status) ((max by (job, connection, queue, job_class, status) (ho_queue_jobs_total{job=~\"$prometheus_job\", queue=~\"$queue\", job_class=~\"$job_class\", status=~\"completed\"}) unless on (job_class) (group by (job_class) ({__name__=~\"ho_queue_jobs_total|ho_queue_jobs_pending|ho_queue_jobs_reserved\", job=~\"$prometheus_job\", __batch_scope__!~\"$batch_kind\"}) unless on (job_class) group by (job_class) ({__name__=~\"ho_queue_batch_job_classes\", job=~\"$prometheus_job\", batch=~\"$batch_kind\", __batch_scope__!~\"$batch_kind\"})))))) / 5) or on () 0 * group(max by (job) (ho_horizon_status{job=~\"$prometheus_job\"})) or vector(-1)) unless on () ((label_replace(vector(1), \"filter\", \"${job_class:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\")) and on () (label_replace(vector(1), \"filter\", \"${batch_kind:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\")))",
+          "legendFormat": "per_minute",
+          "range": false,
+          "instant": true,
+          "refId": "B"
+        },
+        {
           "refId": "C",
           "datasource": {
             "type": "yesoreyeram-infinity-datasource",
@@ -860,7 +874,41 @@
                 "fieldName": "caption",
                 "handlerKey": "displayName"
               }
-            ]
+            ],
+            "applyTo": {
+              "id": "byFrameRefID",
+              "options": "A"
+            }
+          }
+        },
+        {
+          "id": "configFromData",
+          "options": {
+            "configRefId": "B",
+            "mappings": [
+              {
+                "fieldName": "per_minute",
+                "handlerKey": "displayName"
+              }
+            ],
+            "applyTo": {
+              "id": "byFrameRefID",
+              "options": "A"
+            }
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^(\\d+)$",
+            "renamePattern": "RPM: $1"
+          }
+        },
+        {
+          "id": "renameByRegex",
+          "options": {
+            "regex": "^-1$",
+            "renamePattern": "RPM: —"
           }
         }
       ]

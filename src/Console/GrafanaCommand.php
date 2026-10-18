@@ -20,8 +20,9 @@ use Symfony\Component\Console\Input\InputOption;
  *
  * Metric names carry the prefix of `horizon-observability.namespace` (default `ho_`), also with `--defaults`, so the
  * render matches what the application exports. The Live Overview polls the application by default (`--live=poll`,
- * owner decision 9); `--live=stream` subscribes to the Grafana Live stream of `horizon-observability.live.stream.id`
- * (the package default with `--defaults`), and `--live=off` reads every tile from Prometheus.
+ * owner decision 9), or reads Prometheus (`--live=off`) while `horizon-observability.live.enabled` is false;
+ * `--live=stream` subscribes to the Grafana Live stream of `horizon-observability.live.stream.id` (the package
+ * default with `--defaults`), and `--live=off` reads every tile from Prometheus.
  *
  * A relative path is relative to the application root (`base_path()`, Arch Q5.1), wherever the command runs from;
  * under `vendor/bin/testbench` that is its skeleton, so the package's own scripts pass an absolute path.
@@ -48,7 +49,7 @@ final class GrafanaCommand extends Command
         {--scrape-interval=10s : Scrape interval S of the package endpoint, 5s to 60s: the panels\' min interval, the busy window max(15s, 2 x S), the counter lookback max(10m, 10 x S) and the refresh}
         {--folder=Horizon : Grafana folder of the alert rules}
         {--datasource-uid= : Uid of the Prometheus datasource of the alert rules (the description is set in the constructor)}
-        {--live=poll : Live Overview mode: poll (the live tiles read the live endpoint of the application at every dashboard refresh), stream (they read Grafana Live, pushed every second by horizon-observability:stream) or off (every tile reads Prometheus)}
+        {--live= : Live Overview mode: poll (the live tiles read the live endpoint of the application at every dashboard refresh), stream (they read Grafana Live, pushed every second by horizon-observability:stream) or off (every tile reads Prometheus); default poll, or off while horizon-observability.live.enabled is false}
         {--live-poll-interval=5s : Poll mode: the dashboard refresh, 1s to 5m; Grafana raises it to its min_refresh_interval, 5s by default}
         {--live-stream-id= : Stream mode: the Grafana Live stream id, as horizon-observability.live.stream.id of the stream command (default: that config value, or the package default with --defaults)}
         {--health-rules : Add the opt-in health rules: a failing metrics collector, and more than one scraped target per job}
@@ -162,11 +163,7 @@ final class GrafanaCommand extends Command
             throw new InvalidArgumentException('--folder must not contain "$": Grafana would read it as an environment variable.');
         }
 
-        $live = LiveMode::tryFrom($this->text('live'));
-
-        if ($live === null) {
-            throw new InvalidArgumentException('--live must be off, poll or stream.');
-        }
+        $live = $this->liveMode($config);
 
         $streamId = $this->text('live-stream-id', required: false);
 
@@ -199,6 +196,41 @@ final class GrafanaCommand extends Command
             livePollInterval: $this->livePollInterval(),
             liveStreamId: $streamId,
         );
+    }
+
+    /**
+     * `--live`: poll by default (owner decision 9), but off while the application serves no live endpoint
+     * (`horizon-observability.live.enabled` false, without `--defaults`): the live tiles would read a route that
+     * does not exist. An explicit poll or stream render of such an application is kept, with a warning.
+     *
+     * @throws InvalidArgumentException
+     */
+    private function liveMode(Config $config): LiveMode
+    {
+        $disabled = $this->option('defaults') !== true && ! $config->liveEnabled;
+
+        if ($this->option('live') === null) {
+            if ($disabled) {
+                $this->components->warn('horizon-observability.live.enabled is false: rendering --live=off. Enable it, or pass --live=poll or --live=stream, for the Live Overview.');
+            }
+
+            return $disabled ? LiveMode::Off : LiveMode::Poll;
+        }
+
+        $live = LiveMode::tryFrom($this->text('live'));
+
+        if ($live === null) {
+            throw new InvalidArgumentException('--live must be off, poll or stream.');
+        }
+
+        if ($disabled && $live->isLive()) {
+            $this->components->warn(sprintf(
+                'horizon-observability.live.enabled is false, so this application serves no live endpoint: the --live=%s tiles stay without live values until it is enabled.',
+                $live->value,
+            ));
+        }
+
+        return $live;
     }
 
     /**

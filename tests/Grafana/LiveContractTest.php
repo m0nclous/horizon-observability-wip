@@ -5,6 +5,8 @@ declare(strict_types=1);
 use DF\HorizonObservability\Grafana\Live\LiveMode;
 use DF\HorizonObservability\Grafana\Live\LivePanels;
 use DF\HorizonObservability\Grafana\PanelRegistry;
+use DF\HorizonObservability\Grafana\Promql;
+use DF\HorizonObservability\Grafana\Queries\Selection;
 use DF\HorizonObservability\Live\Captions;
 use DF\HorizonObservability\Live\LiveScope;
 use DF\HorizonObservability\Live\LiveSnapshot;
@@ -262,6 +264,12 @@ it('reads the Prometheus targets of the off render unchanged', function (LiveMod
                     $expected['expr'] = str_replace('-(no-metrics|down|long-wait|failures)"', '-(no-metrics|down|long-wait|failures|live)"', $expected['expr']);
                 }
 
+                // The Completed RPM of the off render serves only a Job or Batch filter, whose snapshot has no
+                // throughput (ADDENDUM R4.8 as amended in T13 QA round 2)
+                if ($mode !== LiveMode::Off && $panel['id'] === PanelRegistry::COMPLETED && $target['refId'] === 'B' && is_array($expected)) {
+                    $expected['expr'] = Promql::unlessOn(Promql::paren($expected['expr']), Selection::allJobsSelected());
+                }
+
                 expect($target)->toBe($expected, 'panel '.$panel['id'].' '.$target['refId']);
             }
         }
@@ -271,9 +279,9 @@ it('reads the Prometheus targets of the off render unchanged', function (LiveMod
 
     expect($prometheus)->toBe(match ($mode) {
         LiveMode::Off => $offPrometheus,
-        // Without #3 A and B, #2 B and C, #8 B
-        LiveMode::Poll => $offPrometheus - 5,
+        // Without #3 A and B, #2 B and C (#8 B stays, for a Job or Batch filter)
+        LiveMode::Poll => $offPrometheus - 4,
         // and without #2 A, #9 A
-        LiveMode::Stream => $offPrometheus - 7,
+        LiveMode::Stream => $offPrometheus - 6,
     });
 })->with(Rendered::modes());

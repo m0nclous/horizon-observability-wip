@@ -7,6 +7,8 @@ namespace DF\HorizonObservability\Grafana\Live;
 use DF\HorizonObservability\Grafana\Glyph;
 use DF\HorizonObservability\Grafana\PanelRegistry;
 use DF\HorizonObservability\Grafana\Panels\Common;
+use DF\HorizonObservability\Grafana\Promql;
+use DF\HorizonObservability\Grafana\Queries\Selection;
 use DF\HorizonObservability\Live\Captions;
 use DF\HorizonObservability\Live\Stream\LineProtocol;
 use LogicException;
@@ -24,7 +26,12 @@ use stdClass;
  *   the live one, and Prometheus' when the live value is null: a Job or Batch filter, or an error) and the live
  *   caption and colour C (`configFromData`).
  * - #9 Delayed is Mixed: the Prometheus sparkline A and the live value L.
- * - #8 Completed keeps its Prometheus number and sparkline A and takes the caption "RPM: n" from the snapshot.
+ * - #8 Completed keeps its Prometheus number and sparkline A and takes the caption "RPM: n" from the snapshot; with a
+ *   Job or Batch filter, whose snapshot has no throughput, the off-mode Prometheus RPM B of the selected classes.
+ *
+ * The live captions have a fallback (`fieldConfig.defaults.displayName`, which "Config from query results"
+ * overrides): when the snapshot call fails (no live endpoint, no Infinity datasource, the application unreachable, a
+ * token without access) Grafana would otherwise name the value after its query and show the PromQL.
  *
  * Stream mode: #3 and #2 read the Grafana Live channel `stream/<id>/tiles` through {@see tileRows()}, #9 the windowed
  * channel `stream/<id>/delayed` (15 minutes at 5 s), and #8 is the poll panel. The other tiles read Prometheus in
@@ -220,6 +227,7 @@ final readonly class LivePanels
 
         return $this->changed($panel, [
             'datasource' => self::mixed(),
+            'fieldConfig' => $this->withDisplayName($panel, Captions::oldest(null, null)),
             'targets' => [
                 $this->prometheusTarget($panel, 'A'),
                 self::snapshotTarget('L', '', [['generated_at', 'Time', 'timestamp_epoch'], ['pending.value', 'Value', 'number']]),
@@ -234,21 +242,46 @@ final readonly class LivePanels
 
     /**
      * #8: the Prometheus number and sparkline with the live caption "RPM: n" (the last complete minute of the ring
-     * buffer), in poll and stream modes.
+     * buffer), in poll and stream modes. A Job or Batch filter leaves the snapshot without throughput, so the caption
+     * then comes from the off-mode query B, the Prometheus RPM of the selected classes, which is empty without a
+     * filter. Both captions apply to A only: a caption on the other config frame would hide its field from the next
+     * "Config from query results".
      *
      * @param  array<string, mixed>  $panel
      * @return array<string, mixed>
      */
     private function completed(array $panel): array
     {
+        $rpm = $this->prometheusTarget($panel, 'B');
+        $rpm['expr'] = Promql::unlessOn(Promql::paren(is_string($rpm['expr'] ?? null) ? $rpm['expr'] : ''), Selection::allJobsSelected());
+        $transformations = is_array($panel['transformations'] ?? null) ? array_values($panel['transformations']) : [];
+
         return $this->changed($panel, [
             'datasource' => self::mixed(),
+            'fieldConfig' => $this->withDisplayName($panel, Captions::rpm(null)),
             'targets' => [
                 $this->prometheusTarget($panel, 'A'),
+                $rpm,
                 self::snapshotTarget('C', '', [['throughput.caption', 'caption', 'string']]),
             ],
-            'transformations' => [$this->configFrom('C', [Common::handler('caption', 'displayName')])],
+            'transformations' => [Common::configFromData('C', [Common::handler('caption', 'displayName')]), ...$transformations],
         ]);
+    }
+
+    /**
+     * The panel's field config with the fallback caption $name.
+     *
+     * @param  array<string, mixed>  $panel
+     * @return array<string, mixed>
+     */
+    private function withDisplayName(array $panel, string $name): array
+    {
+        $fieldConfig = is_array($panel['fieldConfig'] ?? null) ? $panel['fieldConfig'] : [];
+        $defaults = is_array($fieldConfig['defaults'] ?? null) ? $fieldConfig['defaults'] : [];
+        $defaults['displayName'] = $name;
+        $fieldConfig['defaults'] = $defaults;
+
+        return $fieldConfig;
     }
 
     /**

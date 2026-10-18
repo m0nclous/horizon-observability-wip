@@ -8,10 +8,11 @@ use DF\HorizonObservability\Grafana\Live\LiveMode;
 use RuntimeException;
 
 /**
- * The live panel shapes of ADDENDUM R4.8, written out by hand from the addendum (verified there on Grafana 12.4.13 and
- * 13.2.4), independent of the renderer: what a poll or stream tile must be, given its `--live=off` panel. Only the
- * properties R4.8 lists change; {@see expected()} applies them to the off panel. JSON is compared without key order
- * ({@see canonical()}).
+ * The live panel shapes of ADDENDUM R4.8 (as amended in T13 QA round 2: the caption fallbacks, the Prometheus RPM
+ * of #8 under a Job or Batch filter, and `interval` only on tiles with a Prometheus query, R2.5), written out by hand
+ * from the addendum (verified there on Grafana 12.4.13 and 13.2.4), independent of the renderer: what a poll or stream
+ * tile must be, given its `--live=off` panel. Only the properties R4.8 lists change; {@see expected()} applies them to
+ * the off panel. JSON is compared without key order ({@see canonical()}).
  */
 final class LiveShapes
 {
@@ -55,8 +56,9 @@ final class LiveShapes
         JSON;
 
     /**
-     * The changed properties of each live tile, by mode and panel id, verbatim from R4.8 (`<A>` is the off-mode target
-     * A, unchanged). `"$unset"` lists the properties the live panel no longer has.
+     * The changed properties of each live tile, by mode and panel id, from R4.8 (`<A>` is the off-mode target A,
+     * unchanged; `<B scoped>` the off-mode target B for a Job or Batch filter only; `"<off>"` in a list the off-mode
+     * transformations). `"$unset"` lists the properties the live panel no longer has.
      */
     private const CHANGES = [
         'poll' => [
@@ -78,6 +80,7 @@ final class LiveShapes
             2 => <<<'JSON'
                 { "datasource": { "type": "datasource", "uid": "-- Mixed --" },
                   "interval": "$scrape_interval",
+                  "fieldConfig": { "defaults": { "displayName": "Oldest: —" } },
                   "targets": [ "<A>",
                     { "target": "L", "root": "", "columns": [ { "selector": "generated_at", "text": "Time", "type": "timestamp_epoch" },
                                                              { "selector": "pending.value", "text": "Value", "type": "number" } ] },
@@ -102,10 +105,12 @@ final class LiveShapes
             8 => <<<'JSON'
                 { "datasource": { "type": "datasource", "uid": "-- Mixed --" },
                   "interval": "$scrape_interval",
-                  "targets": [ "<A>",
+                  "fieldConfig": { "defaults": { "displayName": "RPM: —" } },
+                  "targets": [ "<A>", "<B scoped>",
                     { "target": "C", "root": "", "columns": [ { "selector": "throughput.caption", "text": "caption", "type": "string" } ] } ],
                   "transformations": [ { "id": "configFromData", "options": { "configRefId": "C", "mappings": [
-                      { "fieldName": "caption", "handlerKey": "displayName" } ] } } ] }
+                      { "fieldName": "caption", "handlerKey": "displayName" } ],
+                      "applyTo": { "id": "byFrameRefID", "options": "A" } } }, "<off>" ] }
                 JSON,
         ],
         'stream' => [
@@ -197,7 +202,9 @@ final class LiveShapes
         foreach ($changes as $key => $value) {
             $panel[$key] = match ($key) {
                 'targets' => array_map(static fn (mixed $target): mixed => self::target($target, $off), $value),
-                'transformations' => is_string($value) ? self::tileRows((string) preg_replace('/^TILE_ROWS\((\w+)\)$/', '$1', $value)) : $value,
+                'transformations' => is_string($value)
+                    ? self::tileRows((string) preg_replace('/^TILE_ROWS\((\w+)\)$/', '$1', $value))
+                    : array_merge(...array_map(static fn (mixed $step): array => $step === '<off>' ? $off['transformations'] : [$step], $value)),
                 'fieldConfig' => self::merged($off['fieldConfig'], $value),
                 'options' => [...$off['options'], ...$value],
                 default => $value,
@@ -230,14 +237,22 @@ final class LiveShapes
      */
     private static function target(mixed $target, array $off): mixed
     {
-        if ($target === '<A>') {
+        if ($target === '<A>' || $target === '<B scoped>') {
+            $refId = $target === '<A>' ? 'A' : 'B';
+
             foreach ($off['targets'] as $offTarget) {
-                if ($offTarget['refId'] === 'A') {
+                if ($offTarget['refId'] === $refId) {
+                    if ($refId === 'B') {
+                        // Only with a Job or Batch filter: empty while Job and Batch are both "All"
+                        $offTarget['expr'] = '('.$offTarget['expr'].') unless on () ((label_replace(vector(1), "filter", "${job_class:text}", "", "") and on (filter) label_replace(vector(1), "filter", "All", "", ""))'
+                            .' and on () (label_replace(vector(1), "filter", "${batch_kind:text}", "", "") and on (filter) label_replace(vector(1), "filter", "All", "", "")))';
+                    }
+
                     return $offTarget;
                 }
             }
 
-            throw new RuntimeException('The off panel '.$off['id'].' has no target A.');
+            throw new RuntimeException('The off panel '.$off['id'].' has no target '.$refId.'.');
         }
 
         if (! is_array($target) || ! isset($target['target'])) {
@@ -265,6 +280,10 @@ final class LiveShapes
     {
         if (($changes['defaults']['mappings'] ?? null) === 'SENTINEL') {
             $fieldConfig['defaults']['mappings'] = [...$fieldConfig['defaults']['mappings'], self::sentinel()];
+        }
+
+        if (isset($changes['defaults']['displayName'])) {
+            $fieldConfig['defaults']['displayName'] = $changes['defaults']['displayName'];
         }
 
         return $fieldConfig;

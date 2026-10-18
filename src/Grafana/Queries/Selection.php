@@ -50,7 +50,7 @@ final readonly class Selection
      * Non-empty while Batch and Job are both "All": queue figures are then taken for the whole queue
      * (legacy `ALL_JOBS_SELECTED`).
      */
-    public function allJobsSelected(): string
+    public static function allJobsSelected(): string
     {
         return Promql::paren(Promql::andOn(self::isAll('job_class'), self::isAll('batch_kind')));
     }
@@ -61,13 +61,13 @@ final readonly class Selection
      */
     public function byJobSelection(string $wholeQueue, ?string $selectedJobs = null): string
     {
-        $whole = Promql::paren(Promql::andOn(Promql::paren($wholeQueue), $this->allJobsSelected()));
+        $whole = Promql::paren(Promql::andOn(Promql::paren($wholeQueue), self::allJobsSelected()));
 
         if ($selectedJobs === null) {
             return $whole;
         }
 
-        return Promql::either($whole, Promql::paren(Promql::unlessOn(Promql::paren($selectedJobs), $this->allJobsSelected())));
+        return Promql::either($whole, Promql::paren(Promql::unlessOn(Promql::paren($selectedJobs), self::allJobsSelected())));
     }
 
     /**

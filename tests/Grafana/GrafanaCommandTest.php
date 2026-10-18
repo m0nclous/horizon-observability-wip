@@ -5,6 +5,7 @@ declare(strict_types=1);
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Grafana\DashboardOptions;
 use DF\HorizonObservability\Grafana\Live\LiveMode;
+use DF\HorizonObservability\Grafana\Live\LivePanels;
 use DF\HorizonObservability\Grafana\Render;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 use Illuminate\Support\Facades\Artisan;
@@ -84,6 +85,31 @@ it('renders the live mode it is given, poll by default', function (): void {
             expect(file_get_contents($this->output.'/'.$mode.'/'.$file))->toBe($contents, $mode.' '.$file);
         }
     }
+});
+
+it('renders --live=off by default while the application serves no live endpoint (T13 QA round 2)', function (): void {
+    config()->set('horizon-observability.live.enabled', false);
+    app()->forgetInstance(Config::class);
+    $dashboard = fn (): string => (string) file_get_contents($this->output.'/'.Render::DASHBOARD);
+
+    [$status, $output] = runGrafana(['path' => $this->output]);
+    $default = $dashboard();
+    [$pollStatus, $pollOutput] = runGrafana(['path' => $this->output, '--live' => 'poll']);
+    $poll = $dashboard();
+    [$defaultsStatus, $defaultsOutput] = runGrafana(['path' => $this->output, '--defaults' => true]);
+
+    expect($status)->toBe(0)
+        ->and($output)->toContain('horizon-observability.live.enabled is false: rendering --live=off')
+        ->and($default)->not->toContain(LivePanels::URL)
+        ->and($default)->toBe((new Render(new DashboardOptions(live: LiveMode::Off)))->files()[Render::DASHBOARD])
+        // An explicit live mode is rendered, with a warning
+        ->and($pollStatus)->toBe(0)
+        ->and($pollOutput)->toContain('the --live=poll tiles stay without live values until it is enabled')
+        ->and($poll)->toContain(LivePanels::URL)
+        // --defaults ignores the application config: poll, no warning
+        ->and($defaultsStatus)->toBe(0)
+        ->and($defaultsOutput)->not->toContain('live.enabled')
+        ->and($dashboard())->toContain(LivePanels::URL);
 });
 
 it('subscribes the stream tiles to the configured stream id, the package default with --defaults', function (): void {
