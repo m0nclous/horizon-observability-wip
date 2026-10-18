@@ -9,6 +9,7 @@ queries change.
 | `first-value/run-scripted.sh` | Does Prometheus count the first value of a new counter series, with and without the exporter's hold, and what would a dashboard-only fix count for a scrape job added later? | `tests/Truth/probes/first-value/run-scripted.sh` | `first-value/results-scripted.txt` |
 | `first-value/run.sh` | The same with the real exporter of two checkouts (before and after the fix) and real workers | `tests/Truth/probes/first-value/run.sh <before checkout> <after checkout>` | `first-value/results-real.txt` |
 | `pooled-queues/run.sh` | Can the queue table #5 find the supervisor, the processes and the busy workers of a balance=false pooled queue? | `tests/Truth/probes/pooled-queues/run.sh` | `pooled-queues/results.txt` |
+| `replica-clocks/run.sh` | QA round 2 (adversarial): what does `increase()` count when two replicas behind the one scrape target (Arch Q1.5) apply the hold with clocks 15 s apart? | `tests/Truth/probes/replica-clocks/run.sh` | `replica-clocks/results.txt` |
 
 The scripted probe serves `ho_queue_jobs_total` from `fake_exporter.py` as a function of time (mode `baseline` or
 `hold`); `query.py` evaluates `increase()`, the dashboard's `delta()` (T13 `Queries\Attempts::delta()`) and a
