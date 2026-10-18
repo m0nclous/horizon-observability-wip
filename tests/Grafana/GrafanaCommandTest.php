@@ -62,7 +62,7 @@ afterEach(function (): void {
 });
 
 it('keeps the committed assets equal to the --defaults render', function (): void {
-    [$status, $output] = runGrafana(['path' => dirname(__DIR__, 2).'/resources/grafana', '--defaults' => true, '--check' => true]);
+    [$status, $output] = runGrafana(['path' => dirname(__DIR__, 2).'/resources/grafana', '--defaults' => true, '--recording-rules' => true, '--check' => true]);
 
     expect($status)->toBe(0, $output)
         ->and($output)->toContain('up to date');
@@ -162,6 +162,29 @@ it('writes the dashboard and the alert rules', function (): void {
 
     expect($status)->toBe(0)
         ->and(array_keys((new Render(new DashboardOptions))->files()))->toBe([Render::DASHBOARD, Render::ALERTING]);
+});
+
+it('writes the recording rules only with --recording-rules, and checks them (ADDENDUM R2.4 O9)', function (): void {
+    [$status, $output] = runGrafana(['path' => $this->output, '--recording-rules' => true, '--scrape-interval' => '30s']);
+    $render = (new Render(new DashboardOptions(scrapeInterval: 30, recordingRules: true)))->files();
+
+    expect($status)->toBe(0, $output)
+        ->and($output)->toContain(Render::RECORDING_RULES)
+        ->toContain('and the Prometheus recording rules')
+        ->and(file_get_contents($this->output.'/'.Render::RECORDING_RULES))->toBe($render[Render::RECORDING_RULES])
+        ->and(runGrafana(['path' => $this->output, '--recording-rules' => true, '--scrape-interval' => '30s', '--check' => true])[0])->toBe(0);
+
+    unlink($this->output.'/'.Render::RECORDING_RULES);
+    [$status, $output] = runGrafana(['path' => $this->output, '--recording-rules' => true, '--scrape-interval' => '30s', '--check' => true]);
+
+    expect($status)->toBe(1)
+        ->and($output)->toContain('1 of 3 files')
+        ->and(runGrafana(['path' => $this->output, '--scrape-interval' => '30s', '--check' => true])[0])->toBe(0);
+
+    [$status] = runGrafana(['path' => $this->output.'/plain']);
+
+    expect($status)->toBe(0)
+        ->and(file_exists($this->output.'/plain/'.Render::RECORDING_RULES))->toBeFalse();
 });
 
 it('checks its own output idempotently', function (): void {

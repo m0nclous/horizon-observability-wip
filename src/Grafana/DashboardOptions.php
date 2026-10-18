@@ -81,6 +81,8 @@ final readonly class DashboardOptions
      * @param  int  $livePollInterval  the dashboard refresh in poll mode, seconds (`--live-poll-interval`, 1 to 300)
      * @param  string  $liveStreamId  the Grafana Live stream id the stream tiles subscribe to (`--live-stream-id`,
      *                                {@see STREAM_ID_PATTERN}); it must match `live.stream.id` of the stream command
+     * @param  bool  $recordingRules  also render the opt-in Prometheus recording rules (`--recording-rules`, ADDENDUM
+     *                                R2.4 O9), which the dashboard does not read
      *
      * @throws InvalidArgumentException for a poll interval or a stream id out of range
      */
@@ -100,6 +102,7 @@ final readonly class DashboardOptions
         public bool $healthRules = false,
         public int $livePollInterval = self::DEFAULT_LIVE_POLL_INTERVAL,
         public string $liveStreamId = Config::DEFAULT_LIVE_STREAM_ID,
+        public bool $recordingRules = false,
     ) {
         if ($livePollInterval < self::MIN_LIVE_POLL_INTERVAL || $livePollInterval > self::MAX_LIVE_POLL_INTERVAL) {
             throw new InvalidArgumentException(sprintf(

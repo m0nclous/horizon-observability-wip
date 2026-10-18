@@ -15,8 +15,10 @@ use Symfony\Component\Console\Input\InputOption;
 
 /**
  * PUBLIC `horizon-observability:grafana` (Arch Q5.1): renders the Grafana dashboard and the alert rules into
- * `{path}/dashboards/horizon-observability.json` and `{path}/alerting/horizon-observability.json`, or with `--check`
- * compares those files with the render and exits 1 when they differ (for the CI of an infrastructure repository).
+ * `{path}/dashboards/horizon-observability.json` and `{path}/alerting/horizon-observability.json`, with
+ * `--recording-rules` also the opt-in Prometheus recording rules into `{path}/prometheus/horizon-observability.rules.yml`
+ * (ADDENDUM R2.4 O9), or with `--check` compares those files with the render and exits 1 when they differ (for the CI
+ * of an infrastructure repository).
  *
  * Metric names carry the prefix of `horizon-observability.namespace` (default `ho_`), also with `--defaults`, so the
  * render matches what the application exports. The Live Overview polls the application by default (`--live=poll`,
@@ -53,6 +55,7 @@ final class GrafanaCommand extends Command
         {--live-poll-interval=5s : Poll mode: the dashboard refresh, 1s to 5m; Grafana raises it to its min_refresh_interval, 5s by default}
         {--live-stream-id= : Stream mode: the Grafana Live stream id, as horizon-observability.live.stream.id of the stream command (default: that config value, or the package default with --defaults)}
         {--health-rules : Add the opt-in health rules: a failing metrics collector, and more than one scraped target per job}
+        {--recording-rules : Also render the opt-in Prometheus recording rules (attempts and durations per queue) into prometheus/horizon-observability.rules.yml; the dashboard does not read them}
         {--prometheus-datasource= : Name regex of the Prometheus datasource (default: Grafana\'s default datasource)}
         {--infinity-datasource= : Name regex of the Infinity datasource of the job lists (default: the first one)}';
 
@@ -105,7 +108,11 @@ final class GrafanaCommand extends Command
             $this->components->twoColumnDetail($file, 'written');
         }
 
-        $this->components->info('Rendered the Grafana dashboard and alert rules into '.$directory.'.');
+        $this->components->info(sprintf(
+            'Rendered the Grafana dashboard and alert rules%s into %s.',
+            isset($render[Render::RECORDING_RULES]) ? ', and the Prometheus recording rules,' : '',
+            $directory,
+        ));
 
         return self::SUCCESS;
     }
@@ -195,6 +202,7 @@ final class GrafanaCommand extends Command
             healthRules: $this->option('health-rules') === true,
             livePollInterval: $this->livePollInterval(),
             liveStreamId: $streamId,
+            recordingRules: $this->option('recording-rules') === true,
         );
     }
 

@@ -131,6 +131,15 @@ final readonly class Promql
     }
 
     /**
+     * One series of a histogram family (`bucket`, `sum` or `count`) as an instant vector, deduplicated as
+     * {@see selector()} (`bucket` adds `le` to the dedupe labels), for the opt-in recording rules.
+     */
+    public function series(Metric $metric, string $series, string ...$matchers): string
+    {
+        return $this->package($metric, $series, array_values($matchers));
+    }
+
+    /**
      * A package selector without the replica dedupe, for the opt-in health rules, which look at each replica (Arch
      * Q1.5, Q5.3): the duplicates rule counts the replicas, the collector rule finds a collector that fails on one
      * of them (self-metrics are per replica, unlike the business series read from shared storage).

@@ -6,7 +6,7 @@ namespace DF\HorizonObservability\Grafana;
 
 /**
  * The files of one render (Arch Q5.1): the dashboard and the alert rules, as Grafana file provisioning reads them,
- * keyed by their path relative to the output directory.
+ * and with `--recording-rules` the Prometheus rule file, keyed by their path relative to the output directory.
  *
  * @internal
  */
@@ -16,6 +16,8 @@ final readonly class Render
 
     public const ALERTING = 'alerting/horizon-observability.json';
 
+    public const RECORDING_RULES = 'prometheus/horizon-observability.rules.yml';
+
     public function __construct(private DashboardOptions $options) {}
 
     /**
@@ -23,10 +25,16 @@ final readonly class Render
      */
     public function files(): array
     {
-        return [
+        $files = [
             self::DASHBOARD => Json::encode((new DashboardBuilder($this->options))->build()),
             self::ALERTING => Json::encode((new AlertRulesBuilder($this->options))->build()),
         ];
+
+        if ($this->options->recordingRules) {
+            $files[self::RECORDING_RULES] = (new RecordingRulesBuilder($this->options))->yaml();
+        }
+
+        return $files;
     }
 
     /**
