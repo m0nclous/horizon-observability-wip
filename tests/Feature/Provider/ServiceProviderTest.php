@@ -57,20 +57,19 @@ it('logs the config problems once when the snapshot is first built', function ()
         ->and($log->records[0]['context']['problems'])->toHaveCount(2);
 });
 
-it('registers the seven commands, grafana once its class exists (T13)', function (): void {
-    $grafana = class_exists('DF\\HorizonObservability\\Console\\GrafanaCommand');
+it('registers the seven commands', function (): void {
     $commands = array_values(array_filter(array_keys(Artisan::all()), static fn (string $name): bool => str_starts_with($name, 'horizon-observability:')));
     sort($commands);
 
-    expect($commands)->toBe(array_values(array_filter([
+    expect($commands)->toBe([
         'horizon-observability:cache',
         'horizon-observability:check',
         'horizon-observability:clear',
         'horizon-observability:flush',
-        $grafana ? 'horizon-observability:grafana' : null,
+        'horizon-observability:grafana',
         'horizon-observability:install',
         'horizon-observability:stream',
-    ])))->and(HorizonObservabilityServiceProvider::packageCommands())->toHaveCount($grafana ? 7 : 6);
+    ])->and(HorizonObservabilityServiceProvider::packageCommands())->toHaveCount(7);
 });
 
 it('exits 1 from the stream command stub', function (): void {

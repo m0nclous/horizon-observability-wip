@@ -13,6 +13,7 @@ use DF\HorizonObservability\Console\CacheCommand;
 use DF\HorizonObservability\Console\CheckCommand;
 use DF\HorizonObservability\Console\ClearCommand;
 use DF\HorizonObservability\Console\FlushCommand;
+use DF\HorizonObservability\Console\GrafanaCommand;
 use DF\HorizonObservability\Console\InstallCommand;
 use DF\HorizonObservability\Console\StreamCommand;
 use DF\HorizonObservability\Discovery\JobClassCache;
@@ -54,12 +55,6 @@ use Laravel\Horizon\Horizon;
  */
 final class HorizonObservabilityServiceProvider extends ServiceProvider
 {
-    /**
-     * `horizon-observability:grafana` (T13). Registered when the class exists, so this provider needs no edit when
-     * it lands.
-     */
-    private const GRAFANA_COMMAND = 'DF\\HorizonObservability\\Console\\GrafanaCommand';
-
     /**
      * Whether the booting callback (or its late fallback) has run for this provider instance.
      */
@@ -164,21 +159,21 @@ final class HorizonObservabilityServiceProvider extends ServiceProvider
     }
 
     /**
-     * The seven package commands in Arch Q7 order; `grafana` only once its class exists.
+     * The seven package commands in Arch Q7 order.
      *
-     * @return list<string>
+     * @return list<class-string>
      */
     public static function packageCommands(): array
     {
-        return array_values(array_filter([
+        return [
             InstallCommand::class,
             CheckCommand::class,
-            self::GRAFANA_COMMAND,
+            GrafanaCommand::class,
             CacheCommand::class,
             ClearCommand::class,
             FlushCommand::class,
             StreamCommand::class,
-        ], class_exists(...)));
+        ];
     }
 
     /**
