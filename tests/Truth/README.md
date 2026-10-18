@@ -31,13 +31,19 @@ REDIS_CLIENT=predis vendor/bin/pest --group=truth
   `json_decode`; `Support/HorizonTruth.php` restates the horizon families from Horizon's `MasterSupervisorRepository`
   and `SupervisorRepository`; batches come from `Bus::findBatch()`; job classes from PHP reflection; versions from
   Composer's `InstalledVersions`; Horizon's own `MetricsRepository` and `JobRepository` cross-check the counters.
-- **Invariants** (`Support/Invariants.php`), checked at every scrape of every scenario: histogram buckets never
-  decrease, `count` equals the `+Inf` bucket, sums are finite and 0 without observations; every series has the five
-  statuses with whole counts; observations and waits never exceed attempts; ready jobs per class (with
+- **Invariants** (`Support/Invariants.php`), asserted by `Scenario::scrape()` at every scrape of every scenario (the
+  tests that drive the attempts collector directly through the `Storage` fixture check what they state):
+  histogram buckets never decrease, `count` equals the `+Inf` bucket, sums are finite and 0 without observations;
+  every series has the five statuses with whole counts; a series has at most as many duration observations as
+  attempts, and a held new series (all five statuses 0) has none; a queue has at most as many waits as attempts
+  unless one of its series is held (the lag between the families, decision 1 below); ready jobs per class (with
   `(unscanned)`) add up to the pending jobs that are not due delayed ones; due jobs are part of the delayed and the
-  pending ones; the oldest wait is 0 exactly when nothing is pending; pool labels have process series; batch progress
-  is a percentage; every collector with a success series has a duration; counters never decrease except at a
-  documented reset (`ResetTruthTest`).
+  pending ones; the oldest wait is not negative and 0 when nothing is pending (it may be 0 with pending jobs: a job
+  pushed at or after the scrape time by the exporter's clock, e.g. from a dispatcher whose clock is ahead); pool
+  labels have process series; batch progress is a percentage; every collector with a success series has a
+  duration; and from one scrape to the next of a scenario, no counter sample (the counter families, every bucket,
+  count and sum) decreases unless `meta.reset_at` changed in between, the documented reset (`ResetTruthTest`). A
+  series that disappears starts again from its next value. `InvariantsTruthTest` puts them under pressure.
 - **Scrape intervals** (`ScrapeIntervalTruthTest`): ten minutes of steady load scraped every 5, 10 and 60 s in runs of
   their own: every scrape equals the model at its time, the 60 s grid is identical across the intervals (so is
   `increase()` between any two of its points), and every series starts at 0.

@@ -12,13 +12,21 @@ use DF\HorizonObservability\Metrics\Metric;
  * - histograms: buckets never decrease with `le`, `count` equals the `+Inf` bucket, the sum is finite and not
  *   negative, and 0 without observations;
  * - `queue_jobs_total`: every series has the five statuses with whole, non-negative counts; a series has at most as
- *   many duration observations as attempts, and a queue at most as many waits as attempts;
+ *   many duration observations as attempts; a held new series (all five statuses 0, `AttemptsCollector`'s hold) has
+ *   no duration observations either; a queue has at most as many waits as attempts unless one of its series is held:
+ *   the wait histogram of a known queue is not held, so it counts the first waits of a new class at once while the
+ *   class's attempts read 0 for the hold (the documented lag between the families, tests/Truth/README.md);
  * - queues: ready jobs per class (with `(unscanned)`) add up to the pending jobs that are not due delayed ones, due
- *   jobs are part of the delayed and the pending ones, the oldest wait is not negative and 0 exactly when nothing is
- *   pending;
+ *   jobs are part of the delayed and the pending ones, the oldest wait is not negative and 0 when nothing is pending
+ *   (it can be 0 with pending jobs too: a job pushed at or after the scrape time by the exporter's clock, e.g. by a
+ *   dispatcher whose clock is ahead);
  * - supervisors: every pool label of `horizon_supervisor_queues` is a process label of the same supervisor;
  * - batches: progress is a percentage;
- * - self: every collector with a success series has a duration series, and success is 0 or 1.
+ * - self: every collector with a success series has a duration series, and success is 0 or 1;
+ * - across the scrapes of one scenario ({@see self::decreases()}): counters (the counter families and every bucket,
+ *   count and sum of the histograms) never decrease, except at a documented reset (`meta.reset_at` changed). A series
+ *   that disappears (a pruned class, a restart without the dataset, a failed collector) starts again from its next
+ *   value.
  */
 final class Invariants
 {
@@ -38,6 +46,51 @@ final class Invariants
             ...self::batches($samples),
             ...self::self($samples),
         ];
+    }
+
+    /**
+     * The counter samples of a scrape: the counter families and every bucket, count and sum of the histograms,
+     * `family{labels}` => value.
+     *
+     * @return array<string, float>
+     */
+    public static function counters(Samples $samples): array
+    {
+        $counters = [];
+        $names = [Metric::JobsTotal->value, Metric::AttemptsDropped->value, Metric::LivePushFailures->value];
+
+        foreach ([Metric::JobDuration->value, Metric::JobWait->value] as $histogram) {
+            array_push($names, $histogram.'_bucket', $histogram.'_count', $histogram.'_sum');
+        }
+
+        foreach ($names as $name) {
+            foreach ($samples->series($name) as $key => $value) {
+                $counters[$name.'{'.$key.'}'] = $value;
+            }
+        }
+
+        return $counters;
+    }
+
+    /**
+     * Counter samples that decreased from one scrape to the next ({@see self::counters()}); a sample missing from the
+     * later scrape is not a decrease.
+     *
+     * @param  array<string, float>  $before
+     * @param  array<string, float>  $after
+     * @return list<string>
+     */
+    public static function decreases(array $before, array $after): array
+    {
+        $violations = [];
+
+        foreach ($after as $series => $value) {
+            if (isset($before[$series]) && $value < $before[$series]) {
+                $violations[] = sprintf('%s decreased from %s to %s without a documented reset', $series, $before[$series], $value);
+            }
+        }
+
+        return $violations;
     }
 
     /**
@@ -105,6 +158,16 @@ final class Invariants
             }
         }
 
+        // A held series: all five statuses 0 (an exported series has at least one count otherwise).
+        $held = [];
+
+        foreach ($perSeries as $series => $total) {
+            if ($total === 0.0) {
+                $labels = Samples::labels($series);
+                $held[Model::key(['connection' => $labels['connection'], 'queue' => $labels['queue']])][] = $series;
+            }
+        }
+
         foreach ($samples->histograms(Metric::JobDuration->value) as $series => $histogram) {
             if ($histogram['count'] > ($perSeries[$series] ?? 0)) {
                 $violations[] = sprintf('queue_job_duration_seconds{%s}: %d observations for %d attempts', $series, $histogram['count'], $perSeries[$series] ?? 0);
@@ -112,8 +175,8 @@ final class Invariants
         }
 
         foreach ($samples->histograms(Metric::JobWait->value) as $queue => $histogram) {
-            if ($histogram['count'] > ($perQueue[$queue] ?? 0)) {
-                $violations[] = sprintf('queue_job_wait_seconds{%s}: %d waits for %d attempts', $queue, $histogram['count'], $perQueue[$queue] ?? 0);
+            if ($histogram['count'] > ($perQueue[$queue] ?? 0) && ! isset($held[$queue])) {
+                $violations[] = sprintf('queue_job_wait_seconds{%s}: %d waits for %d attempts, and no series of the queue is held', $queue, $histogram['count'], $perQueue[$queue] ?? 0);
             }
         }
 
@@ -149,7 +212,7 @@ final class Invariants
                 $violations[] = sprintf('queue_delayed_due_jobs{%s}: %s due, %s delayed, %s pending', $queue, $dueJobs, $delayed[$queue] ?? 0, $pending);
             }
 
-            if (isset($oldest[$queue]) && ($oldest[$queue] < 0 || ($oldest[$queue] === 0.0) !== ($pending === 0.0))) {
+            if (isset($oldest[$queue]) && ($oldest[$queue] < 0 || ($pending === 0.0 && $oldest[$queue] !== 0.0))) {
                 $violations[] = sprintf('queue_oldest_pending_job_age_seconds{%s}: %s with %s pending', $queue, $oldest[$queue], $pending);
             }
         }

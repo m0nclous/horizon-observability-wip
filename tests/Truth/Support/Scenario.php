@@ -7,6 +7,8 @@ namespace DF\HorizonObservability\Tests\Truth\Support;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use DF\HorizonObservability\Config\Config;
+use DF\HorizonObservability\Redis\Keys;
+use DF\HorizonObservability\Tests\Fixtures\Attempts\Storage;
 use DF\HorizonObservability\Tests\Integration\Live\Support\Processes;
 use DF\HorizonObservability\Tests\Support\Exposition;
 use DF\HorizonObservability\Tests\TestCase;
@@ -17,7 +19,9 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Event;
 use Laravel\Horizon\Events\JobPushed;
 use LogicException;
+use PHPUnit\Framework\Assert;
 use RuntimeException;
+use Throwable;
 
 /**
  * The scenario engine of the truth tests (T16, owner decision 13).
@@ -45,6 +49,20 @@ final class Scenario
     public readonly Model $model;
 
     private CarbonImmutable $now;
+
+    /**
+     * The counter samples of the previous scrape ({@see Invariants::counters()}).
+     *
+     * @var array<string, float>
+     */
+    private array $counters = [];
+
+    /**
+     * `meta.reset_at` at the previous scrape.
+     */
+    private ?string $resetAt = null;
+
+    private int $scrapes = 0;
 
     /**
      * @param  list<float|int>  $buckets
@@ -184,7 +202,9 @@ final class Scenario
     }
 
     /**
-     * Scrape the real endpoint now, with the scenario's token.
+     * Scrape the real endpoint now, with the scenario's token, and assert the {@see Invariants} on it: those of the
+     * scrape itself and, against the previous scrape of this scenario, counters that never decrease except at a
+     * documented reset (`meta.reset_at` changed in between).
      */
     public function scrape(): Exposition
     {
@@ -194,7 +214,21 @@ final class Scenario
             throw new RuntimeException(sprintf('The scrape answered %d: %s', $response->getStatusCode(), (string) $response->getContent()));
         }
 
-        return Exposition::parse((string) $response->getContent());
+        $exposition = Exposition::parse((string) $response->getContent());
+        $samples = new Samples($exposition);
+        $counters = Invariants::counters($samples);
+        $resetAt = $this->resetAt();
+        $violations = Invariants::violations($samples);
+
+        if ($resetAt === $this->resetAt) {
+            array_push($violations, ...Invariants::decreases($this->counters, $counters));
+        }
+
+        Assert::assertSame([], $violations, sprintf("The invariants of the scrape %d of this scenario, at %s:\n%s", ++$this->scrapes, $this->now->format('U.u'), implode("\n", $violations)));
+        $this->counters = $counters;
+        $this->resetAt = $resetAt;
+
+        return $exposition;
     }
 
     /**
@@ -241,6 +275,20 @@ final class Scenario
         CarbonImmutable::setTestNow($time);
 
         return $this;
+    }
+
+    /**
+     * `meta.reset_at` of the attempt storage now (null when unset or unreadable).
+     */
+    private function resetAt(): ?string
+    {
+        try {
+            $resetAt = Storage::store()->reader()->hget((new Keys)->meta(), 'reset_at');
+        } catch (Throwable) {
+            return null;
+        }
+
+        return is_string($resetAt) ? $resetAt : null;
     }
 
     private function waitFor(callable $condition, string $message): void

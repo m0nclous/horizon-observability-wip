@@ -2,8 +2,12 @@
 
 declare(strict_types=1);
 
+use DF\HorizonObservability\Collectors\AttemptsCollector;
 use DF\HorizonObservability\Metrics\Metric;
+use DF\HorizonObservability\Redis\Keys;
+use DF\HorizonObservability\Tests\Fixtures\Attempts\Storage;
 use DF\HorizonObservability\Tests\Integration\Batches\Support\BatchTable;
+use DF\HorizonObservability\Tests\Support\Exposition;
 use DF\HorizonObservability\Tests\Support\HorizonState;
 use DF\HorizonObservability\Tests\Truth\Support\Invariants;
 use DF\HorizonObservability\Tests\Truth\Support\RedisState;
@@ -12,12 +16,14 @@ use DF\HorizonObservability\Tests\Truth\Support\Scenario;
 use DF\HorizonObservability\Tests\Truth\Support\Scenarios;
 use DF\HorizonObservability\Tests\Truth\Support\TruthJob;
 use Illuminate\Support\Facades\Bus;
+use PHPUnit\Framework\ExpectationFailedException;
 
 /*
 | Exporter truth (T16): the invariants of Support\Invariants (histogram shape, the five statuses, observations per
-| attempt, classes adding up to the pending jobs incl. "(unscanned)", due within delayed and pending, pools with
-| processes, batch progress, self-metrics) hold at every scrape of the other scenarios; the timeline scrapes are
-| checked in ScrapeIntervalTruthTest and ResetTruthTest. Reserved jobs per class add up to the reserved set in Redis.
+| attempt, waits per attempt outside a hold, classes adding up to the pending jobs incl. "(unscanned)", due within
+| delayed and pending, pools with processes, batch progress, self-metrics, counters that never decrease except at a
+| documented reset) are asserted by Scenario::scrape() at every scrape of every scenario. The cases here put the
+| invariants under pressure; reserved jobs per class add up to the reserved set in Redis.
 */
 
 pest()->group('redis', 'truth');
@@ -71,4 +77,61 @@ it('holds the invariants of a backlog, a long queue beyond the scan limit, batch
     expect(Invariants::violations($samples))->toBe([])
         ->and($samples->value(Metric::QueueJobsPending->value, ['connection' => 'redis', 'queue' => 'reports', 'job_class' => '(unscanned)']))->toBe(5.0)
         ->and($samples->series(Metric::BatchProgress->value))->not->toBe([]);
+});
+
+it('fails a scenario scrape whose counter decreases without a documented reset', function (): void {
+    $scenario = Scenario::start($this);
+    $scenario->dispatch(new TruthJob('Truth\\Invoice'))->dispatch(new TruthJob('Truth\\Invoice'))->work()->advance(AttemptsCollector::NEW_SERIES_HOLD_SECONDS);
+    $scenario->scrape();
+    // One attempt less in the storage, as a lost write or a bad merge would leave it; meta.reset_at stays.
+    Storage::store()->reader()->hincrby((new Keys)->attempts(), Keys::field('redis', 'default', 'Truth\\Invoice', 'completed'), -1);
+
+    expect(fn (): mixed => $scenario->scrape())->toThrow(ExpectationFailedException::class, 'decreased from 2 to 1 without a documented reset');
+});
+
+it('holds the invariants while a new class on a known queue is held: its waits lead its attempts for the hold only', function (): void {
+    $scenario = Scenario::start($this);
+    $scenario->dispatch(new TruthJob('Truth\\Invoice'))->work()->advance(AttemptsCollector::NEW_SERIES_HOLD_SECONDS);
+    $scenario->scrape();
+
+    // A deploy brings a new class to the known queue: its attempts are held, the queue's waits are not.
+    foreach (range(1, 3) as $ignored) {
+        $scenario->dispatch(new TruthJob('Truth\\Fresh'));
+    }
+
+    $waits = static fn (Samples $samples): ?float => $samples->value(Metric::JobWait->value.'_count', ['connection' => 'redis', 'queue' => 'default']);
+    $attempts = static fn (Samples $samples): float => array_sum($samples->series(Metric::JobsTotal->value));
+    $held = new Samples($scenario->work()->advance(1)->scrape());
+    $settled = new Samples($scenario->advance(AttemptsCollector::NEW_SERIES_HOLD_SECONDS)->scrape());
+
+    // Scenario::scrape() asserted the invariants at both scrapes.
+    expect([$waits($held), $attempts($held)])->toBe([4.0, 1.0])
+        ->and([$waits($settled), $attempts($settled)])->toBe([4.0, 4.0]);
+});
+
+it('allows more waits than attempts only while a series of the queue is held', function (): void {
+    $exposition = static function (bool $withHeld): Samples {
+        $lines = ['# TYPE ho_queue_jobs_total counter'];
+
+        foreach (['completed' => 1, 'released' => 0, 'retried' => 0, 'failed' => 0, 'timed_out' => 0] as $status => $count) {
+            $lines[] = sprintf('ho_queue_jobs_total{connection="redis",queue="default",job_class="Truth\\\\Old",status="%s"} %d', $status, $count);
+
+            if ($withHeld) {
+                $lines[] = sprintf('ho_queue_jobs_total{connection="redis",queue="default",job_class="Truth\\\\New",status="%s"} 0', $status);
+            }
+        }
+
+        array_push(
+            $lines,
+            '# TYPE ho_queue_job_wait_seconds histogram',
+            'ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="+Inf"} 3',
+            'ho_queue_job_wait_seconds_sum{connection="redis",queue="default"} 1.5',
+            'ho_queue_job_wait_seconds_count{connection="redis",queue="default"} 3',
+        );
+
+        return new Samples(Exposition::parse(implode("\n", $lines)."\n"));
+    };
+
+    expect(Invariants::violations($exposition(false)))->toBe(['queue_job_wait_seconds{connection="redis",queue="default"}: 3 waits for 1 attempts, and no series of the queue is held'])
+        ->and(Invariants::violations($exposition(true)))->toBe([]);
 });
