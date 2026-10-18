@@ -69,6 +69,7 @@ final class Promtool
             '${__from:date:seconds}' => (string) ($to - $range),
             '${__to:date:seconds}' => (string) $to,
             '$__interval_ms' => '60000',
+            '${__interval_ms}' => '60000',
             '$__interval' => '1m',
             '$__range' => $range.'s',
             '$busy_window' => '2m',

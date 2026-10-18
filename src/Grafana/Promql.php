@@ -265,7 +265,7 @@ final readonly class Promql
     public function filtered(string $expr, bool $jobFilter): string
     {
         $labels = '\{(?:[^}"]|"(?:[^"\\\\]|\\\\.)*")*\}';
-        $time = '(?: offset -?[$\w{}:]+)?(?: @ [$\w{}:]+)?';
+        $time = '(?: offset -?[$\w{}:]+)?(?<at> @ (?:start\(\)|end\(\)|[$\w{}:]+))?';
         // A string, or a package selector with the range function and the dedupe Promql::package() writes around it
         $pattern = '/"(?:[^"\\\\]|\\\\.)*"|\b(?<dedupe>max by \([^()]*\) \()?(?<fn>[a-z_]+\()?'
             .'(?<name>'.preg_quote($this->prefix, '/').'[a-z_]+)(?<labels>'.$labels.')?'
@@ -307,7 +307,15 @@ final readonly class Promql
             $start = strlen($match['dedupe']) + strlen($match['fn']);
             $unit = substr($match[0], 0, $start).$selector.substr($match[0], $start + strlen($name) + strlen($labels));
 
-            return $scoped ? $this->batchScoped($unit) : $unit;
+            if (! $scoped) {
+                return $unit;
+            }
+
+            // A vector at a fixed time (`@`) takes the Batch scope of that time, so the whole unit is step-invariant
+            // and Prometheus evaluates it once per range query instead of at every step
+            $at = isset($match['at']) && $match['at'] !== '' ? substr($match['at'], 3) : null;
+
+            return $this->batchScoped($unit, at: $at);
         }, $expr);
     }
 
@@ -320,9 +328,9 @@ final readonly class Promql
      *
      * @param  'job_class'|'queue'  $label
      */
-    public function batchScoped(string $vector, string $label = 'job_class'): string
+    public function batchScoped(string $vector, string $label = 'job_class', ?string $at = null): string
     {
-        return self::paren(self::unlessOn($vector, $this->batchExcluded($label), $label));
+        return self::paren(self::unlessOn($vector, $this->batchExcluded($label, $at), $label));
     }
 
     /**
@@ -332,20 +340,22 @@ final readonly class Promql
      * __batch_scope__!~"$batch_kind"})`. No stored series has the label `__batch_scope__` (Prometheus drops
      * `__`-prefixed labels after relabelling), and an absent label matches as "": with Batch "All" the matcher
      * `!~".*"` selects nothing, so both operands are empty; with kinds selected it selects every series of the
-     * family. Group aggregations do not depend on the number of replicas, hence no dedupe.
+     * family. Group aggregations do not depend on the number of replicas, hence no dedupe. $at evaluates the set at
+     * a fixed time (`@ ${__to:date:seconds}`, `@ start()`), for a vector at that time.
      *
      * @param  'job_class'|'queue'  $label
      */
-    public function batchExcluded(string $label = 'job_class'): string
+    public function batchExcluded(string $label = 'job_class', ?string $at = null): string
     {
         $families = $label === 'job_class'
             ? [Metric::JobsTotal, Metric::QueueJobsPending, Metric::QueueJobsReserved]
             : [Metric::QueuePendingJobs];
         $outside = self::nre(self::BATCH_SCOPE, self::BATCH_VARIABLE);
+        $timed = static fn (string $selector): string => $at === null ? $selector : self::at($selector, $at);
 
         return self::paren(self::unlessOn(
-            self::group($this->anyOf($families, $outside), $label),
-            self::group($this->anyOf([Metric::BatchJobClasses], self::re('batch', self::BATCH_VARIABLE), $outside), $label),
+            self::group($timed($this->anyOf($families, $outside)), $label),
+            self::group($timed($this->anyOf([Metric::BatchJobClasses], self::re('batch', self::BATCH_VARIABLE), $outside)), $label),
             $label,
         ));
     }

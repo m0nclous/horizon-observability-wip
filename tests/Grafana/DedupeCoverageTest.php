@@ -112,7 +112,7 @@ function undeduplicated(string $expr, string $prefix = 'ho_'): array
 {
     $strings = promqlStrings($expr);
     $problems = [];
-    $time = '(?: offset -?\$?[\w]+)?(?: @ \$\{__(?:from|to):date:seconds\})?';
+    $time = '(?: offset -?\$?[\w]+)?(?: @ (?:\$\{__(?:from|to):date:seconds\}|start\(\)|end\(\)))?';
 
     preg_match_all('/\b'.preg_quote($prefix, '/').'([a-z_]+)/', $expr, $matches, PREG_OFFSET_CAPTURE);
 

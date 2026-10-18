@@ -30,6 +30,7 @@ function withoutMacros(string $expr): string
         '${__from:date:seconds}' => '0',
         '${__to:date:seconds}' => '0',
         '$__interval_ms' => '60000',
+        '${__interval_ms}' => '60000',
         '$__interval' => '1m',
         '$__range' => '1h',
         '$busy_window' => '20s',

@@ -32,6 +32,22 @@ beforeEach(function (): void {
     }
 });
 
+/**
+ * The batch scope sets of the renders: the one evaluated at every step and those of the vectors at a fixed time
+ * (`@`), which take the scope of that time.
+ *
+ * @return list<string>
+ */
+function batchScopeSets(string $label = 'job_class'): array
+{
+    $promql = new Promql('ho_');
+
+    return [
+        $promql->batchExcluded($label),
+        ...array_map(static fn (string $at): string => $promql->batchExcluded($label, $at), [Promql::FROM_SECONDS, Promql::TO_SECONDS, 'start()', 'end()']),
+    ];
+}
+
 it('puts every job-filtered selector of the committed renders in the batch scope', function (LiveMode $mode): void {
     $promql = new Promql('ho_');
     $scope = ' unless on (job_class) '.$promql->batchExcluded().')';
@@ -40,9 +56,10 @@ it('puts every job-filtered selector of the committed renders in the batch scope
 
     foreach (Rendered::expressions(alerting: [], mode: $mode) as $where => $expr) {
         if (str_starts_with($where, 'panel ')) {
-            $scoped += substr_count($expr, $scope);
+            $count = array_sum(array_map(static fn (string $set): int => substr_count($expr, ' unless on (job_class) '.$set.')'), batchScopeSets()));
+            $scoped += $count;
 
-            if (substr_count($expr, 'job_class=~"$job_class"') !== substr_count($expr, $scope)) {
+            if (substr_count($expr, 'job_class=~"$job_class"') !== $count) {
                 $unscoped[] = $where;
             }
         }
@@ -100,7 +117,6 @@ it('lists the classes and queues of the selected kind in the Job and Queue filte
 
 it('gives every panel the legacy result with Batch All and with Batch = one kind', function (?string $kind): void {
     $data = ProfileSeries::data();
-    $excluded = (new Promql('ho_'))->batchExcluded();
     $classes = $kind === null ? $data['classes'] : array_values(array_intersect($data['classes'], $data['kinds'][$kind]['classes']));
     $legacyAll = ProfileSeries::regex($classes);
     $tests = [];
@@ -111,7 +127,7 @@ it('gives every panel the legacy result with Batch All and with Batch = one kind
         }
 
         $now = ProfileSeries::interpolate($expr, $kind, '.+');
-        $legacy = ProfileSeries::interpolate(str_replace($excluded, '(vector(1) unless on () vector(1))', $expr), $kind, $legacyAll);
+        $legacy = ProfileSeries::interpolate(str_replace(batchScopeSets(), '(vector(1) unless on () vector(1))', $expr), $kind, $legacyAll);
 
         $tests[] = ['expr' => '# differs '.$where.'
 '.ProfileSeries::difference($now, $legacy), 'eval_time' => '19m', 'exp_samples' => []];

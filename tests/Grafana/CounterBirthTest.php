@@ -3,21 +3,22 @@
 declare(strict_types=1);
 
 use DF\HorizonObservability\Grafana\PanelRegistry;
+use DF\HorizonObservability\Grafana\Promql;
+use DF\HorizonObservability\Grafana\Queries\Attempts;
 use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * T13 QA round 1 (adversarial), owner decision 13: the Completed (#8) and Failed (#4) tiles sum the attempts per
- * step over the dashboard range. A (connection, queue, job_class) triple is exported only after its first attempt
- * (AttemptsCollector zero-fills the statuses of known triples only), so its series is born with the attempts that
- * happened before the first scrape: a new job class after a deploy, or the burst of sample jobs of an onboarding demo
- * (owner decision 12) that finishes between two scrapes. The tiles must count those attempts; today the per-step
- * difference starts from the first exported value and shows 0.
+ * Owner decision 13, the counter-birth rule of T16: Prometheus cannot count the first sample of a series, and the
+ * dashboard must not count it either, because the first value of a series that appears inside the range may be a
+ * whole history (the scrape job or replica of an application added later, AdversarialRound2TileTest). The exporter
+ * makes new series count instead: T16 exports a new (connection, queue, class) as 0 for its first 75 seconds, so its
+ * first attempts are an increase from 0.
  *
- * Grafana's range query (step = $__interval, reduced with sum) is emulated by a subquery at the same step.
- * Pre-existing in the pilot's queries. The tiles count them since WP8C O4 (the per-step attempts on the sum of the
- * series, clipped only at the first and last step); the tables and captions (Attempts::delta()) still start a born
- * series at its first value, which T16/T17 decide (exporter or queries).
+ * The Completed (#8) and Failed (#4) tiles and the tables (Attempts::delta(), #5 and #6) follow the same rule (T13 QA
+ * round 2): a series born at 0 counts every attempt after its birth, a series born with a value counts from that
+ * value, and the tile equals the sum of the table values. Grafana's range query (step = $__interval, reduced with sum)
+ * is emulated by a subquery at the same step.
  */
 
 pest()->group('grafana');
@@ -28,17 +29,32 @@ beforeEach(function (): void {
     }
 });
 
-it('counts the attempts a counter series is born with', function (): void {
+/**
+ * A tile number over the 15-minute range ending at 19m.
+ */
+function birthTile(string $title): string
+{
+    $expr = Rendered::expressions()['panel '.PanelRegistry::idOf(Rendered::dashboard(), $title).' A'];
+
+    return 'sum_over_time(('.Promtool::interpolate($expr, '.+', 19 * 60, 15 * 60).')[16m:1m])';
+}
+
+/**
+ * The attempts of the range as the tables count them: Attempts::delta() over 15 minutes at 19m, summed.
+ */
+function birthTable(string $statuses): string
+{
+    $promql = new Promql('ho_');
+
+    return Promtool::interpolate($promql->filtered(Promql::sum((new Attempts($promql, '10m'))->delta($statuses, Promql::RANGE)), true), '.+', 19 * 60, 15 * 60);
+}
+
+it('counts the attempts of a series exported as 0 first, like the tables', function (): void {
     $class = static fn (string $class, string $status): string => sprintf(
         'ho_queue_jobs_total{job="app", instance="app:8080", connection="redis", queue="default", job_class="App\\\\Jobs\\\\%s", status="%s"}',
         $class,
         $status,
     );
-    $tile = static function (int $panel): string {
-        $expressions = Rendered::expressions();
-
-        return 'sum_over_time(('.Promtool::interpolate($expressions['panel '.$panel.' A'], '.+', 19 * 60, 15 * 60).')[16m:1m])';
-    };
 
     [$status, $output] = Promtool::testRules([], [[
         'interval' => '1m',
@@ -47,13 +63,17 @@ it('counts the attempts a counter series is born with', function (): void {
             // A known class without attempts in the range
             ['series' => $class('Old', 'completed'), 'values' => '1000x20'],
             ['series' => $class('Old', 'failed'), 'values' => '10x20'],
-            // A new class: its first scrape at 10m holds the 5 completed and 2 failed attempts since 9m
-            ['series' => $class('New', 'completed'), 'values' => '_x9 5x10'],
-            ['series' => $class('New', 'failed'), 'values' => '_x9 2x10'],
+            // A new class at 9m, held at 0 by the exporter (T16), then 5 completed and 2 failed attempts
+            ['series' => $class('New', 'completed'), 'values' => '_x8 0 0 5x10'],
+            ['series' => $class('New', 'failed'), 'values' => '_x8 0 0 2x10'],
+            // A series born with its value (no hold): its first value is not counted, its later attempts are
+            ['series' => $class('Late', 'completed'), 'values' => '_x11 70 71 72 73x6'],
         ],
         'promql_expr_test' => [
-            ['expr' => $tile(PanelRegistry::idOf(Rendered::dashboard(), 'Completed')), 'eval_time' => '19m', 'exp_samples' => [['labels' => '{}', 'value' => 5]]],
-            ['expr' => $tile(PanelRegistry::idOf(Rendered::dashboard(), 'Failed')), 'eval_time' => '19m', 'exp_samples' => [['labels' => '{}', 'value' => 2]]],
+            ['expr' => birthTile('Completed'), 'eval_time' => '19m', 'exp_samples' => [['labels' => '{}', 'value' => 5 + 3]]],
+            ['expr' => birthTile('Failed'), 'eval_time' => '19m', 'exp_samples' => [['labels' => '{}', 'value' => 2]]],
+            ['expr' => birthTable(Attempts::COMPLETED), 'eval_time' => '19m', 'exp_samples' => [['labels' => '{}', 'value' => 5 + 3]]],
+            ['expr' => birthTable(Attempts::FAILED), 'eval_time' => '19m', 'exp_samples' => [['labels' => '{}', 'value' => 2]]],
         ],
     ]]);
 

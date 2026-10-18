@@ -60,8 +60,15 @@ it('scopes a job-filtered selector outside its range function and replica dedupe
 
     expect($promql->filtered('sum by (queue) (max by (job, connection, queue, job_class, status) (last_over_time(ho_queue_jobs_total{job=~"$prometheus_job", status=~"x"}[10m] offset -$__interval)))', true))
         ->toBe('sum by (queue) ((max by (job, connection, queue, job_class, status) (last_over_time(ho_queue_jobs_total{job=~"$prometheus_job", queue=~"$queue", job_class=~"$job_class", status=~"x"}[10m] offset -$__interval))'.$scope.')')
+        // A vector at a fixed time takes the scope of that time, so the unit stays step-invariant
         ->and($promql->filtered('max by (job, connection, queue, job_class, status) (ho_queue_jobs_total @ '.$at.')', true))
-        ->toBe('(max by (job, connection, queue, job_class, status) (ho_queue_jobs_total{queue=~"$queue", job_class=~"$job_class"} @ '.$at.')'.$scope)
+        ->toBe('(max by (job, connection, queue, job_class, status) (ho_queue_jobs_total{queue=~"$queue", job_class=~"$job_class"} @ '.$at.') unless on (job_class) '.$promql->batchExcluded('job_class', $at).')')
+        ->and($promql->filtered('max by (job, connection, queue, job_class, status) (last_over_time(ho_queue_jobs_total[10m] offset -$__interval @ end()))', true))
+        ->toBe('(max by (job, connection, queue, job_class, status) (last_over_time(ho_queue_jobs_total{queue=~"$queue", job_class=~"$job_class"}[10m] offset -$__interval @ end())) unless on (job_class) '.$promql->batchExcluded('job_class', 'end()').')')
+        ->and($promql->batchExcluded('job_class', 'start()'))->toBe(
+            '(group by (job_class) ({__name__=~"ho_queue_jobs_total|ho_queue_jobs_pending|ho_queue_jobs_reserved", job=~"$prometheus_job", __batch_scope__!~"$batch_kind"} @ start())'
+            .' unless on (job_class) group by (job_class) ({__name__=~"ho_queue_batch_job_classes", job=~"$prometheus_job", batch=~"$batch_kind", __batch_scope__!~"$batch_kind"} @ start()))',
+        )
         // Without the dedupe (an option that only shows what it prevents) the scope follows the range function
         ->and($promql->filtered('sum(min_over_time(ho_queue_jobs_pending[$__range]))', true))
         ->toBe('sum((min_over_time(ho_queue_jobs_pending{queue=~"$queue", job_class=~"$job_class"}[$__range])'.$scope.')')

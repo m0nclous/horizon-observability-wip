@@ -99,6 +99,7 @@ final class ProfileSeries
             '${__from:date:seconds}' => '240',
             '${__to:date:seconds}' => '1140',
             '$__interval_ms' => '60000',
+            '${__interval_ms}' => '60000',
             '$__interval' => '1m',
             '$__range' => '900s',
             '$busy_window' => '2m',
