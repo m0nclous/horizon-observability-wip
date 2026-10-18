@@ -165,8 +165,7 @@
           "legendFormat": "__auto",
           "range": false,
           "instant": true,
-          "refId": "M",
-          "format": "table"
+          "refId": "M"
         },
         {
           "datasource": {
@@ -1912,10 +1911,6 @@
       "transformations": [
         {
           "id": "labelsToFields",
-          "filter": {
-            "id": "byRefId",
-            "options": "C"
-          },
           "options": {
             "valueLabel": "status"
           }
@@ -2020,7 +2015,7 @@
               "p95": true,
               "p95_level": true,
               "Value #K": true,
-              "Value #M": true,
+              "Value": true,
               "Value #Z": true,
               "supervisor": true,
               "failed": true,

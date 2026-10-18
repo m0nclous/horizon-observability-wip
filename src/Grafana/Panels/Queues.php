@@ -94,10 +94,14 @@ final readonly class Queues
             'targets' => [['datasource' => Common::dashboard(), 'panelId' => PanelRegistry::QUEUE_SOURCE, 'refId' => 'A', 'withTransforms' => false]],
             'title' => '${supervisor_title:text}',
             'transformations' => [
-                // The attempts by status (query C) become a column per status
-                ['id' => 'labelsToFields', 'filter' => Common::byRefId('C'), 'options' => ['valueLabel' => 'status']],
-                // The values of each queue join every (queue, supervisor) row of query M, the first frame (Grafana's
-                // merge adds a frame's values to each row of the same key, here Time and queue)
+                // The labels of the series of M and C become fields, the attempts by status of C a column per
+                // status; the table frames have no labels. Without a frame filter: Grafana puts the output of a
+                // filtered transformation in front of the other frames, and the order matters to the merge.
+                ['id' => 'labelsToFields', 'options' => ['valueLabel' => 'status']],
+                // The values of each queue join every (queue, supervisor) row of M, whose frames are the first:
+                // Grafana's merge adds a frame's values to each earlier row of the same key (Time and queue), but
+                // a row that a frame without supervisor started takes only one supervisor (T13 QA round 2, a queue
+                // of two supervisors)
                 Common::merge(),
                 // The rows of this copy's supervisor; the dash of the table without supervisors keeps the stub row
                 ['id' => 'filterByValue', 'options' => ['filters' => [
@@ -109,11 +113,11 @@ final readonly class Queues
                 Common::calculateFields('success', 'completed', '/', 'finished'),
                 ['id' => 'organize', 'options' => [
                     // age, limit, level, p95 and p95_level are parts of the Oldest wait and Wait p95 texts;
-                    // the values of F, K and M, the stub row, the supervisor of the source rows and the parts of
-                    // Failed and Success rate are not shown
+                    // the values of F, K and M (Value), the stub row, the supervisor of the source rows and the
+                    // parts of Failed and Success rate are not shown
                     'excludeByName' => [
                         'Time' => true, 'age' => true, 'limit' => true, 'level' => true, 'Value #F' => true,
-                        'p95' => true, 'p95_level' => true, 'Value #K' => true, 'Value #M' => true, 'Value #Z' => true, 'supervisor' => true,
+                        'p95' => true, 'p95_level' => true, 'Value #K' => true, 'Value' => true, 'Value #Z' => true, 'supervisor' => true,
                         'failed' => true, 'finished' => true,
                     ],
                     'includeByName' => new stdClass,
@@ -214,9 +218,11 @@ final readonly class Queues
             'K' => $this->selection->byJobSelection($this->waitP95Cell()),
         ];
 
-        // M first: the merge adds the values of the later frames to its rows
+        // M first, and a series per row, not a table: the Prometheus datasource returns the frames of series
+        // before the tables, in query order, so the frames of M come first and the merge adds the values of the
+        // later frames to its rows
         $targets = [
-            Common::rawTarget('M', $this->promql->filtered($rows, false), format: 'table'),
+            Common::rawTarget('M', $this->promql->filtered($rows, false)),
             Common::rawTarget('A', $this->promql->filtered($utilisation, false), format: 'table'),
         ];
 

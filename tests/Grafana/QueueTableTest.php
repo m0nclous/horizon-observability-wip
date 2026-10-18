@@ -149,3 +149,26 @@ it('gives the legacy attempts columns of the Jobs table from one query by status
     'Batch All' => [null],
     'Batch = one kind' => [ProfileSeries::KIND],
 ]);
+
+it('starts the merge of the queue table with the supervisor rows of M (T13 QA round 2, a queue of two supervisors)', function (): void {
+    // Grafana's merge adds a frame's values to each earlier row of the same key (Time, queue); a row that a frame
+    // without supervisor started takes only the first supervisor of its queue, so the frames of M must come first.
+    // The Prometheus datasource returns the frames of series before the tables, in query order, and Grafana puts the
+    // output of a transformation with a frame filter in front of the other frames: M is the first series query and
+    // no transformation before the merge has a filter. QueueSourceE2eTest checks the rows in a real Grafana.
+    foreach (Rendered::modes() as [$mode]) {
+        $dashboard = Rendered::dashboard($mode);
+        $panels = array_column(PanelRegistry::panels($dashboard), null, 'id');
+        $source = $panels[PanelRegistry::QUEUE_SOURCE];
+        $table = $panels[PanelRegistry::QUEUES];
+        $series = array_values(array_filter($source['targets'], static fn (array $target): bool => ($target['format'] ?? 'time_series') === 'time_series'));
+        $transformations = array_column($table['transformations'], null, 'id');
+        $beforeMerge = array_slice($table['transformations'], 0, (int) array_search('merge', array_column($table['transformations'], 'id'), true));
+
+        expect($source['targets'][0]['refId'])->toBe('M')
+            ->and(array_column($series, 'refId'))->toBe(['M', 'C'])
+            ->and(array_filter($beforeMerge, static fn (array $transformation): bool => isset($transformation['filter'])))->toBe([])
+            ->and($transformations['labelsToFields']['options'])->toBe(['valueLabel' => 'status'])
+            ->and($transformations['organize']['options']['excludeByName'])->toHaveKey('Value');
+    }
+});
