@@ -546,6 +546,27 @@ it('exits 1 when the check finds an error', function (): void {
         ->and($output)->toContain('Fix: Start Redis or fix database.redis.horizon');
 });
 
+it('prints the totals of its checks as check counts them, and each problem', function (): void {
+    // Errors (an unreachable storage Redis) and warnings (no namespace, Horizon not running, ...).
+    config()->set('database.redis.horizon', ['host' => '127.0.0.1', 'port' => 1, 'database' => 0]);
+    config()->set('horizon-observability.namespace', '');
+
+    [$code, $output] = install();
+
+    app()->forgetInstance(Config::class);
+    Artisan::call('horizon-observability:check', ['--json' => true]);
+    /** @var array{errors: int, warnings: int} $report */
+    $report = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
+
+    expect($code)->toBe(1)
+        ->and($report['errors'])->toBeGreaterThan(1)
+        ->and($report['warnings'])->toBeGreaterThan(1)
+        ->and($output)->toContain(sprintf('Check: %d errors, %d warnings (details: php artisan horizon-observability:check)', $report['errors'], $report['warnings']))
+        ->and(preg_match_all('/^    ERROR /m', $output))->toBe($report['errors'])
+        ->and(preg_match_all('/^    WARN /m', $output))->toBe($report['warnings'])
+        ->and($output)->toContain('WARN Configuration, Namespace: none: metric names such as queue_jobs_total may collide with other exporters');
+});
+
 it('loads the demo job class from the package', function (): void {
     expect(class_exists(DemoJob::class))->toBeTrue();
 });
