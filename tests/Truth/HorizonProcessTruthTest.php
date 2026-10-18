@@ -116,7 +116,8 @@ it('exports the supervisors a real Horizon registers and the attempts its worker
                 Model::key(['supervisor' => 'supervisor-pool', 'queue' => 'sms', 'pool' => 'mail,sms']),
             ]);
 
-        // The attempts past the hold of their new series: this scrape runs 80 s ahead of the workers' clock.
+        // The attempts past the hold of their new series: this scrape runs 95 s (the hold + 5 s) ahead of the
+        // workers' clock.
         $later = CarbonImmutable::now()->addSeconds(AttemptsCollector::NEW_SERIES_HOLD_SECONDS + 5);
         Carbon::setTestNow($later);
         CarbonImmutable::setTestNow($later);
