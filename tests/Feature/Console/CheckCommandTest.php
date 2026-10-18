@@ -18,6 +18,7 @@ use DF\HorizonObservability\Support\Diagnostics;
 use DF\HorizonObservability\Support\Versions;
 use DF\HorizonObservability\Tests\Support\Apps;
 use DF\HorizonObservability\Tests\Support\HorizonState;
+use DF\HorizonObservability\Tests\Support\RedisKeys;
 use DF\HorizonObservability\Tests\Support\RegistersInBootProvider;
 use DF\HorizonObservability\Tests\TestCase;
 use Illuminate\Filesystem\Filesystem;
@@ -495,7 +496,7 @@ it('reports the job-class cache file with the time it was written', function ():
 it('warns about the attempt-class cap from 90 % and says when classes become (other)', function (int $used, string $status, string $message): void {
     config()->set('horizon-observability.max_job_classes', 10);
     $index = TestCase::redisPrefix().'horizon:'.(new Keys)->jobClasses();
-    $raw = new Client(['host' => '127.0.0.1', 'port' => 6379]);
+    $raw = RedisKeys::client();
 
     for ($i = 1; $i <= $used; $i++) {
         $raw->zadd($index, [sprintf('App\\Jobs\\Job%02d', $i) => 1_760_000_000 + $i]);
@@ -643,7 +644,7 @@ it('reports the last push of the stream', function (): void {
     config()->set('horizon-observability.live.stream.grafana_url', 'http://grafana:3000');
     config()->set('horizon-observability.live.stream.token', CHECK_LIVE_TOKEN);
     $meta = TestCase::redisPrefix().'horizon:'.(new Keys)->meta();
-    $raw = new Client(['host' => '127.0.0.1', 'port' => 6379]);
+    $raw = RedisKeys::client();
 
     [, $report] = checkReport();
 
