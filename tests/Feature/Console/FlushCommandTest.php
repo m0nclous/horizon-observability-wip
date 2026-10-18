@@ -125,6 +125,23 @@ it('refuses in production without --force and flushes with it', function (): voi
         ->and(RedisKeys::all(flushPrefix().'{horizon-observability}:v1:'))->toBe([]);
 });
 
+it('counts and deletes the keys of many SCAN pages per kind', function (): void {
+    $prefix = flushPrefix().(new Keys)->root();
+    // Written server-side: 1 500 ready_at and 700 live keys, several SCAN pages of FlushCommand::BATCH.
+    RedisKeys::client()->eval(
+        "for i = 1, 1500 do redis.call('SET', ARGV[1] .. 'ready_at:' .. i, '1') end for i = 1, 700 do redis.call('SET', ARGV[1] .. 'live:snapshot:' .. i, '1') end return 1",
+        0,
+        $prefix,
+    );
+
+    expect(Artisan::call('horizon-observability:flush', ['--no-interaction' => true]))->toBe(0)
+        ->and(Artisan::output())->toContain('Found 2200 package keys (live 700, ready_at 1500)');
+
+    expect(Artisan::call('horizon-observability:flush', ['--force' => true]))->toBe(0)
+        ->and(Artisan::output())->toContain('Deleted 2200 package keys (live 700, ready_at 1500)')
+        ->and(RedisKeys::all($prefix))->toBe([]);
+});
+
 it('says so when there is nothing to delete', function (): void {
     expect(Artisan::call('horizon-observability:flush', ['--force' => true]))->toBe(0)
         ->and(Artisan::output())->toContain('No package keys on the Redis connection horizon (prefix "'.flushPrefix().'").');

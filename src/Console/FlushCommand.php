@@ -8,6 +8,7 @@ use Closure;
 use DF\HorizonObservability\Redis\Keys;
 use DF\HorizonObservability\Redis\RedisClients;
 use DF\HorizonObservability\Support\FailureReporter;
+use Generator;
 use Illuminate\Console\Command;
 use Illuminate\Redis\Connections\Connection;
 use Predis\Client as PredisClient;
@@ -26,6 +27,11 @@ use UnexpectedValueException;
  *
  * It asks for confirmation (`--force` skips it); in production it refuses without `--force`. It is never hooked into
  * `optimize:clear`. Prometheus reads the drop of the counters as a counter reset, so `increase()` stays correct.
+ *
+ * Bounded memory whatever the number of keys (a legacy stack keeps a `ready_at` key per delayed job): the keys are
+ * counted, and deleted, one `SCAN` page at a time, and only the counts per kind are kept. The count before the
+ * confirmation can include a key twice when Redis rehashes during the `SCAN`; the deleted count is the sum of the
+ * `DEL` replies, so it is exact.
  */
 final class FlushCommand extends Command
 {
@@ -56,50 +62,67 @@ final class FlushCommand extends Command
         }
 
         $name = $clients->storageConnection();
+        $root = $keys->root();
 
         try {
             $connection = $clients->reader($name);
             $prefix = $this->prefix($connection);
-            $found = $this->find($connection, $prefix, $keys->root());
+            // A lazy client (predis) connects here, so an unreachable server is reported as such.
+            $connection->command('exists', [$keys->meta()]);
+            // With --force there is nothing to ask: delete in the first pass.
+            $found = $force ? null : $this->count($connection, $prefix, $root);
         } catch (Throwable $e) {
             $this->components->error(sprintf('The storage connection %s cannot be read: %s', $name, FailureReporter::describe($e)));
 
             return self::FAILURE;
         }
 
-        if ($found === []) {
+        if ($found !== null) {
+            if ($found === []) {
+                $this->components->info(sprintf('No package keys on the Redis connection %s (prefix "%s").', $name, $prefix));
+
+                return self::SUCCESS;
+            }
+
+            $summary = $this->summary($found);
+
+            if (! $this->input->isInteractive()) {
+                $this->components->info(sprintf('Found %d package keys (%s) on the Redis connection %s; run with --force to delete them.', array_sum($found), $summary, $name));
+
+                return self::SUCCESS;
+            }
+
+            if (! $this->confirm(sprintf('Delete %d package keys (%s) from the Redis connection %s?', array_sum($found), $summary, $name), false)) {
+                $this->components->info('Nothing was deleted.');
+
+                return self::SUCCESS;
+            }
+        }
+
+        $deleted = [];
+
+        try {
+            $this->delete($connection, $prefix, $root, $clients->isCluster($name), $deleted);
+        } catch (Throwable $e) {
+            $this->components->error(sprintf(
+                'Deleting the package keys failed%s: %s',
+                $deleted === [] ? '' : sprintf(' after %d of them (%s)', array_sum($deleted), $this->summary($deleted)),
+                FailureReporter::describe($e),
+            ));
+
+            return self::FAILURE;
+        }
+
+        if ($deleted === []) {
             $this->components->info(sprintf('No package keys on the Redis connection %s (prefix "%s").', $name, $prefix));
 
             return self::SUCCESS;
         }
 
-        $summary = $this->summary($found, $keys->root());
-        $question = sprintf('Delete %d package keys (%s) from the Redis connection %s?', count($found), $summary, $name);
-
-        if (! $force && ! $this->input->isInteractive()) {
-            $this->components->info(sprintf('Found %d package keys (%s) on the Redis connection %s; run with --force to delete them.', count($found), $summary, $name));
-
-            return self::SUCCESS;
-        }
-
-        if (! $force && ! $this->confirm($question, false)) {
-            $this->components->info('Nothing was deleted.');
-
-            return self::SUCCESS;
-        }
-
-        try {
-            $deleted = $this->delete($connection, $found, $clients->isCluster($name));
-        } catch (Throwable $e) {
-            $this->components->error(sprintf('Deleting the package keys failed: %s', FailureReporter::describe($e)));
-
-            return self::FAILURE;
-        }
-
         $this->components->info(sprintf(
             'Deleted %d package keys (%s) from the Redis connection %s. Prometheus reads the drop of the counters as a counter reset.',
-            $deleted,
-            $summary,
+            array_sum($deleted),
+            $this->summary($deleted),
             $name,
         ));
 
@@ -107,66 +130,91 @@ final class FlushCommand extends Command
     }
 
     /**
-     * The package key names (without the connection prefix) on every node, sorted.
+     * The package keys per kind, counted page by page.
      *
-     * @return list<string>
+     * @return array<string, int> kind => keys
      */
-    private function find(Connection $connection, string $prefix, string $root): array
+    private function count(Connection $connection, string $prefix, string $root): array
     {
-        $pattern = addcslashes($prefix.$root, '*?[]\\').'*';
-        $names = [];
+        $kinds = [];
 
-        foreach ($this->scan($connection, $pattern) as $key) {
-            if (str_starts_with($key, $prefix.$root)) {
-                $names[] = substr($key, strlen($prefix));
+        foreach ($this->pages($connection, $prefix, $root) as $names) {
+            foreach ($names as $name) {
+                $kind = $this->kind($name, $root);
+                $kinds[$kind] = ($kinds[$kind] ?? 0) + 1;
             }
         }
 
-        $names = array_values(array_unique($names));
-        sort($names);
-
-        return $names;
+        return $kinds;
     }
 
     /**
-     * The raw keys matching the pattern on every node; the client applies no prefix to a raw `SCAN`.
+     * Delete the package keys page by page, adding the keys deleted per kind (from the `DEL` replies) to `$deleted`,
+     * which also holds the progress when a page fails.
      *
-     * @return list<string>
+     * @param  array<string, int>  $deleted  kind => keys
      */
-    private function scan(Connection $connection, string $pattern): array
+    private function delete(Connection $connection, string $prefix, string $root, bool $cluster, array &$deleted): void
+    {
+        foreach ($this->pages($connection, $prefix, $root) as $names) {
+            $byKind = [];
+
+            foreach ($names as $name) {
+                $byKind[$this->kind($name, $root)][] = $name;
+            }
+
+            foreach ($byKind as $kind => $group) {
+                // On a cluster one key per call: a prefix with its own hash tag could still spread them over several slots.
+                foreach (array_chunk($group, $cluster ? 1 : self::BATCH) as $chunk) {
+                    // The names are without the prefix, which the client adds.
+                    $result = $connection->command('del', $chunk);
+                    $count = is_numeric($result) ? (int) $result : 0;
+
+                    if ($count > 0) {
+                        $deleted[$kind] = ($deleted[$kind] ?? 0) + $count;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * The package key names (without the connection prefix) of every node, one `SCAN` page at a time; the client
+     * applies no prefix to a raw `SCAN`, so the pattern carries it. Deleting the keys of a page before the next one is
+     * safe: `SCAN` still returns every key that exists for the whole iteration.
+     *
+     * @return Generator<int, list<string>>
+     */
+    private function pages(Connection $connection, string $prefix, string $root): Generator
     {
         $client = $connection->client();
-        $arguments = ['MATCH', $pattern, 'COUNT', (string) self::BATCH];
-        $keys = [];
+        $arguments = ['MATCH', addcslashes($prefix.$root, '*?[]\\').'*', 'COUNT', (string) self::BATCH];
 
         if ($client instanceof RedisCluster) {
             foreach ($client->_masters() as $master) {
-                array_push($keys, ...$this->pages(static fn (string $cursor): mixed => $client->rawCommand($master, 'SCAN', $cursor, ...$arguments)));
+                yield from $this->node(static fn (string $cursor): mixed => $client->rawCommand($master, 'SCAN', $cursor, ...$arguments), $prefix.$root, strlen($prefix));
             }
         } elseif ($client instanceof Redis) {
-            $keys = $this->pages(static fn (string $cursor): mixed => $client->rawCommand('SCAN', $cursor, ...$arguments));
+            yield from $this->node(static fn (string $cursor): mixed => $client->rawCommand('SCAN', $cursor, ...$arguments), $prefix.$root, strlen($prefix));
         } elseif ($client instanceof PredisClient) {
             // A client per node: one for a single server, one per master of a cluster.
             foreach ($client as $node) {
-                array_push($keys, ...$this->pages(static fn (string $cursor): mixed => $node->executeRaw(['SCAN', $cursor, ...$arguments])));
+                yield from $this->node(static fn (string $cursor): mixed => $node->executeRaw(['SCAN', $cursor, ...$arguments]), $prefix.$root, strlen($prefix));
             }
         } else {
             throw new RuntimeException(sprintf('the Redis client %s is not supported.', get_debug_type($client)));
         }
-
-        return $keys;
     }
 
     /**
-     * Every page of one node's `SCAN`.
+     * The pages of one node's `SCAN`: the names starting with `$start`, without the first `$strip` bytes.
      *
      * @param  Closure(string): mixed  $scan  cursor => raw reply
-     * @return list<string>
+     * @return Generator<int, list<string>>
      */
-    private function pages(Closure $scan): array
+    private function node(Closure $scan, string $start, int $strip): Generator
     {
         $cursor = '0';
-        $keys = [];
 
         do {
             $reply = $scan($cursor);
@@ -177,33 +225,18 @@ final class FlushCommand extends Command
 
             [$next, $batch] = array_values($reply);
             $cursor = is_scalar($next) ? (string) $next : '0';
+            $names = [];
 
             foreach (is_array($batch) ? $batch : [] as $key) {
-                if (is_string($key)) {
-                    $keys[] = $key;
+                if (is_string($key) && str_starts_with($key, $start)) {
+                    $names[substr($key, $strip)] = true;
                 }
             }
+
+            if ($names !== []) {
+                yield array_map(strval(...), array_keys($names));
+            }
         } while ($cursor !== '0');
-
-        return $keys;
-    }
-
-    /**
-     * Delete the keys (names without the prefix, which the client adds); the number deleted.
-     *
-     * @param  list<string>  $names
-     */
-    private function delete(Connection $connection, array $names, bool $cluster): int
-    {
-        $deleted = 0;
-
-        // On a cluster one key per call: a prefix with its own hash tag could still spread them over several slots.
-        foreach (array_chunk($names, $cluster ? 1 : self::BATCH) as $chunk) {
-            $result = $connection->command('del', $chunk);
-            $deleted += is_numeric($result) ? (int) $result : 0;
-        }
-
-        return $deleted;
     }
 
     /**
@@ -226,19 +259,20 @@ final class FlushCommand extends Command
     }
 
     /**
+     * The kind of a package key: the first segment after the root, e.g. `ready_at` or `live`.
+     */
+    private function kind(string $name, string $root): string
+    {
+        return explode(':', substr($name, strlen($root)), 2)[0];
+    }
+
+    /**
      * Counts per key kind, e.g. `attempts 1, live 3, ready_at 12`.
      *
-     * @param  list<string>  $names
+     * @param  array<string, int>  $kinds
      */
-    private function summary(array $names, string $root): string
+    private function summary(array $kinds): string
     {
-        $kinds = [];
-
-        foreach ($names as $name) {
-            $kind = explode(':', substr($name, strlen($root)), 2)[0];
-            $kinds[$kind] = ($kinds[$kind] ?? 0) + 1;
-        }
-
         ksort($kinds);
 
         return implode(', ', array_map(static fn (string $kind, int $count): string => $kind.' '.$count, array_keys($kinds), $kinds));
