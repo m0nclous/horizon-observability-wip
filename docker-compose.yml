@@ -21,10 +21,10 @@
 #
 # Grafana provisions the package render (resources/grafana: dashboard, alert rules and the shipped provisioning
 # examples), so the dev stack tests what users mount. After a renderer change: composer test:grafana fails, then
-# `vendor/bin/testbench horizon-observability:grafana "$PWD/resources/grafana" --defaults` updates the files (a
-# relative path is relative to testbench's skeleton) and Grafana picks the dashboard up within 10 s (alert rules on a
-# restart). GRAFANA_DASHBOARDS mounts another dashboards directory, e.g. the pilot dashboard for the perf legacy row
-# (docker/perf/README.md).
+# `vendor/bin/testbench horizon-observability:grafana "$PWD/resources/grafana" --defaults --recording-rules` updates
+# the files (a relative path is relative to testbench's skeleton) and Grafana picks the dashboard up within 10 s (alert
+# rules on a restart). GRAFANA_DASHBOARDS mounts another dashboards directory, e.g. the pilot dashboard for the perf
+# legacy row (docker/perf/README.md).
 
 name: horizon-observability
 
