@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Grafana\Queries;
 
 use DF\HorizonObservability\Grafana\Promql;
-use DF\HorizonObservability\Grafana\Thresholds;
 use DF\HorizonObservability\Metrics\Metric;
 
 /**
@@ -39,12 +38,13 @@ final readonly class Waits
     }
 
     /**
-     * Level 0, 1 or 2 of a ratio: above the warning factor, plus above the critical factor.
+     * Level 0, 1 or 2 of a ratio: above the warning factor (1), plus above the critical factor (2). Written as
+     * `clamp(ceil(ratio) - 1, 0, 2)`, which evaluates the ratio once (its p95 is a histogram quantile over the
+     * period) where the two comparisons evaluated it twice; WaitLevelTest pins it to the factors and the comparisons.
      */
     public static function levels(string $ratio): string
     {
-        return Promql::paren($ratio.' > bool '.Thresholds::WAIT_WARNING_FACTOR)
-            .' + '.Promql::paren($ratio.' > bool '.Thresholds::WAIT_CRITICAL_FACTOR);
+        return Promql::call('clamp', Promql::call('ceil', $ratio).' - 1', '0', '2');
     }
 
     /**

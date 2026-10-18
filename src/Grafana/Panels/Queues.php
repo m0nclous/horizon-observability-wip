@@ -23,10 +23,10 @@ use stdClass;
  * Left to right: pool utilisation, workers now (processes), the queue now (pending, delayed, oldest wait over
  * the limit), totals of the period (wait p95, completed, failed, of which timeouts, retries, success rate).
  *
- * The queries run once for all supervisors in the hidden queue source #24 (ADDENDUM R2.4 O5): every row carries
- * its supervisor, and each copy of the table reads #24 through the `-- Dashboard --` datasource and keeps the rows
- * of its own supervisor. Without it each copy ran every query for all queues and then dropped the other
- * supervisors' rows: N supervisors cost N times.
+ * The queries run once for all supervisors in the hidden queue source #24 (ADDENDUM R2.4 O5): query M lists the
+ * (queue, supervisor) rows and the other queries the values per queue; each copy of the table reads #24 through the
+ * `-- Dashboard --` datasource, merges the values into the rows and keeps the rows of its own supervisor. Without it
+ * each copy ran every query for all queues and then dropped the other supervisors' rows: N supervisors cost N times.
  *
  * @internal
  */
@@ -96,22 +96,24 @@ final readonly class Queues
             'transformations' => [
                 // The attempts by status (query C) become a column per status
                 ['id' => 'labelsToFields', 'filter' => Common::byRefId('C'), 'options' => ['valueLabel' => 'status']],
+                // The values of each queue join every (queue, supervisor) row of query M, the first frame (Grafana's
+                // merge adds a frame's values to each row of the same key, here Time and queue)
+                Common::merge(),
                 // The rows of this copy's supervisor; the dash of the table without supervisors keeps the stub row
                 ['id' => 'filterByValue', 'options' => ['filters' => [
                     ['config' => ['id' => 'equal', 'options' => ['value' => '${supervisor_title}']], 'fieldName' => 'supervisor'],
                 ], 'match' => 'any', 'type' => 'include']],
-                Common::merge(),
                 // Failed counts timeouts too; without attempts in the period the success rate is 0 / 0, a dash
                 Common::calculateFields('failed_total', 'failed', '+', 'timed_out'),
                 Common::calculateFields('finished', 'completed', '+', 'failed_total'),
                 Common::calculateFields('success', 'completed', '/', 'finished'),
                 ['id' => 'organize', 'options' => [
                     // age, limit, level, p95 and p95_level are parts of the Oldest wait and Wait p95 texts;
-                    // the values of F and K, the stub row, the supervisor of the source rows and the parts of
+                    // the values of F, K and M, the stub row, the supervisor of the source rows and the parts of
                     // Failed and Success rate are not shown
                     'excludeByName' => [
                         'Time' => true, 'age' => true, 'limit' => true, 'level' => true, 'Value #F' => true,
-                        'p95' => true, 'p95_level' => true, 'Value #K' => true, 'Value #Z' => true, 'supervisor' => true,
+                        'p95' => true, 'p95_level' => true, 'Value #K' => true, 'Value #M' => true, 'Value #Z' => true, 'supervisor' => true,
                         'failed' => true, 'finished' => true,
                     ],
                     'includeByName' => new stdClass,
@@ -156,34 +158,31 @@ final readonly class Queues
     }
 
     /**
+     * The table rows come from query M, every (queue, supervisor) pair, and the values from per-queue queries; the
+     * table's merge joins them (ADDENDUM R2.4 O5 as amended in T13 QA round 2). Joining each query with the supervisors
+     * in PromQL read a day of the supervisors' processes series once per query, four times for C: about 100 ms of the
+     * 1-hour refresh on the reference profile.
+     *
      * @return list<array<string, mixed>>
      */
     private function targets(): array
     {
         $queues = $this->selection->queues();
         $range = Promql::RANGE;
-        // Each queue and every supervisor it was seen with within a day: a row per (queue, supervisor), so a queue
-        // that several supervisors work is in each of their tables
-        $supervised = Promql::group(
-            $this->promql->over('last_over_time', Metric::SupervisorProcesses, Variables::KNOWN_FOR),
+        // Each selected queue with every supervisor it was seen with within a day: a row per (queue, supervisor), so a
+        // queue that several supervisors work is in each of their tables
+        $rows = Promql::andOn(
+            Promql::group($this->promql->over('last_over_time', Metric::SupervisorProcesses, Variables::KNOWN_FOR), 'queue', 'supervisor'),
+            $queues,
             'queue',
-            'supervisor',
-        );
-        // $labels: the labels of the value the table shows besides queue (the texts of the cells)
-        $scoped = fn (string $expr, bool $jobFilter = true, string ...$labels): string => Promql::binary(
-            $supervised,
-            '*',
-            Promql::paren($this->promql->filtered($expr, $jobFilter)),
-            on: ['queue'],
-            groupLeft: array_values($labels),
         );
 
         // Pool utilisation for the percent bar; the job filter does not apply. Every queue has a row here.
-        $utilisation = $scoped(Common::PERCENT_OFFSET.' + '.Promql::paren(Promql::orOn(
+        $utilisation = Common::PERCENT_OFFSET.' + '.Promql::paren(Promql::orOn(
             Promql::andOn(Promql::call('round', '100 * '.$this->workers->queueLoad()), $queues, 'queue'),
             Common::UNKNOWN_PERCENT.' + 0 * '.$queues,
             'queue',
-        )), jobFilter: false);
+        ));
 
         $queries = [
             // Pending, Processes, Delayed and Oldest wait are per whole queue, or with a batch or jobs selected
@@ -215,37 +214,33 @@ final readonly class Queues
             'K' => $this->selection->byJobSelection($this->waitP95Cell()),
         ];
 
-        $labels = ['F' => ['cell'], 'K' => ['p95_cell']];
-        $targets = [Common::rawTarget('A', $utilisation, format: 'table')];
+        // M first: the merge adds the values of the later frames to its rows
+        $targets = [
+            Common::rawTarget('M', $this->promql->filtered($rows, false), format: 'table'),
+            Common::rawTarget('A', $this->promql->filtered($utilisation, false), format: 'table'),
+        ];
 
         foreach ($queries as $refId => $expr) {
-            $targets[] = Common::rawTarget($refId, $scoped($expr, true, ...$labels[$refId] ?? []), format: 'table');
+            $targets[] = Common::rawTarget($refId, $this->promql->filtered($expr, true), format: 'table');
         }
 
         // Completed, Failed, Timeouts, Retries and Success rate from one attempts query by status (ADDENDUM R2.4 O6;
-        // the legacy table evaluated attempts_delta six times): one series per (queue, supervisor, status), 0 for
-        // configured queues without attempts. A series per status, not a table: the table pivots the statuses into
-        // columns with "Labels to fields" and computes Failed and Success rate.
+        // the legacy table evaluated attempts_delta six times): one series per (queue, status), 0 for configured
+        // queues without attempts. A series per status, not a table: the table pivots the statuses into columns with
+        // "Labels to fields" and computes Failed and Success rate.
         $statuses = explode('|', Attempts::COUNTED);
-        $byStatus = Promql::either(
+        $targets[] = Common::rawTarget('C', $this->promql->filtered(Promql::either(
             Promql::andOn(Promql::sum($this->attempts->delta(Attempts::COUNTED, $range), 'queue', 'status'), $queues, 'queue'),
             '0 * '.Promql::paren($this->perValue($queues, 'status', $statuses)),
-        );
-        $targets[] = Common::rawTarget('C', Promql::binary(
-            Promql::paren($this->perValue($supervised, 'status', $statuses)),
-            '*',
-            Promql::paren($this->promql->filtered($byStatus, true)),
-            on: ['queue', 'status'],
-            groupLeft: [],
-        ));
+        ), true));
 
-        // A stub row of dashes when there are no queues: otherwise only headers remain, without the Queue column,
+        // A stub row of dashes when there are no rows: otherwise only headers remain, without the Queue column,
         // and the table does not stretch. Its supervisor is the title of the only table without supervisors.
         $stub = Promql::unlessOn(
             Promql::withLabel(Promql::withLabel('vector(1)', 'queue', Glyph::DASH), 'supervisor', Glyph::DASH),
-            Promql::paren($utilisation),
+            Promql::paren($rows),
         );
-        $targets[] = Common::rawTarget('Z', $stub, format: 'table');
+        $targets[] = Common::rawTarget('Z', $this->promql->filtered($stub, false), format: 'table');
 
         return $targets;
     }
@@ -302,20 +297,17 @@ final readonly class Queues
     private function waitP95Cell(): string
     {
         $p95 = $this->waits->waitP95();
-        $text = Waits::durationLabel($p95, 'p95', '0.1');
+        // Level 0 without a wait limit: the p95 once more, not the text again (two quantiles)
+        $level = Promql::orOn($this->waits->levelAgainstLimit($p95), '0 * '.$p95, 'queue');
         $parts = Promql::binary(
-            $text,
+            Waits::durationLabel($p95, 'p95', '0.1'),
             '*',
-            Promql::countValues('p95_level', $this->waits->levelAgainstLimit($p95), 'queue'),
+            Promql::countValues('p95_level', $level, 'queue'),
             on: ['queue'],
             groupLeft: ['p95_level'],
         );
 
-        return Promql::orOn(
-            Promql::labelJoin($parts, 'p95_cell', '|', 'p95_level', 'p95'),
-            Promql::labelReplace($text, 'p95_cell', '0|$1', 'p95', '(.*)'),
-            'queue',
-        );
+        return Promql::labelJoin($parts, 'p95_cell', '|', 'p95_level', 'p95');
     }
 
     /**
