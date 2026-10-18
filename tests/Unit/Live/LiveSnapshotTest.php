@@ -306,6 +306,18 @@ it('shows the busy workers of the selected classes on the supervisor tiles under
     'state unknown: 0' => [null, ['supervisor-default' => 0.0]],
 ]);
 
+it('lists only the supervisors busy with the selected classes under a job filter, as the off-mode tile (T13 QA round 2)', function (): void {
+    $supervisor = static fn (string $name, int $busy): array => ['name' => $name, 'connection' => 'redis', 'balance' => 'auto', 'processes' => 3, 'min_processes' => 1, 'max_processes' => 3, 'busy' => $busy, 'queues' => ['default']];
+    $supervisors = [$supervisor('supervisor-default', 2), $supervisor('supervisor-slow', 0)];
+    $keys = static fn (LiveSnapshot $snapshot): array => array_column(array_filter($snapshot->tiles(), static fn (array $row): bool => $row['tile'] === 'supervisor'), 'key');
+
+    expect($keys(LiveSnapshot::compose(exampleScope(jobFilter: true), 0, 1000, 1, $supervisors, [], null)))->toBe(['supervisor-default'])
+        // Paused: the busy supervisor stays, at 0, as the off-mode tile shows its reserved jobs times Horizon running
+        ->and($keys(LiveSnapshot::compose(exampleScope(jobFilter: true), 0, 1000, 0, $supervisors, [], null)))->toBe(['supervisor-default'])
+        // Without a filter every supervisor is listed with its processes
+        ->and($keys(LiveSnapshot::compose(exampleScope(), 0, 1000, 1, $supervisors, [], null)))->toBe(['supervisor-default', 'supervisor-slow']);
+});
+
 it('tells snapshots with live data from failed builds (T12)', function (): void {
     [$supervisors, $queues] = exampleInputs();
     $scope = exampleScope();
