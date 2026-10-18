@@ -32,16 +32,18 @@ final readonly class BatchState
     }
 
     /**
-     * Batches of the period: closed within it, or not closed by its end (legacy `BATCHES_IN_RANGE`).
+     * Batches of the period: closed within it, or not closed by its end (legacy `BATCHES_IN_RANGE`). The collector
+     * exports the creation time of every batch it exports, closed or not, so these are the batches with a creation
+     * time in the period except those closed before it: two range reads instead of the legacy three
+     * (`closed >= from or (created unless closed)`, which BatchPeriodTest holds it to).
      */
-    public function inRange(): string
+    public function inRange(string ...$matchers): string
     {
-        $closed = $this->last(Metric::BatchClosed);
-        $created = $this->last(Metric::BatchCreated);
-
-        return Promql::paren(Promql::either(
-            Promql::group($closed.' >= '.Promql::FROM_SECONDS, 'batch', 'name'),
-            Promql::paren(Promql::unlessOn(Promql::group($created, 'batch', 'name'), $closed, 'batch', 'name')),
+        return Promql::paren(Promql::unlessOn(
+            Promql::group($this->last(Metric::BatchCreated, ...$matchers), 'batch', 'name'),
+            Promql::paren($this->last(Metric::BatchClosed, ...$matchers).' < '.Promql::FROM_SECONDS),
+            'batch',
+            'name',
         ));
     }
 
@@ -54,13 +56,12 @@ final readonly class BatchState
     }
 
     /**
-     * Kinds of the period that the Batch filter selects (legacy `BATCH_KINDS_SELECTED`).
+     * Kinds of the period that the Batch filter selects (legacy `BATCH_KINDS_SELECTED`): the kinds of the period's
+     * batches of the selected kinds.
      */
     public function selectedKinds(): string
     {
-        $selected = $this->last(Metric::BatchCreated, Promql::re('batch', '$batch_kind'));
-
-        return Promql::andOn($this->kinds(), Promql::group($selected, 'batch'), 'batch');
+        return Promql::group($this->inRange(Promql::re('batch', '$batch_kind')), 'batch');
     }
 
     /**
