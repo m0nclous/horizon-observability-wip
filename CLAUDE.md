@@ -1,16 +1,15 @@
 # CLAUDE.md
 
-This repository is being rewritten from an internal pilot into the public package `sushi-market/horizon-observability`
-(namespace `DF\HorizonObservability`). Before doing anything, read `planning/README.md` (handoff, owner decisions,
-environment) and `planning/TASKS.md` (task list and progress). Continue with the next open task there.
+`sushi-market/horizon-observability` (namespace `DF\HorizonObservability`): Prometheus metrics, live job lists, a
+Grafana dashboard and alert rules for Laravel Horizon and its Redis queues.
 
 Conventions:
-- Everything public is English. PHP `^8.2`, `declare(strict_types=1)` everywhere, Laravel `^11.23|^12|^13`, Horizon `^5.29.1`.
-- `legacy/` is reference code only. Do not autoload it or extend it.
-- Run `vendor/bin/pest`, `vendor/bin/phpstan`, `vendor/bin/pint --test` before every commit. Tests needing Redis use
-  127.0.0.1:6379 and the `redis` group; run them with phpredis and with `REDIS_CLIENT=predis`.
-- Until `src/` contains PHP files, `vendor/bin/phpstan` exits 1 with "No files found to analyse"; that is expected.
-- Change task statuses only with `tools/board/set-status.sh <Txx> <todo|in progress|testing|done> [--qa "..."]` (it
-  commits and pushes `planning/TASKS.md`; the board workflow moves the card). Follow the QA gate in `planning/README.md`
-  decision 14: implementer -> `testing`, two independent testers -> `done` or back to `in progress` with a QA verdict.
-- Push work to `origin` (branch `master`).
+- Everything is English: code, comments, log lines, HELP texts, label values and docs.
+- PHP `^8.2` with `declare(strict_types=1)` in every PHP file; Laravel `^11.23 || ^12.0 || ^13.0`, Horizon `^5.29.1`.
+- Gates before every commit: `vendor/bin/pest` with phpredis and again with `REDIS_CLIENT=predis`, `vendor/bin/phpstan`,
+  `vendor/bin/pint --test` and `vendor/bin/rector --dry-run`. The `redis` test group needs Redis on 127.0.0.1:6379.
+- The dashboard and the alert rules are rendered from `src/Grafana`; never edit `resources/grafana` by hand
+  (`composer test:grafana` compares them with the render).
+- Every public change needs an entry in `CHANGELOG.md` (breaking changes also in `UPGRADE.md`).
+- Docs: `README.md` (users), `CONTRIBUTING.md` (development setup, test groups, CI), `tests/Truth/README.md` (the
+  truth suite).
