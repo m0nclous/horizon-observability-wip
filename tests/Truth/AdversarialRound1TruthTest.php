@@ -16,11 +16,11 @@ use DF\HorizonObservability\Tests\Truth\Support\Scenario;
 use DF\HorizonObservability\Tests\Truth\Support\TruthJob;
 
 /*
-| T16 QA round 1, adversarial tester: probes of the two exporter changes of T16 (the 75 s hold of new counter series
-| and horizon_supervisor_queues) and of the suite's own claims. Each case states what the exporter must do. Failing at
-| 063b66a (the round 1 findings): numeric queue names, a repeated queue in a balance=false option, and the
-| waits-per-attempts invariant while a new class on a known queue is held. The other cases pass and stay as
-| regression tests: the 15 s skew budget of the hold at 60 s scrapes, and a pruned class that returns.
+| Adversarial probes, first round: the two exporter changes that came with this suite (the hold of new counter
+| series, then 75 s, and horizon_supervisor_queues) and the suite's own claims. Each case states what the exporter
+| must do. Failing at 063b66a (the findings of this round): numeric queue names, a repeated queue in a balance=false
+| option, and the waits-per-attempts invariant while a new class on a known queue is held. The other cases pass and
+| stay as regression tests: the 15 s skew budget of the hold at 60 s scrapes, and a pruned class that returns.
 */
 
 pest()->group('redis', 'truth');
@@ -37,7 +37,7 @@ it('keeps numeric queue names in horizon_supervisor_queues (a spread renumbers i
         ->supervisor('host-a:supervisor-pool', HorizonState::options('host-a:supervisor-pool', queue: '0,5', balance: false), ['redis:0,5' => 2]);
     $samples = new Samples($scenario->scrape());
 
-    // The processes keep the numeric pool labels (pre-T16 code casts the keys)...
+    // The processes keep the numeric pool labels (their older code casts the keys)...
     expect($samples->series(Metric::SupervisorProcesses->value))->toBe([
         Model::key(['supervisor' => 'supervisor-pool', 'queue' => '0,5']) => 2.0,
         Model::key(['supervisor' => 'supervisor-shards', 'queue' => '1']) => 1.0,

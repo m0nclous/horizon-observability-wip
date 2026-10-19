@@ -8,11 +8,11 @@ use DF\HorizonObservability\Tests\Truth\Support\Scenario;
 use DF\HorizonObservability\Tests\Truth\Support\Scenarios;
 
 /*
-| Exporter truth (T16, owner decision 13): the attempt families of a scrape equal the expected-value model of a
-| scenario with every outcome (completed, released, retried, failed, failed without a duration, timed out),
-| known durations and waits, a delayed dispatch, a backoff and a job reserved during a scrape, all run through
-| real queue workers. Counters and histogram buckets are exact; a duration sum lies within the planned durations
-| plus Model::OVERHEAD_SECONDS per attempt; waits are exact on the frozen clock.
+| Exporter truth: the attempt families of a scrape equal the expected-value model of a scenario with every outcome
+| (completed, released, retried, failed, failed without a duration, timed out), known durations and waits, a delayed
+| dispatch, a backoff and a job reserved during a scrape, all run through real queue workers. Counters and histogram
+| buckets are exact; a duration sum lies within the planned durations plus Model::OVERHEAD_SECONDS per attempt; waits
+| are exact on the frozen clock.
 */
 
 pest()->group('redis', 'truth');

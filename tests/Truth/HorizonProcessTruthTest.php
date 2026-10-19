@@ -17,12 +17,12 @@ use Laravel\Horizon\Contracts\SupervisorRepository;
 use Symfony\Component\Process\Process;
 
 /*
-| Exporter truth (T16) with a real Horizon: `testbench horizon` starts the workbench's three supervisors (auto,
-| auto with two queues, a balance=false pool of mail and sms) as separate processes. The horizon families equal what
-| that Horizon registered in its repositories, read before and after the scrape until both reads agree (the auto
-| balancer may move a process in between), and its own worker processes count every attempt of the jobs this test
-| dispatches, the pooled queues included. The jobs are CompletingJob fixtures: Horizon's processes run the skeleton's
-| artisan, whose vendor link may point at another checkout in a local worktree (CI has one checkout).
+| Exporter truth with a real Horizon: `testbench horizon` starts the workbench's three supervisors (auto, auto with
+| two queues, a balance=false pool of mail and sms) as separate processes. The horizon families equal what that
+| Horizon registered in its repositories, read before and after the scrape until both reads agree (the auto balancer
+| may move a process in between), and its own worker processes count every attempt of the jobs this test dispatches,
+| the pooled queues included. The jobs are CompletingJob fixtures: Horizon's processes run the skeleton's artisan,
+| whose vendor link may point at another checkout in a local worktree (CI has one checkout).
 */
 
 pest()->group('redis', 'truth');

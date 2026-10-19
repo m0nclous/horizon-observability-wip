@@ -25,7 +25,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * The scenario engine of the truth tests (T16, owner decision 13).
+ * The scenario engine of the truth tests.
  *
  * A scenario runs real jobs ({@see TruthJob}) through Horizon's Redis queue and real `queue:work` workers in this
  * process (or a forked child for timeouts and reserved jobs) on a frozen clock, and feeds the same events into

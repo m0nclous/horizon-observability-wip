@@ -20,11 +20,10 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 
 /*
-| Exporter truth (T16) for the exporter's own families: which collectors succeeded and how long they took, the
-| versions it runs on, the configuration problems, the attempts it could not record and the live pushes. Each is
-| compared with an independent source: a collector broken on purpose, the request's wall time, Composer's installed
-| versions and PHP's, the invalid values set, the attempts run during a storage outage, the pushes a fake Grafana
-| answered.
+| Exporter truth for the exporter's own families: which collectors succeeded and how long they took, the versions it
+| runs on, the configuration problems, the attempts it could not record and the live pushes. Each is compared with an
+| independent source: a collector broken on purpose, the request's wall time, Composer's installed versions and
+| PHP's, the invalid values set, the attempts run during a storage outage, the pushes a fake Grafana answered.
 */
 
 pest()->group('redis', 'truth');

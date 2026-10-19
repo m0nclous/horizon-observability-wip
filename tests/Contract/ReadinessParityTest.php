@@ -9,10 +9,10 @@ use DF\HorizonObservability\Queues\QueueInspector;
 use DF\HorizonObservability\Tests\Support\QueuePayloads;
 
 /*
-| Readiness parity (Arch Q6.3, C8, C19): queue_state.lua extracts pushedAt, createdAt, delay, attempts and
-| displayName from the raw payload string, Queues\PayloadClock reads the decoded payload. Every shared fixture
-| (tests/Fixtures/payloads.php) and every extra queue fixture (tests/Fixtures/queues/parity.php) must give the same
-| first-attempt readiness and the same job class on both sides, in full and in live mode.
+| Readiness parity: queue_state.lua extracts pushedAt, createdAt, delay, attempts and displayName from the raw
+| payload string, Queues\PayloadClock reads the decoded payload. Every shared fixture (tests/Fixtures/payloads.php)
+| and every extra queue fixture (tests/Fixtures/queues/parity.php) must give the same first-attempt readiness and the
+| same job class on both sides, in full and in live mode.
 */
 
 pest()->group('redis');

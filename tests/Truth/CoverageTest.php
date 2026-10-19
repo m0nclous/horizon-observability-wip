@@ -5,9 +5,9 @@ declare(strict_types=1);
 use DF\HorizonObservability\Metrics\Metric;
 
 /*
-| The coverage gate of the exporter truth tests (T16): every catalog family has a row in the coverage table of
-| tests/Truth/README.md, every test file listed there exists and references its family (the Metric case or the
-| family name), and the table lists nothing else. A new family without a truth test fails here.
+| The coverage gate of the exporter truth tests: every catalog family has a row in the coverage table of
+| tests/Truth/README.md, every test file listed there exists and references its family (the Metric case or the family
+| name), and the table lists nothing else. A new family without a truth test fails here.
 */
 
 pest()->group('truth');

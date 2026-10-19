@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Replica clocks probe (T16 QA round 2): one scrape target, two exporter replicas whose clocks differ by 15 s, a new
-# series with 3 attempts (truth: 3). Prometheus v3.15.0 scrapes every 5 s; at t = 150 s the probe prints the samples
-# of the last 145 s, increase() and resets().
+# Replica clocks probe: one scrape target, two exporter replicas whose clocks differ by 15 s, a new series with 3
+# attempts (truth: 3). Prometheus v3.15.0 scrapes every 5 s; at t = 150 s the probe prints the samples of the last
+# 145 s, increase() and resets().
 #
 # Usage: tests/Truth/probes/replica-clocks/run.sh [results file]   (Docker with host network; ports 18191, 19191)
 

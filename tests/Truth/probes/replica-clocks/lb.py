@@ -1,4 +1,4 @@
-"""One scrape target (Arch Q1.5: a Service or load balancer) in front of two exporter replicas (T16 QA round 2).
+"""One scrape target (a Service or load balancer) in front of two exporter replicas.
 
 usage: python3 -I lb.py <directory> <port>
 Requests alternate between <directory>/A and <directory>/B, the expositions the two replicas' export loops write

@@ -14,26 +14,26 @@ use DF\HorizonObservability\Tests\Truth\Support\Samples;
 use DF\HorizonObservability\Tests\Truth\Support\Scenario;
 
 /*
-| T16 QA round 2, adversarial tester: probes of the round 1 fixes (the 90 s hold sized for a clock budget, the
-| absolute age, the `+` merge of the pools) and of the clocks the hold depends on. Each case states what the exporter
-| must do. Failing at c288694 (the round 2 findings):
+| Adversarial probes, second round: the fixes of the first round (the 90 s hold sized for a clock budget, the
+| absolute age, the `+` merge of the pools) and the clocks the hold depends on. Each case states what the exporter
+| must do. Failing at c288694 (the findings of this round):
 | - the hold compares the worker's clock with the clock of the replica that answers the scrape, so two replicas
-|   behind the one scrape target of the contract (Arch Q1.5) whose clocks differ by more than the scrape interval
-|   (inside the stated budget: a worker 15 s behind one replica and in sync with the other) export N, 0, N at the end
-|   of the hold: a counter decrease that increase() takes for a reset and counts N twice (on Prometheus v3.15.0:
-|   increase() 6.02 for 3 attempts, resets() 1; probes/replica-clocks);
-| - a worker clock more than the hold ahead makes an already exported counter drop back to 0 for 180 s later on
-|   (the README says such a creation time "is not trusted"; it is trusted once the exporter's clock comes within
-|   90 s of it), again a fake reset;
+|   behind the one scrape target (one target per app environment, as the main README asks) whose clocks differ by
+|   more than the scrape interval (inside the stated budget: a worker 15 s behind one replica and in sync with the
+|   other) export N, 0, N at the end of the hold: a counter decrease that increase() takes for a reset and counts N
+|   twice (on Prometheus v3.15.0: increase() 6.02 for 3 attempts, resets() 1; probes/replica-clocks);
+| - a worker clock more than the hold ahead makes an already exported counter drop back to 0 for 180 s later on (the
+|   README then said such a creation time "is not trusted"; it was trusted once the exporter's clock came within 90 s
+|   of it), again a fake reset;
 | - while a deploy changes a balance=false queue option, both masters' pools work the common queues, but
 |   horizon_supervisor_queues keeps only the first master's pool, so the processes per queue miss the other's.
 | The other cases pass and stay as regression tests.
 |
-| Fixed after round 2 (implementer): the hold runs on the storage Redis' clock (ServerClock: TIME inside
-| record_attempt.lua for the creation time and inside new_series.lua for the age), which releases a series for good
-| by deleting its creation time; horizon_supervisor_queues keeps every master's pools. The hold cases therefore pass
-| the server clock explicitly (Storage's `server:`, the real time of each event) next to the worker's and the
-| replicas' own clocks (`now:`), which no longer enter.
+| Fixed after this round: the hold runs on the storage Redis' clock (ServerClock: TIME inside record_attempt.lua for
+| the creation time and inside new_series.lua for the age), which releases a series for good by deleting its creation
+| time; horizon_supervisor_queues keeps every master's pools. The hold cases therefore pass the server clock
+| explicitly (Storage's `server:`, the real time of each event) next to the worker's and the replicas' own clocks
+| (`now:`), which no longer enter.
 */
 
 pest()->group('redis', 'truth');
@@ -67,9 +67,9 @@ function adv2Decreases(array $values): array
 }
 
 it('keeps a counter monotonic when two replicas behind the one scrape target answer in turn, clocks 15 s apart', function (int $interval, int $phase): void {
-    // Arch Q1.5: one logical scrape target per app (Service DNS, load balancer); "whichever replica answers, the
-    // series is continuous". The worker that records the first attempt is in sync with replica A and 15 s behind
-    // replica B (within the stated budget: worker clocks <= 15 s off the exporter's).
+    // One logical scrape target per app (Service DNS, load balancer): whichever replica answers, the series must be
+    // continuous. The worker that records the first attempt is in sync with replica A and 15 s behind replica B
+    // (within the stated budget: worker clocks <= 15 s off the exporter's).
     $created = 1_800_000_000;
     Storage::record(status: AttemptStatus::Completed, duration: 0.2, now: CarbonImmutable::createFromTimestamp($created), server: $created);
     $skew = ['A' => 0, 'B' => 15];

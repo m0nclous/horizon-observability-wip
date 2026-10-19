@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 #
-# Scripted first-value probe (T16): fake_exporter.py serves ho_queue_jobs_total as a function of time, so the same
+# Scripted first-value probe: fake_exporter.py serves ho_queue_jobs_total as a function of time, so the same
 # timeline can be shown with and without the exporter's 75 s hold of new series, and with targets that appear late.
 # - target A (job "ho") from t=0; target B (job "ho", a replica on the same storage) and C (job "late", a scrape job
 #   added later) from t=90 s;
 # - OldJob: 100 completed before the probe, 102 from t=60 s (truth in the window: 2);
 # - NewJob: born at t=30 s with 3 completed, 5 from t=60 s (truth: 5); mode "hold" exports it as 0 until t=105 s.
-# At t=150 s query.py evaluates over [t=10 s, t=150 s]: Prometheus' increase(), the dashboard's delta() (T13
-# Queries\Attempts) and "count-first", the dashboard-only alternative that counts a new series' first value.
+# At t=150 s query.py evaluates over [t=10 s, t=150 s]: Prometheus' increase(), the dashboard's delta()
+# (Queries\Attempts when the probe ran) and "count-first", the dashboard-only alternative that counts a new series'
+# first value.
 #
 # Usage: tests/Truth/probes/first-value/run-scripted.sh [results file]   (Docker with host network; ports
 # 18091-18096, 19091-19092)

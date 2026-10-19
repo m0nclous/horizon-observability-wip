@@ -7,7 +7,7 @@ namespace DF\HorizonObservability\Tests\Truth\Support;
 use DF\HorizonObservability\Metrics\Metric;
 
 /**
- * Invariants every scrape must satisfy, whatever the scenario (owner decision 13): violations as readable lines.
+ * Invariants every scrape must satisfy, whatever the scenario: violations as readable lines.
  *
  * - histograms: buckets never decrease with `le`, `count` equals the `+Inf` bucket, the sum is finite and not
  *   negative, and 0 without observations;

@@ -1,4 +1,4 @@
-"""One scrape target (Arch Q1.5: a Service or load balancer) in front of two exporter replicas (T16 QA round 2).
+"""One scrape target (a Service or load balancer) in front of two exporter replicas.
 
 usage: python3 -I lb_exporter.py <t0 unix> <port>
 A worker in sync with replica A records the first 3 attempts of a new series at t0 + 10 s. Replica A's clock is real

@@ -1,4 +1,4 @@
-"""Scripted exporter for the first-value evidence (T16): serves ho_queue_jobs_total as a function of time.
+"""Scripted exporter for the first-value evidence: serves ho_queue_jobs_total as a function of time.
 
 usage: python3 -I fake_exporter.py <mode: baseline|hold> <t0 unix> <port> <start offset s>
 The target answers 503 before t0 + start offset (as if it did not exist yet).

@@ -20,7 +20,7 @@ use DF\HorizonObservability\Tests\Truth\Support\Scenario;
 use DF\HorizonObservability\Tests\Truth\Support\TruthJob;
 
 /*
-| The first value of a new counter series (T16; the pilot's Completed/Failed tiles dropped it, T13 QA round 1).
+| The first value of a new counter series (the pilot's Completed and Failed tiles dropped it).
 |
 | Prometheus cannot count the first sample of a series: increase() and the dashboard's exact differences start
 | from it. The exporter therefore exports a series created less than AttemptsCollector::NEW_SERIES_HOLD_SECONDS
@@ -219,9 +219,9 @@ function firstValueDeviation(string $pattern, int $k, float $slot): float
 }
 
 it('exports a new series as 0 on its first scrape within the budget, whatever the worker and replica clocks say', function (int $interval, float $phase, string $pattern, array $clocks): void {
-    // One clock decides the hold: the storage Redis' (ServerClock, pinned here as `server:`). The worker that records
-    // the first attempt and the two replicas behind the one scrape target (Arch Q1.5), which answer the scrapes in
-    // turn, have clocks of their own, off the server's by the given offsets.
+    // One clock decides the hold: the storage Redis' (ServerClock, pinned here as `server:`). The worker that
+    // records the first attempt and the two replicas behind the one scrape target, which answer the scrapes in turn,
+    // have clocks of their own, off the server's by the given offsets.
     $hold = AttemptsCollector::NEW_SERIES_HOLD_SECONDS;
     $created = 1_800_000_000;
     $at = static fn (float $seconds): CarbonImmutable => CarbonImmutable::createFromTimestamp($seconds);

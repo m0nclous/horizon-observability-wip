@@ -55,8 +55,9 @@ final readonly class RedisState
     }
 
     /**
-     * Seconds the oldest ready first attempt has waited (C8, restated): the readiness `max(pushedAt, createdAt +
-     * delay)` of the first payload with `attempts` 0, or the earliest due delayed score, whichever is older.
+     * Seconds the oldest ready first attempt has waited (`queue_oldest_pending_job_age_seconds`, restated): the
+     * readiness `max(pushedAt, createdAt + delay)` of the first payload with `attempts` 0, or the earliest due
+     * delayed score, whichever is older.
      */
     public function oldest(float $now): ?float
     {

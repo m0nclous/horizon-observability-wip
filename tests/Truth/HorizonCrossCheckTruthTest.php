@@ -10,10 +10,10 @@ use Laravel\Horizon\Contracts\JobRepository;
 use Laravel\Horizon\Contracts\MetricsRepository;
 
 /*
-| Exporter truth (T16): the attempt counters agree with Horizon's own bookkeeping of the same jobs, which Horizon's
+| Exporter truth: the attempt counters agree with Horizon's own bookkeeping of the same jobs, which Horizon's
 | listeners write independently of the package: MetricsRepository (throughput per queue and per job, i.e. the
-| completed jobs) and JobRepository (completed and failed jobs). A failed job is the last attempt of a job, failed
-| or timed out.
+| completed jobs) and JobRepository (completed and failed jobs). A failed job is the last attempt of a job, failed or
+| timed out.
 */
 
 pest()->group('redis', 'truth');

@@ -19,11 +19,11 @@ use Illuminate\Support\Facades\Bus;
 use PHPUnit\Framework\ExpectationFailedException;
 
 /*
-| Exporter truth (T16): the invariants of Support\Invariants (histogram shape, the five statuses, observations per
-| attempt, waits per attempt outside a hold, classes adding up to the pending jobs incl. "(unscanned)", due within
-| delayed and pending, pools with processes, batch progress, self-metrics, counters that never decrease except at a
-| documented reset) are asserted by Scenario::scrape() at every scrape of every scenario. The cases here put the
-| invariants under pressure; reserved jobs per class add up to the reserved set in Redis.
+| Exporter truth: the invariants of Support\Invariants (histogram shape, the five statuses, observations per attempt,
+| waits per attempt outside a hold, classes adding up to the pending jobs incl. "(unscanned)", due within delayed and
+| pending, pools with processes, batch progress, self-metrics, counters that never decrease except at a documented
+| reset) are asserted by Scenario::scrape() at every scrape of every scenario. The cases here put the invariants
+| under pressure; reserved jobs per class add up to the reserved set in Redis.
 */
 
 pest()->group('redis', 'truth');

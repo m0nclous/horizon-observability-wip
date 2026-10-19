@@ -18,10 +18,10 @@ use DF\HorizonObservability\Tests\Truth\Support\Scenarios;
 use DF\HorizonObservability\Tests\Truth\Support\TruthJob;
 
 /*
-| Exporter truth (T16): counters never decrease, except in a documented reset. A Redis restart without persistence
-| loses the counters; a restore from an older dataset (an RDB, a lagging replica) would make increase() count old
-| totals again, so the reset guard deletes the counters when the Redis run_id changes (Arch Q6.10, C21) and
-| documents it: meta.reset_at and one info line. After either, every series starts at 0 again.
+| Exporter truth: counters never decrease, except in a documented reset. A Redis restart without persistence loses
+| the counters; a restore from an older dataset (an RDB, a lagging replica) would make increase() count old totals
+| again, so the reset guard deletes the counters when the Redis run_id changes and documents it: meta.reset_at and
+| one info line. After either, every series starts at 0 again.
 */
 
 pest()->group('redis', 'truth');
