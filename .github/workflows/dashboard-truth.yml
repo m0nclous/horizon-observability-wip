@@ -1,0 +1,186 @@
+# The dashboard truth suite (T17, owner decision 13, planning/T17-DESIGN.md section 12): every number the rendered
+# dashboard shows equals the ground truth of a deterministic scenario, on Grafana 12.4.13 and 13.2.4, in one job on
+# one runner (record -> ingest -> stack -> capture -> assert, tests/DashboardTruth/bin/run).
+#
+# Runs on PRs that touch the exporter, the renders or the suite (drafts only with the label `dashboard-truth`), on
+# master pushes of the same paths, weekly after the tests.yml e2e (05:23) and on demand. tests.yml is unchanged: its
+# grafana job runs the static coverage gate and the unit self-tests (group grafana) on every PR.
+
+name: dashboard-truth
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    paths:
+      - 'src/**'
+      - 'resources/lua/**'
+      - 'resources/grafana/**'
+      - 'routes/**'
+      - 'config/**'
+      - 'composer.json'
+      - 'testbench.yaml'
+      - 'workbench/**'
+      - 'tests/DashboardTruth/**'
+      - 'tests/Truth/Support/**'
+      - 'tests/Support/**'
+      - 'tests/Fixtures/grafana/**'
+      - '.github/workflows/dashboard-truth.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'src/**'
+      - 'resources/lua/**'
+      - 'resources/grafana/**'
+      - 'routes/**'
+      - 'config/**'
+      - 'composer.json'
+      - 'testbench.yaml'
+      - 'workbench/**'
+      - 'tests/DashboardTruth/**'
+      - 'tests/Truth/Support/**'
+      - 'tests/Support/**'
+      - 'tests/Fixtures/grafana/**'
+      - '.github/workflows/dashboard-truth.yml'
+  schedule:
+    - cron: '41 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      set:
+        description: 'Case set: pr (the PR set) or full (the weekly additions too)'
+        type: choice
+        options: [pr, full]
+        default: pr
+      cases:
+        description: 'Only these cases, comma-separated (empty: the whole set)'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+# Per ref and event: a push cancels the previous run of its PR or branch, never the weekly run.
+concurrency:
+  group: dashboard-truth-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+env:
+  COMPOSER_NO_INTERACTION: '1'
+
+jobs:
+  dashboard-truth:
+    name: Dashboard truth / Grafana 12.4.13 and 13.2.4
+    # Draft PRs run only with the label dashboard-truth (owner question 5); a labelled event runs only for that label
+    if: >-
+      github.event_name != 'pull_request'
+      || ((github.event.action != 'labeled' || github.event.label.name == 'dashboard-truth')
+          && (github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'dashboard-truth')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ (github.event_name == 'schedule' || inputs.set == 'full') && 80 || 30 }}
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports: ['6379:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      DASHBOARD_TRUTH_SLOT: '0'
+      DASHBOARD_TRUTH_PLUGINS: /home/runner/.cache/horizon-observability/t17-grafana-plugins
+      RUN_ID: ci${{ github.run_id }}${{ github.run_attempt }}
+      SET: ${{ inputs.set || (github.event_name == 'schedule' && 'full') || 'pr' }}
+      CASES: ${{ inputs.cases || '' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The images are pulled while Composer and Playwright install; compose pulls whatever is still missing
+      - name: Pull the stack images in the background
+        run: |
+          nohup sh -c 'for image in quay.io/prometheus/prometheus:v3.15.0 grafana/grafana:12.4.13 grafana/grafana:13.2.4; do docker pull -q "$image"; done' > /tmp/docker-pull.log 2>&1 &
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: redis, pcntl, posix, pdo_sqlite, mbstring
+          coverage: none
+
+      - name: Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ runner.os }}-
+      - run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.56.1-${{ runner.os }}
+      # The runner's Node (>= 18) runs Playwright
+      - run: npm i --no-save --no-package-lock playwright@1.56.1 && npx playwright install --with-deps chromium
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.DASHBOARD_TRUTH_PLUGINS }}
+          key: grafana-plugins-infinity-4.1.1-business-text-6.3.0
+      - name: Grafana plugins (Infinity 4.1.1, Business Text 6.3.0)
+        run: tests/DashboardTruth/stack/plugins.sh
+
+      - name: Dashboard truth (record, ingest, stack, capture, assert)
+        run: php tests/DashboardTruth/bin/run --ci --keep --run="$RUN_ID" --set="$SET" ${CASES:+--cases="$CASES"}
+
+      # Design section 11.3: the synthetic mutant of the slice (#8 A counting retried attempts as completed) must turn
+      # S01 red with a dashboard defect, on the same recordings and stack
+      - name: Mutant sensitivity (completed-retried)
+        if: success() && env.CASES == ''
+        run: php tests/DashboardTruth/bin/run --ci --keep --run="$RUN_ID" --from=stack --cases=S01 --mutant=completed-retried --expect-red
+
+      - name: Report
+        if: always()
+        run: |
+          dir="build/dashboard-truth/$RUN_ID"
+          {
+            echo '## Dashboard truth'
+            echo
+            if [ -f "$dir/timings.json" ]; then echo '### Stage timings (s)'; echo; echo '```json'; cat "$dir/timings.json"; echo '```'; echo; fi
+            if [ -f "$dir/report.md" ]; then sed -n '1,200p' "$dir/report.md"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Stack logs
+        if: failure()
+        run: |
+          mkdir -p "build/dashboard-truth/$RUN_ID/logs"
+          for container in $(docker ps -a --format '{{.Names}}' | grep '^ho-s0-'); do
+            docker logs "$container" > "build/dashboard-truth/$RUN_ID/logs/$container.log" 2>&1 || true
+          done
+
+      - name: Clean up the stack and the worlds
+        if: always()
+        run: php tests/DashboardTruth/bin/run cleanup --run="$RUN_ID"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: dashboard-truth-${{ github.run_attempt }}
+          path: |
+            build/dashboard-truth/${{ env.RUN_ID }}/report.*
+            build/dashboard-truth/${{ env.RUN_ID }}/timings.json
+            build/dashboard-truth/${{ env.RUN_ID }}/plan.json
+            build/dashboard-truth/${{ env.RUN_ID }}/observations/**
+            build/dashboard-truth/${{ env.RUN_ID }}/mutants/*/report.*
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: dashboard-truth-debug-${{ github.run_attempt }}
+          path: |
+            build/dashboard-truth/${{ env.RUN_ID }}/datasets/*/recording.ndjson
+            build/dashboard-truth/${{ env.RUN_ID }}/datasets/*/manifest.json
+            build/dashboard-truth/${{ env.RUN_ID }}/renders/**
+            build/dashboard-truth/${{ env.RUN_ID }}/logs/**
+            build/dashboard-truth/${{ env.RUN_ID }}/*.log
+            build/dashboard-truth/${{ env.RUN_ID }}/*.out
+          if-no-files-found: ignore
