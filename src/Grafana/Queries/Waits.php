@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Grafana\Queries;
 
 use DF\HorizonObservability\Grafana\Promql;
-use DF\HorizonObservability\Grafana\Thresholds;
+use DF\HorizonObservability\Metrics\Metric;
 
 /**
  * How long pending jobs wait, relative to the `horizon.waits` limit of their queue.
@@ -30,20 +30,21 @@ final readonly class Waits
     public function ratio(): string
     {
         return Promql::binary(
-            Promql::max($this->promql->selector('queue_oldest_pending_job_age'), 'queue'),
+            Promql::max($this->promql->selector(Metric::QueueOldestPendingJobAge), 'queue'),
             '/',
-            Promql::max($this->promql->selector('horizon_wait_threshold_seconds'), 'queue'),
+            Promql::max($this->promql->selector(Metric::WaitThreshold), 'queue'),
             on: ['queue'],
         );
     }
 
     /**
-     * Level 0, 1 or 2 of a ratio: above the warning factor, plus above the critical factor.
+     * Level 0, 1 or 2 of a ratio: above the warning factor (1), plus above the critical factor (2). Written as
+     * `clamp(ceil(ratio) - 1, 0, 2)`, which evaluates the ratio once (its p95 is a histogram quantile over the
+     * period) where the two comparisons evaluated it twice; WaitLevelTest pins it to the factors and the comparisons.
      */
     public static function levels(string $ratio): string
     {
-        return Promql::paren($ratio.' > bool '.Thresholds::WAIT_WARNING_FACTOR)
-            .' + '.Promql::paren($ratio.' > bool '.Thresholds::WAIT_CRITICAL_FACTOR);
+        return Promql::call('clamp', Promql::call('ceil', $ratio).' - 1', '0', '2');
     }
 
     /**
@@ -69,7 +70,7 @@ final readonly class Waits
     public function worstAge(): string
     {
         $age = Promql::andOn(
-            Promql::max($this->promql->selector('queue_oldest_pending_job_age'), 'queue'),
+            Promql::max($this->promql->selector(Metric::QueueOldestPendingJobAge), 'queue'),
             Promql::topk(1, $this->ratio()),
             'queue',
         );
@@ -85,7 +86,7 @@ final readonly class Waits
         $queues = $this->selection->queues();
 
         return Promql::paren(Promql::either(
-            Promql::andOn(Promql::max($this->promql->selector('queue_oldest_pending_job_age'), 'queue'), $queues, 'queue'),
+            Promql::andOn(Promql::max($this->promql->selector(Metric::QueueOldestPendingJobAge), 'queue'), $queues, 'queue'),
             '0 * '.$queues,
         ));
     }
@@ -95,7 +96,7 @@ final readonly class Waits
      */
     public function queueWaitLimit(): string
     {
-        return Promql::max($this->promql->selector('horizon_wait_threshold_seconds', Promql::re('queue', '$queue')), 'queue');
+        return Promql::max($this->promql->selector(Metric::WaitThreshold, Promql::re('queue', '$queue')), 'queue');
     }
 
     /**
@@ -104,9 +105,9 @@ final readonly class Waits
      */
     public function waitP95(): string
     {
-        $buckets = $this->promql->selector('queue_job_wait_seconds_bucket', Promql::re('queue', '$queue'));
+        $buckets = $this->promql->over('increase', Metric::JobWait, Promql::RANGE, [Promql::re('queue', '$queue')], series: 'bucket');
 
-        return Promql::paren(Promql::call('histogram_quantile', '0.95', Promql::sum(Promql::range('increase', $buckets, Promql::RANGE), 'queue', 'le')).' >= 0');
+        return Promql::paren(Promql::call('histogram_quantile', '0.95', Promql::sum($buckets, 'queue', 'le')).' >= 0');
     }
 
     /**

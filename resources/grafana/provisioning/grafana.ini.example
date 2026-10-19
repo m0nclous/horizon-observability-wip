@@ -1,0 +1,12 @@
+; Grafana settings the dashboard relies on (Arch Q5.4, Q5.5). Merge into grafana.ini, or set the equivalent
+; GF_<SECTION>_<KEY> environment variables, e.g. GF_UNIFIED_ALERTING_STATE_HISTORY_ENABLED=true.
+
+; The Alerts tile and the alert sound read the alert state history from Prometheus (GRAFANA_ALERTS), so Grafana
+; writes it there. The Prometheus server needs --web.enable-remote-write-receiver.
+[unified_alerting.state_history]
+enabled = true
+backend = multiple
+primary = annotations
+secondaries = prometheus
+; uid of the Prometheus datasource the dashboard reads
+prometheus_target_datasource_uid = prometheus

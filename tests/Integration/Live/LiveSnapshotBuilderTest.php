@@ -151,8 +151,9 @@ it('gives null pending and delayed values, no throughput and busy workers of the
         ->and($snapshot->throughput['completed'])->toBeNull()
         ->and($snapshot->throughput['caption'])->toBe("RPM: \u{2014}")
         ->and(array_column($snapshot->supervisors, 'busy', 'name'))->toBe(['supervisor-default' => 1, 'supervisor-pool' => 1, 'supervisor-slow' => 0])
-        // the tiles count the busy workers of the class, as the off-mode tile does
-        ->and(liveTileValues($snapshot, 'supervisor'))->toBe(['supervisor-default' => 1.0, 'supervisor-pool' => 1.0, 'supervisor-slow' => 0.0])
+        // the tiles count the busy workers of the class and list the supervisors that have them, as the off-mode
+        // tile does (T13 QA round 2)
+        ->and(liveTileValues($snapshot, 'supervisor'))->toBe(['supervisor-default' => 1.0, 'supervisor-pool' => 1.0])
         ->and(liveTileValues($snapshot, 'pending'))->toBe(['' => null])
         ->and(liveTileValues($snapshot, 'delayed'))->toBe(['' => null])
         // no ring read: the ring has no classes

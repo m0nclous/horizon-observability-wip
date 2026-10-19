@@ -19,9 +19,12 @@
 # 127.0.0.1:6379: a REDIS_PORT in the shell reaches artisan commands (Horizon, the load simulation), but `composer serve`
 # only sees it with PHP's variables_order=EGPCS (e.g. PHP_INI_SCAN_DIR with that one line), as in the app image.
 #
-# Until T13 renders resources/grafana, Grafana provisions the pilot's dashboard and alert rules
-# (tests/Fixtures/grafana/legacy) with placeholder provisioning from docker/grafana/provisioning. T13 switches the
-# three marked mounts to resources/grafana/**.
+# Grafana provisions the package render (resources/grafana: dashboard, alert rules and the shipped provisioning
+# examples), so the dev stack tests what users mount. After a renderer change: composer test:grafana fails, then
+# `vendor/bin/testbench horizon-observability:grafana "$PWD/resources/grafana" --defaults --recording-rules` updates
+# the files (a relative path is relative to testbench's skeleton) and Grafana picks the dashboard up within 10 s (alert
+# rules on a restart). GRAFANA_DASHBOARDS mounts another dashboards directory, e.g. the pilot dashboard for the perf
+# legacy row (docker/perf/README.md).
 
 name: horizon-observability
 
@@ -84,18 +87,13 @@ services:
       HORIZON_OBSERVABILITY_SCRAPE_INTERVAL: ${SCRAPE_INTERVAL:-10s}                   # the datasource timeInterval
       HORIZON_OBSERVABILITY_APP_URL: ${APP_URL_FROM_GRAFANA:-http://host.docker.internal:8000}
       HORIZON_OBSERVABILITY_API_TOKEN: workbench-token-0123456789abcdef
-      HPG_PROMETHEUS_DATASOURCE_UID: prometheus          # the pilot's alert rules (placeholder until T13)
     volumes:
       - ./docker/grafana/provisioning/datasources/prometheus.yaml:/etc/grafana/provisioning/datasources/prometheus.yaml:ro
-      # T13: ./resources/grafana/provisioning/datasources/horizon-observability.yaml
-      - ./docker/grafana/provisioning/datasources/horizon-observability.yaml:/etc/grafana/provisioning/datasources/horizon-observability.yaml:ro
-      # T13: ./resources/grafana/provisioning/dashboards
-      - ./docker/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./resources/grafana/provisioning/datasources/horizon-observability.yaml:/etc/grafana/provisioning/datasources/horizon-observability.yaml:ro
+      - ./resources/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./docker/grafana/provisioning/plugins:/etc/grafana/provisioning/plugins:ro          # .gitkeep: avoids a provisioning error
-      # T13: ./resources/grafana/alerting:/etc/grafana/provisioning/alerting:ro
-      - ./tests/Fixtures/grafana/legacy/horizon.yml:/etc/grafana/provisioning/alerting/horizon.yml:ro
-      # T13: ./resources/grafana/dashboards:/etc/grafana/dashboards/horizon-observability:ro
-      - ./tests/Fixtures/grafana/legacy/queues.json:/etc/grafana/dashboards/horizon-observability/queues.json:ro
+      - ./resources/grafana/alerting:/etc/grafana/provisioning/alerting:ro
+      - ${GRAFANA_DASHBOARDS:-./resources/grafana/dashboards}:/etc/grafana/dashboards/horizon-observability:ro
       - grafana-data:/var/lib/grafana
     ports: ['${BIND_ADDRESS:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000']
 

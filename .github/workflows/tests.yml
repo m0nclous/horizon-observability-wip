@@ -197,6 +197,8 @@ jobs:
     env:
       GRAFANA_IMAGE: ${{ matrix.grafana }}
       PROMETHEUS_IMAGE: quay.io/prometheus/prometheus:v3.15.0
+      # The truth tests of the grafana group evaluate the rendered expressions with promtool (skipped without one)
+      PROMTOOL: docker run --rm -i --entrypoint promtool quay.io/prometheus/prometheus:v3.15.0
     steps:
       - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
@@ -205,14 +207,9 @@ jobs:
           extensions: redis, pcntl, posix, pdo_sqlite, mbstring
           coverage: none
       - run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress
-      # The renderer, its --check and the static performance gates arrive with T13 (Console/GrafanaCommand).
+      # Arch Q5.7 item 1; the static performance gates (ADDENDUM R2.2 step 6) are tests/Grafana/PerfBudgetTest.
       - name: Committed assets equal the render (composer test:grafana)
-        run: |
-          if [ ! -f src/Console/GrafanaCommand.php ]; then
-            echo "::notice::horizon-observability:grafana is not implemented yet (T13); the legacy goldens are checked by the Grafana test suite."
-            exit 0
-          fi
-          composer test:grafana
+        run: composer test:grafana
       - name: Grafana contract tests
         run: |
           mkdir -p build

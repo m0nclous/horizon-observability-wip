@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace DF\HorizonObservability\Grafana;
 
+use DF\HorizonObservability\Metrics\Metric;
+
 /**
  * PromQL text builders.
  *
@@ -13,12 +15,14 @@ namespace DF\HorizonObservability\Grafana;
  * passed as PromQL text; label values, replacements and regexes as plain values, which {@see quote()} escapes.
  *
  * An instance knows the metric prefix and applies the dashboard filters to finished expressions
- * ({@see filtered()}). Every vector selector of a package family is written by {@see selector()}; {@see metric()}
- * gives the bare name only where a name is needed as text (a `__name__` regex, an alert summary).
+ * ({@see filtered()}). Every selector of a package family is written by {@see selector()}, {@see shifted()} or
+ * {@see over()} from a catalog case (Metrics\Metric); {@see name()} gives the bare name only where a name is
+ * needed as text (a `label_values()` query, an alert summary).
  *
- * Seams for WP8B: the job scope matcher and the replica dedupe wrappers (Arch Q5.6 steps 4 and 10) belong in
- * {@see selector()}, the one place every package selector comes from, and in {@see filtered()}; the legacy
- * profile has neither.
+ * Every package selector carries the job scope first (Arch Q5.6 step 4): `job=~"$prometheus_job"` in the
+ * dashboard, the rendered job regex in the alert rules. With the replica dedupe (step 10) every package selector,
+ * or the range function around it, sits in `max by (job, <the family's catalog labels>[, le]) (...)`, so two
+ * replicas scraped under one job count once.
  *
  * @internal
  */
@@ -27,6 +31,8 @@ final readonly class Promql
     public const RANGE = '$__range';
 
     public const INTERVAL = '$__interval';
+
+    public const INTERVAL_MS = '$__interval_ms';
 
     public const FROM_SECONDS = '${__from:date:seconds}';
 
@@ -37,8 +43,7 @@ final readonly class Promql
      */
     private const QUEUE_FAMILIES = [
         'queue_pending_jobs',
-        'queue_oldest_pending_job_age',
-        'horizon_current_processes',
+        'queue_oldest_pending_job_age_seconds',
         'queue_jobs_total',
         'queue_jobs_pending',
         'queue_jobs_reserved',
@@ -71,6 +76,13 @@ final readonly class Promql
     private const JOB_FILTER = 'job_class=~"$job_class"';
 
     /**
+     * The sentinel label of the Batch scope (ADDENDUM R2.4 O2): no stored series can carry it.
+     */
+    public const BATCH_SCOPE = '__batch_scope__';
+
+    private const BATCH_VARIABLE = '$batch_kind';
+
+    /**
      * @var array<string, true>
      */
     private array $queueMetrics;
@@ -80,50 +92,210 @@ final readonly class Promql
      */
     private array $jobMetrics;
 
-    public function __construct(private string $prefix)
-    {
+    /**
+     * The dashboard's job scope: the hidden `prometheus_job` variable (Arch Q5.2).
+     */
+    public const JOB_VARIABLE = '$prometheus_job';
+
+    /**
+     * @param  string  $jobRegex  the `job` regex every package selector is scoped to: {@see JOB_VARIABLE} in the
+     *                            dashboard, the rendered regex in the alert rules
+     * @param  bool  $dedupe  wrap every package selector in `max by (job, <labels>)` (Arch Q5.6 step 10)
+     */
+    public function __construct(
+        private string $prefix,
+        private string $jobRegex = self::JOB_VARIABLE,
+        private bool $dedupe = true,
+    ) {
         $this->queueMetrics = $this->names(self::QUEUE_FAMILIES);
         $this->jobMetrics = $this->names(self::JOB_FAMILIES);
     }
 
     /**
-     * The full metric name of a family, e.g. `queue_jobs_total` -> `office_queue_jobs_total`. Use
-     * {@see selector()} for a vector selector.
+     * The full name of a family, or of one series of a histogram (`bucket`, `sum` or `count`), e.g.
+     * `ho_queue_job_duration_seconds_bucket`. Use {@see selector()} and {@see over()} for selectors.
      */
-    public function metric(string $family): string
+    public function name(Metric $metric, string $series = ''): string
     {
-        return $this->prefix.$family;
+        return $this->prefix.$metric->value.($series === '' ? '' : '_'.$series);
     }
 
     /**
-     * A vector selector of a package family: `office_queue_jobs_total{status=~"failed"}`, or the bare name
-     * without matchers.
+     * A package selector as an instant vector: `ho_queue_pending_jobs{job=~"$prometheus_job", queue="x"}`, wrapped
+     * in the replica dedupe `max by (job, connection, queue) (...)` (Arch Q1.5, Q5.6 step 10). Two replicas of the
+     * application export the same storage under different `instance` labels; the dedupe keeps one of them.
      */
-    public function selector(string $family, string ...$matchers): string
+    public function selector(Metric $metric, string ...$matchers): string
     {
-        return self::vector($this->metric($family), ...$matchers);
+        return $this->package($metric, '', array_values($matchers));
+    }
+
+    /**
+     * One series of a histogram family (`bucket`, `sum` or `count`) as an instant vector, deduplicated as
+     * {@see selector()} (`bucket` adds `le` to the dedupe labels), for the opt-in recording rules.
+     */
+    public function series(Metric $metric, string $series, string ...$matchers): string
+    {
+        return $this->package($metric, $series, array_values($matchers));
+    }
+
+    /**
+     * A package selector without the replica dedupe, for the opt-in health rules, which look at each replica (Arch
+     * Q1.5, Q5.3): the duplicates rule counts the replicas, the collector rule finds a collector that fails on one
+     * of them (self-metrics are per replica, unlike the business series read from shared storage).
+     */
+    public function replicas(Metric $metric, string ...$matchers): string
+    {
+        return self::vector($this->name($metric), ...$this->scoped(array_values($matchers)));
+    }
+
+    /**
+     * A package selector shifted in time: `x offset 5m`, `x @ ${__to:date:seconds}`, deduplicated around it.
+     *
+     * @param  list<string>  $matchers
+     */
+    public function shifted(Metric $metric, array $matchers, ?string $offset = null, ?string $at = null): string
+    {
+        return $this->package($metric, '', $matchers, offset: $offset, at: $at);
+    }
+
+    /**
+     * A range-vector function of a package selector, `max_over_time(x[5m] offset 1h @ t)`, deduplicated around the
+     * call; $series picks a histogram series (`bucket` adds `le` to the dedupe labels).
+     *
+     * @param  list<string>  $matchers
+     */
+    public function over(
+        string $function,
+        Metric $metric,
+        string $window,
+        array $matchers = [],
+        ?string $offset = null,
+        ?string $at = null,
+        string $series = '',
+    ): string {
+        return $this->package($metric, $series, $matchers, $function, $window, $offset, $at);
+    }
+
+    /**
+     * @param  list<string>  $matchers
+     */
+    private function package(
+        Metric $metric,
+        string $series,
+        array $matchers,
+        ?string $function = null,
+        ?string $window = null,
+        ?string $offset = null,
+        ?string $at = null,
+    ): string {
+        $selector = self::vector($this->name($metric, $series), ...$this->scoped($matchers));
+
+        if ($function !== null && $window !== null) {
+            $selector = self::range($function, $selector, $window, $offset, $at);
+        } else {
+            $selector = $offset === null ? $selector : self::offset($selector, $offset);
+            $selector = $at === null ? $selector : self::at($selector, $at);
+        }
+
+        if (! $this->dedupe) {
+            return $selector;
+        }
+
+        return self::max($selector, ...self::dedupeLabels($metric, $series));
+    }
+
+    /**
+     * The labels the replica dedupe keeps: `job` and the family's catalog labels, plus `le` for histogram buckets.
+     *
+     * @return list<string>
+     */
+    public static function dedupeLabels(Metric $metric, string $series = ''): array
+    {
+        return ['job', ...$metric->labels(), ...($series === 'bucket' ? ['le'] : [])];
+    }
+
+    /**
+     * A selector of several package families by `__name__`: `{__name__=~"ho_a|ho_b", job=~"$prometheus_job"}`. Only
+     * for `group` and `count` aggregations, which do not depend on the number of replicas.
+     *
+     * @param  list<Metric>  $families
+     */
+    public function anyOf(array $families, string ...$matchers): string
+    {
+        $names = array_map(fn (Metric $metric): string => $this->name($metric), $families);
+
+        return self::vector('', self::re('__name__', implode('|', $names)), ...$this->scoped($matchers));
+    }
+
+    /**
+     * The job scope in front of a selector's own matchers.
+     *
+     * @param  array<string>  $matchers
+     * @return list<string>
+     */
+    private function scoped(array $matchers): array
+    {
+        return [self::re('job', $this->jobRegex), ...array_values($matchers)];
+    }
+
+    /**
+     * A PromQL duration of whole seconds: `20s`, `2m`, `1h`.
+     */
+    public static function duration(int $seconds): string
+    {
+        return match (true) {
+            $seconds > 0 && $seconds % 3600 === 0 => intdiv($seconds, 3600).'h',
+            $seconds > 0 && $seconds % 60 === 0 => intdiv($seconds, 60).'m',
+            default => $seconds.'s',
+        };
+    }
+
+    /**
+     * A job name as an exact regex (Go's `regexp.QuoteMeta`): the alert rules scope a pinned `--job` with it.
+     */
+    public static function literalRegex(string $value): string
+    {
+        return (string) preg_replace('/[\\\\.+*?()|\[\]{}^$]/', '\\\\$0', $value);
     }
 
     /**
      * Adds the dashboard filters to every package selector of a finished expression (legacy `filtered`):
      * `queue=~"$queue"` where the family has a queue label and the selector has no queue matcher of its own
-     * (so a selector can opt out of the Queue filter), and `job_class=~"$job_class"` when $jobFilter is set
-     * and the family has a job_class label. The filters come first, then the selector's own matchers.
+     * (so a selector can opt out of the Queue filter), and `job_class=~"$job_class"` when $jobFilter is set,
+     * the family has a job_class label and the selector no job_class matcher of its own. The filters come first,
+     * then the selector's own matchers. Names inside PromQL strings are not selectors.
+     *
+     * A job-filtered selector also gets the Batch scope (ADDENDUM R2.4 O2): Job's "All" is `.+`, so the classes
+     * of the selected batch kinds are no longer in `$job_class`; the selector, with its range function and the
+     * replica dedupe around it, becomes `(<selector> unless on (job_class) <classes outside the kinds>)`, see
+     * {@see batchScoped()}.
      */
     public function filtered(string $expr, bool $jobFilter): string
     {
-        $pattern = '/\b('.preg_quote($this->prefix, '/').'[a-z_]+)(\{[^}]*\})?/';
+        $labels = '\{(?:[^}"]|"(?:[^"\\\\]|\\\\.)*")*\}';
+        $time = '(?: offset -?[$\w{}:]+)?(?<at> @ (?:start\(\)|end\(\)|[$\w{}:]+))?';
+        // A string, or a package selector with the range function and the dedupe Promql::package() writes around it
+        $pattern = '/"(?:[^"\\\\]|\\\\.)*"|\b(?<dedupe>max by \([^()]*\) \()?(?<fn>[a-z_]+\()?'
+            .'(?<name>'.preg_quote($this->prefix, '/').'[a-z_]+)(?<labels>'.$labels.')?'
+            .'(?(<fn>)\[[^\]]+\])'.$time.'(?(<fn>)\))(?(<dedupe>)\))/';
 
         return (string) preg_replace_callback($pattern, function (array $match) use ($jobFilter): string {
-            $name = $match[1];
-            $labels = $match[2] ?? '';
+            if (! isset($match['name']) || $match['name'] === '') {
+                return $match[0];
+            }
+
+            $name = $match['name'];
+            $labels = $match['labels'] ?? '';
             $matchers = [];
 
             if (isset($this->queueMetrics[$name]) && preg_match('/\bqueue\s*=/', $labels) !== 1) {
                 $matchers[] = self::QUEUE_FILTER;
             }
 
-            if ($jobFilter && isset($this->jobMetrics[$name])) {
+            $scoped = $jobFilter && isset($this->jobMetrics[$name]) && preg_match('/\bjob_class\s*[=!]/', $labels) !== 1;
+
+            if ($scoped) {
                 $matchers[] = self::JOB_FILTER;
             }
 
@@ -132,9 +304,69 @@ final readonly class Promql
             }
 
             $own = $labels === '' ? '' : substr($labels, 1, -1);
+            $scope = self::re('job', $this->jobRegex);
 
-            return $name.'{'.implode(', ', $own === '' ? $matchers : [...$matchers, $own]).'}';
+            // The job scope stays the first matcher
+            if (str_starts_with($own, $scope)) {
+                $matchers = [$scope, ...$matchers];
+                $own = ltrim(substr($own, strlen($scope)), ', ');
+            }
+
+            $selector = $name.'{'.implode(', ', $own === '' ? $matchers : [...$matchers, $own]).'}';
+            $start = strlen($match['dedupe']) + strlen($match['fn']);
+            $unit = substr($match[0], 0, $start).$selector.substr($match[0], $start + strlen($name) + strlen($labels));
+
+            if (! $scoped) {
+                return $unit;
+            }
+
+            // A vector at a fixed time (`@`) takes the Batch scope of that time, so the whole unit is step-invariant
+            // and Prometheus evaluates it once per range query instead of at every step
+            $at = isset($match['at']) && $match['at'] !== '' ? substr($match['at'], 3) : null;
+
+            return $this->batchScoped($unit, at: $at);
         }, $expr);
+    }
+
+    /**
+     * The Batch scope of a per-series vector (ADDENDUM R2.4 O2): `(<vector> unless on (<label>) <excluded>)`, where
+     * <excluded> is every class (or queue) of the package series outside the selected batch kinds. While Batch is
+     * "All" (`$batch_kind` is `.*`) the set is empty and almost free; with kinds selected it holds what the legacy
+     * "All" list of the Job (or Queue) filter left out. $vector must be one operand: a selector with its range
+     * function and dedupe, or a parenthesised expression.
+     *
+     * @param  'job_class'|'queue'  $label
+     */
+    public function batchScoped(string $vector, string $label = 'job_class', ?string $at = null): string
+    {
+        return self::paren(self::unlessOn($vector, $this->batchExcluded($label, $at), $label));
+    }
+
+    /**
+     * The classes (or queues) of the package series outside the selected batch kinds:
+     * `group by (job_class) ({__name__=~"<jobs_total|jobs_pending|jobs_reserved>", __batch_scope__!~"$batch_kind"})
+     * unless on (job_class) group by (job_class) ({__name__=~"<batch_job_classes>", batch=~"$batch_kind",
+     * __batch_scope__!~"$batch_kind"})`. No stored series has the label `__batch_scope__` (Prometheus drops
+     * `__`-prefixed labels after relabelling), and an absent label matches as "": with Batch "All" the matcher
+     * `!~".*"` selects nothing, so both operands are empty; with kinds selected it selects every series of the
+     * family. Group aggregations do not depend on the number of replicas, hence no dedupe. $at evaluates the set at
+     * a fixed time (`@ ${__to:date:seconds}`, `@ start()`), for a vector at that time.
+     *
+     * @param  'job_class'|'queue'  $label
+     */
+    public function batchExcluded(string $label = 'job_class', ?string $at = null): string
+    {
+        $families = $label === 'job_class'
+            ? [Metric::JobsTotal, Metric::QueueJobsPending, Metric::QueueJobsReserved]
+            : [Metric::QueuePendingJobs];
+        $outside = self::nre(self::BATCH_SCOPE, self::BATCH_VARIABLE);
+        $timed = static fn (string $selector): string => $at === null ? $selector : self::at($selector, $at);
+
+        return self::paren(self::unlessOn(
+            self::group($timed($this->anyOf($families, $outside)), $label),
+            self::group($timed($this->anyOf([Metric::BatchJobClasses], self::re('batch', self::BATCH_VARIABLE), $outside)), $label),
+            $label,
+        ));
     }
 
     /**
@@ -158,6 +390,11 @@ final readonly class Promql
     public static function re(string $label, string $value): string
     {
         return $label.'=~'.self::quote($value);
+    }
+
+    public static function nre(string $label, string $value): string
+    {
+        return $label.'!~'.self::quote($value);
     }
 
     /**
@@ -359,6 +596,6 @@ final readonly class Promql
      */
     private function names(array $families): array
     {
-        return array_fill_keys(array_map($this->metric(...), $families), true);
+        return array_fill_keys(array_map(fn (string $family): string => $this->prefix.$family, $families), true);
     }
 }

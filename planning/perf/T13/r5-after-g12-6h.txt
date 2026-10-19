@@ -1,0 +1,44 @@
+
+== after-g12-6h.json (range 6h, 7 cycles)
+requests per panel (refresh cycles 2-4):
+   panel  requestsPerRefresh  medianMs
+      24                   1       277
+       4                   1       255
+      17                   1       175
+       8                   1       140
+      21                   1        67
+       1                   1        66
+       3                   1        58
+      23                   1        56
+variable                   2      48.5
+       9                   1        36
+       2                   1        32
+PromQL replay per panel:
+   panel  targets  wallMs   samples    kb
+       4        3     541  26754481  13.9
+      17        9     328   7362372  14.1
+      24        9     325   6711392  16.8
+       8        2     111  16269662   9.3
+variable        2      38    649063   1.4
+       3        2      22     35528   7.3
+       2        3      11      9012   4.3
+       1        2       7      3778   2.1
+      21        3       6         0   1.8
+       9        1       4       144   0.6
+      23        1       3         0   0.1
+                    metric     value
+               firstLoadMs       778
+              refreshP50Ms       400
+              refreshP95Ms       435
+             overviewP50Ms       400
+        requestsPerRefresh        12
+variableRequestsPerRefresh         2
+infinityRequestsPerRefresh         0
+            failedRequests         0
+                  promqlMs      1396
+                   samples  57795432
+            interpolatedKb      71.7
+                maxPanelKb      16.8
+                    errors         0
+
+within budget

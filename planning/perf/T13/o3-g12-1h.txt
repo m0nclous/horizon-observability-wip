@@ -1,0 +1,58 @@
+
+== o3-g12-1h.json (range 1h, 7 cycles)
+requests per panel (refresh cycles 2-4):
+     panel  requestsPerRefresh  medianMs
+         4                   1      4500
+         8                   1      3514
+4064653180                   1      1525
+         5                   1      1434
+3001830101                   1      1391
+1221550389                   1       849
+        17                   1       372
+         1                   1       205
+        23                   1       204
+        21                   1       192
+  variable                   2     126.5
+         2                   1       103
+         3                   1       103
+         9                   1       103
+PromQL replay per panel:
+     panel  targets  wallMs   samples    kb
+         4        3    3382  35756514  34.8
+         8        2    1803  25627672  27.6
+4064653180       12     883   1818941  39.6
+1221550389       12     830   2025389  39.6
+         5       12     787   1922165  39.7
+3001830101       12     722   1922165  39.6
+        17        9     410   1548546  21.8
+  variable        2      51    177529   2.0
+         3        2      39     49034   7.2
+         2        3      22      5599   4.9
+         1        2      19      1939   2.1
+        21        3      17         0   1.8
+         9        1       9       984   0.6
+        23        1       7         0   0.1
+                    metric     value
+               firstLoadMs      6323
+              refreshP50Ms      4879
+              refreshP95Ms      5352
+             overviewP50Ms      4879
+        requestsPerRefresh        15
+variableRequestsPerRefresh         2
+infinityRequestsPerRefresh         0
+            failedRequests         0
+                  promqlMs      8981
+                   samples  70856477
+            interpolatedKb     261.7
+                maxPanelKb      39.7
+                    errors         0
+
+8 violation(s):
+o3-g12-1h.json: refreshP50Ms 4879 > budget 1000
+o3-g12-1h.json: refreshP95Ms 5352 > budget 1500
+o3-g12-1h.json: overviewP50Ms 4879 > budget 1000
+o3-g12-1h.json: firstLoadMs 6323 > budget 3000
+o3-g12-1h.json: requestsPerRefresh 15 > budget 12
+o3-g12-1h.json: promqlMs 8981 > budget 1500
+o3-g12-1h.json: interpolatedKb 261.7 > budget 100
+o3-g12-1h.json: maxPanelKb 39.7 > budget 25

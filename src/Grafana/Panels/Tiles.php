@@ -14,6 +14,7 @@ use DF\HorizonObservability\Grafana\Queries\Selection;
 use DF\HorizonObservability\Grafana\Queries\Waits;
 use DF\HorizonObservability\Grafana\Queries\Workers;
 use DF\HorizonObservability\Grafana\Thresholds;
+use DF\HorizonObservability\Metrics\Metric;
 
 /**
  * The stat tiles of the Overview row.
@@ -72,6 +73,7 @@ final readonly class Tiles
         private Workers $workers,
         private Waits $waits,
         private AlertState $alerts,
+        private int $rpmMinutes,
     ) {}
 
     /**
@@ -116,10 +118,9 @@ final readonly class Tiles
      */
     private function horizon(array $gridPos): array
     {
-        $status = $this->promql->selector('horizon_status');
         $band = Promql::either(
-            Promql::min(Promql::range('min_over_time', $status, Promql::INTERVAL)),
-            Promql::min($status),
+            Promql::min($this->promql->over('min_over_time', Metric::HorizonStatus, Promql::INTERVAL)),
+            Promql::min($this->promql->selector(Metric::HorizonStatus)),
             'vector('.self::STATUS_NO_METRICS.')',
         );
 
@@ -184,7 +185,7 @@ final readonly class Tiles
      * the "supervisor-" prefix and maxProcesses ("slow \u{00B7} max 10"), the background the processes over time.
      * With a batch or jobs selected, the workers busy with their jobs. The colour is the pool's utilisation
      * zone at the end of the period ({@see Workers::processesZone()}): thresholds are per panel, so query B
-     * lists the values of the period with a colour by their fraction as value mappings.
+     * gives the last value of each supervisor a colour by its fraction as a value mapping.
      *
      * @param  array{h: int, w: int, x: int, y: int}  $gridPos
      * @return array<string, mixed>
@@ -193,7 +194,7 @@ final readonly class Tiles
     {
         $maxProcesses = Promql::countValues(
             'max',
-            Promql::max($this->promql->selector('horizon_supervisor_max_processes'), 'supervisor'),
+            Promql::max($this->promql->selector(Metric::SupervisorMaxProcesses), 'supervisor'),
             'supervisor',
         );
         $value = Promql::binary(Promql::paren($this->workers->processesValue()), '*', $maxProcesses, on: ['supervisor'], groupLeft: ['max']);
@@ -205,7 +206,13 @@ final readonly class Tiles
             'supervisor-(.+)',
         );
 
-        $colored = Promql::countValues('value', $this->workers->processesValue());
+        // Only the colour of the last point shows (O8): an instant query of the value at the last step of the range
+        // query A. Grafana aligns that step to a multiple of $__interval at or before the end of the period, and so
+        // does a subquery with that step, while an instant query runs at the end itself
+        $colored = Promql::countValues(
+            'value',
+            Promql::range('last_over_time', Promql::paren($this->workers->processesValue()), Promql::INTERVAL.':'.Promql::INTERVAL),
+        );
 
         foreach (self::ZONE_COLORS as $color => $pattern) {
             $colored = Promql::labelReplace($colored, 'color', $color, 'value', $pattern);
@@ -217,7 +224,7 @@ final readonly class Tiles
             $gridPos,
             [
                 $this->common->target('A', $named, instant: false, jobFilter: false, legend: '{{name}} '.Glyph::DOT.' max {{max}}'),
-                $this->common->target('B', $colored, instant: false, format: 'table', jobFilter: false),
+                $this->common->target('B', $colored, format: 'table', jobFilter: false),
             ],
             thresholds: Common::thresholds('green'),
             colorMode: 'background',
@@ -244,8 +251,8 @@ final readonly class Tiles
     private function pending(array $gridPos): array
     {
         $pending = $this->selection->byJobSelection(
-            Promql::sum($this->promql->selector('queue_pending_jobs')),
-            Promql::sum($this->promql->selector('queue_jobs_pending')).' or '.$this->selection->zeroIfMetrics(),
+            Promql::sum($this->promql->selector(Metric::QueuePendingJobs)),
+            Promql::sum($this->promql->selector(Metric::QueueJobsPending)).' or '.$this->selection->zeroIfMetrics(),
         );
 
         $limit = Waits::SECONDS_TEXT_LIMIT;
@@ -295,7 +302,7 @@ final readonly class Tiles
      */
     private function completed(array $gridPos): array
     {
-        $minutes = Thresholds::RPM_WINDOW_MINUTES;
+        $minutes = $this->rpmMinutes;
         $perMinute = Promql::either(
             Promql::call('round', Promql::sum($this->attempts->delta(Attempts::COMPLETED, $minutes.'m')).' / '.$minutes),
             $this->selection->zeroIfMetrics(),
@@ -332,7 +339,7 @@ final readonly class Tiles
     private function delayed(array $gridPos): array
     {
         $delayed = $this->selection->byJobSelection(
-            Promql::sum($this->promql->selector('queue_delayed_jobs')).' - '.Promql::sum($this->promql->selector('queue_delayed_due_jobs')),
+            Promql::sum($this->promql->selector(Metric::QueueDelayedJobs)).' - '.Promql::sum($this->promql->selector(Metric::QueueDelayedDueJobs)),
         );
 
         return Common::stat(
@@ -447,9 +454,13 @@ final readonly class Tiles
         );
     }
 
+    /**
+     * The attempts per step of the Completed and Failed sparklines, whose sum is the tile number (O4: one subquery,
+     * per series); 0 while the application exports metrics without attempts.
+     */
     private function attemptsPerStep(string $statuses): string
     {
-        return Promql::sum($this->attempts->perStep($statuses)).' or '.$this->selection->zeroIfMetrics();
+        return $this->attempts->perStepTotal($statuses).' or '.$this->selection->zeroIfMetrics();
     }
 
     /**

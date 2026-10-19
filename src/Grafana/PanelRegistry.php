@@ -62,6 +62,11 @@ final class PanelRegistry
     public const ALERT_SOUND = 23;
 
     /**
+     * The hidden shared source of the queue tables (ADDENDUM R2.4 O5): #5 repeats per supervisor and reads it.
+     */
+    public const QUEUE_SOURCE = 24;
+
+    /**
      * Every panel of a rendered dashboard in document order, the panels of collapsed rows right after their row.
      *
      * @param  array<array-key, mixed>  $dashboard

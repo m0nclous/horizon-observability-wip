@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Grafana\Queries;
 
 use DF\HorizonObservability\Grafana\Promql;
+use DF\HorizonObservability\Metrics\Metric;
 
 /**
  * Batches as Prometheus history: the collector exports a batch while it runs and for a day after it closed, so
@@ -27,20 +28,22 @@ final readonly class BatchState
      */
     public function jobs(string $state): string
     {
-        return Promql::sum($this->promql->selector('queue_batch_jobs', Promql::eq('state', $state)), 'batch');
+        return Promql::sum($this->promql->selector(Metric::BatchJobs, Promql::eq('state', $state)), 'batch');
     }
 
     /**
-     * Batches of the period: closed within it, or not closed by its end (legacy `BATCHES_IN_RANGE`).
+     * Batches of the period: closed within it, or not closed by its end (legacy `BATCHES_IN_RANGE`). The collector
+     * exports the creation time of every batch it exports, closed or not, so these are the batches with a creation
+     * time in the period except those closed before it: two range reads instead of the legacy three
+     * (`closed >= from or (created unless closed)`, which BatchPeriodTest holds it to).
      */
-    public function inRange(): string
+    public function inRange(string ...$matchers): string
     {
-        $closed = $this->last($this->promql->selector('queue_batch_closed_timestamp_seconds'));
-        $created = $this->last($this->promql->selector('queue_batch_created_timestamp_seconds'));
-
-        return Promql::paren(Promql::either(
-            Promql::group($closed.' >= '.Promql::FROM_SECONDS, 'batch', 'name'),
-            Promql::paren(Promql::unlessOn(Promql::group($created, 'batch', 'name'), $closed, 'batch', 'name')),
+        return Promql::paren(Promql::unlessOn(
+            Promql::group($this->last(Metric::BatchCreated, ...$matchers), 'batch', 'name'),
+            Promql::paren($this->last(Metric::BatchClosed, ...$matchers).' < '.Promql::FROM_SECONDS),
+            'batch',
+            'name',
         ));
     }
 
@@ -53,31 +56,34 @@ final readonly class BatchState
     }
 
     /**
-     * Kinds of the period that the Batch filter selects (legacy `BATCH_KINDS_SELECTED`).
+     * Kinds of the period that the Batch filter selects (legacy `BATCH_KINDS_SELECTED`): the kinds of the period's
+     * batches of the selected kinds.
      */
     public function selectedKinds(): string
     {
-        $selected = $this->promql->selector('queue_batch_created_timestamp_seconds', Promql::re('batch', '$batch_kind'));
-
-        return Promql::andOn($this->kinds(), Promql::group($this->last($selected), 'batch'), 'batch');
+        return Promql::group($this->inRange(Promql::re('batch', '$batch_kind')), 'batch');
     }
 
     /**
-     * Which queue and class each batch kind runs (legacy `BATCH_CLASSES`).
+     * Which queue and class each batch kind runs (legacy `BATCH_CLASSES`): now, or with $window every pair exported
+     * within it, for the attempts of the period (an application whose scrape failed at the end of the period keeps
+     * its kinds' attempts, T13 QA round 4).
      */
-    public function classes(): string
+    public function classes(?string $window = null): string
     {
-        return Promql::group($this->promql->selector('queue_batch_job_classes'), 'batch', 'queue', 'job_class');
+        return Promql::group($window === null
+            ? $this->promql->selector(Metric::BatchJobClasses)
+            : $this->promql->over('last_over_time', Metric::BatchJobClasses, $window), 'batch', 'queue', 'job_class');
     }
 
     /**
      * A per-class value (labels queue, job_class) summed per batch kind its classes belong to
-     * (legacy `per_batch_kind`).
+     * (legacy `per_batch_kind`), with the classes of the kinds now or within $window ({@see classes()}).
      */
-    public function perKind(string $perClass): string
+    public function perKind(string $perClass, ?string $window = null): string
     {
         return Promql::sum(
-            Promql::binary($this->classes(), '*', Promql::sum($perClass, 'queue', 'job_class'), on: ['queue', 'job_class'], groupLeft: []),
+            Promql::binary($this->classes($window), '*', Promql::sum($perClass, 'queue', 'job_class'), on: ['queue', 'job_class'], groupLeft: []),
             'batch',
         );
     }
@@ -98,18 +104,18 @@ final readonly class BatchState
      */
     public function latestOfKind(): string
     {
-        $created = $this->ofKind('queue_batch_created_timestamp_seconds');
+        $created = $this->lastOfKind(Metric::BatchCreated);
 
-        return Promql::topk(self::LATEST_PER_KIND, Promql::andOn($this->last($created), $this->inRange(), 'batch', 'name'), 'batch');
+        return Promql::topk(self::LATEST_PER_KIND, Promql::andOn($created, $this->inRange(), 'batch', 'name'), 'batch');
     }
 
     /**
      * The last value of a batch family in the period, for the latest batches of the kind (legacy `batch_value`).
      */
-    public function valueOfLatest(string $family, string ...$matchers): string
+    public function valueOfLatest(Metric $family, string ...$matchers): string
     {
         return Promql::max(
-            Promql::andOn($this->last($this->ofKind($family, ...$matchers)), $this->latestOfKind(), 'batch', 'name'),
+            Promql::andOn($this->lastOfKind($family, ...$matchers), $this->latestOfKind(), 'batch', 'name'),
             'batch',
             'name',
         );
@@ -123,8 +129,8 @@ final readonly class BatchState
     public function statusProgress(int $offset): string
     {
         $progress = Promql::orOn(
-            $this->last($this->ofKind('queue_batch_progress', Promql::ne('status', 'Running'))),
-            $this->ofKind('queue_batch_progress', Promql::eq('status', 'Running')),
+            $this->lastOfKind(Metric::BatchProgress, Promql::ne('status', 'Running')),
+            $this->promql->selector(Metric::BatchProgress, ...$this->kindMatchers(Promql::eq('status', 'Running'))),
             'batch',
             'name',
         );
@@ -144,32 +150,44 @@ final readonly class BatchState
      */
     public function durationOfLatest(): string
     {
-        $created = $this->last($this->ofKind('queue_batch_created_timestamp_seconds'));
-        $closed = $this->last($this->ofKind('queue_batch_closed_timestamp_seconds'));
-        $end = Promql::orOn(Promql::paren($closed), Promql::paren('0 * '.$created.' + '.Promql::TO_SECONDS), 'batch', 'name');
-        $duration = Promql::binary(Promql::paren($end), '-', $created, on: ['batch', 'name']);
+        $created = $this->lastOfKind(Metric::BatchCreated);
+        $closed = $this->lastOfKind(Metric::BatchClosed);
+        // Per application (job): with all jobs selected, two applications may run batches of the same name, and a
+        // one-to-one match on the name alone would fail on their duplicate series
+        $end = Promql::orOn(Promql::paren($closed), Promql::paren('0 * '.$created.' + '.Promql::TO_SECONDS), 'job', 'batch', 'name');
+        $duration = Promql::binary(Promql::paren($end), '-', $created, on: ['job', 'batch', 'name']);
 
         return Promql::unlessOn(
             Promql::max(Promql::andOn(Promql::paren($duration), $this->latestOfKind(), 'batch', 'name'), 'batch', 'name'),
-            $this->last($this->ofKind('queue_batch_progress', Promql::eq('status', 'Failures'))),
+            $this->lastOfKind(Metric::BatchProgress, Promql::eq('status', 'Failures')),
             'batch',
             'name',
         );
     }
 
     /**
-     * Last value in the period (legacy `BATCH_LAST`).
+     * Last value of a batch family in the period (legacy `BATCH_LAST`).
      */
-    private function last(string $vector): string
+    private function last(Metric $family, string ...$matchers): string
     {
-        return Promql::range('last_over_time', $vector, Promql::RANGE);
+        return $this->promql->over('last_over_time', $family, Promql::RANGE, array_values($matchers));
     }
 
     /**
-     * A selector restricted to the kind of the repeated batch table (legacy `BATCH_KIND`).
+     * {@see last()} for the kind of the repeated batch table (legacy `BATCH_KIND`).
      */
-    private function ofKind(string $family, string ...$matchers): string
+    private function lastOfKind(Metric $family, string ...$matchers): string
     {
-        return $this->promql->selector($family, Promql::re('batch', '$batch_title'), ...$matchers);
+        return $this->last($family, ...$this->kindMatchers(...$matchers));
+    }
+
+    /**
+     * The matchers of the kind of the repeated batch table, then $matchers.
+     *
+     * @return list<string>
+     */
+    private function kindMatchers(string ...$matchers): array
+    {
+        return [Promql::re('batch', '$batch_title'), ...array_values($matchers)];
     }
 }

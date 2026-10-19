@@ -7,6 +7,7 @@ namespace DF\HorizonObservability\Grafana;
 use DF\HorizonObservability\Grafana\Panels\Common;
 use DF\HorizonObservability\Grafana\Queries\BatchState;
 use DF\HorizonObservability\Grafana\Queries\Selection;
+use DF\HorizonObservability\Metrics\Metric;
 use stdClass;
 
 /**
@@ -23,6 +24,26 @@ final readonly class Variables
     public const FILTERS = ['supervisor', 'batch_kind', 'queue', 'job_class', 'supervisor_title', 'batch_title'];
 
     /**
+     * Grafana's variable refresh: on dashboard load, or on every time range change, which for a relative range
+     * means every auto-refresh. Only the variables that read `$__range` refresh with the range (ADDENDUM R2.4 O3):
+     * the others are instant queries or day-long lookbacks, so their lists follow a time range change only after a
+     * reload; a reload or a change of a variable they depend on refreshes them.
+     */
+    public const ON_LOAD = 1;
+
+    public const ON_TIME_RANGE_CHANGE = 2;
+
+    /**
+     * The worker utilisation window as the panels read it (Arch Q5.2: the hidden `busy_window` textbox).
+     */
+    public const BUSY_WINDOW = '$busy_window';
+
+    /**
+     * The min interval of every Prometheus panel (ADDENDUM R3.3: the hidden `scrape_interval` textbox).
+     */
+    public const SCRAPE_INTERVAL = '$scrape_interval';
+
+    /**
      * Supervisors and their queues are taken from the last day, so they are known while Horizon is down.
      */
     public const KNOWN_FOR = '1d';
@@ -33,9 +54,14 @@ final readonly class Variables
      */
     private const INFO_LOOKBACK = '7d';
 
+    /**
+     * The resolution of the last horizon_info series within the lookback; with Prometheus' 5-minute lookback delta
+     * every sample is seen.
+     */
+    private const INFO_STEP = '5m';
+
     public function __construct(
         private Promql $promql,
-        private Selection $selection,
         private BatchState $batches,
         private DashboardOptions $options,
     ) {}
@@ -48,28 +74,69 @@ final readonly class Variables
         return [
             // The Prometheus datasource by type, not uid: the dashboard imports into any Grafana unchanged
             $this->datasource('datasource', 'prometheus', $this->options->prometheusDatasourceRegex),
+            // Hidden: the Prometheus job (scrape job of the package endpoint) every query is scoped to, so one
+            // Grafana serves several applications; All by default, ?var-prometheus_job=<job> or --job pins one
+            $this->scope(),
             $this->filter('supervisor', 'Supervisor', $this->supervisorQuery(), '/supervisor="([^"]+)"/', '.*'),
             // Kinds with batches in the period; the batch tables repeat by it. Batches have no queue or
             // supervisor, so the filter does not narrow the other panels.
-            $this->filter('batch_kind', 'Batch', Promql::call('query_result', $this->batches->kinds()), '/batch="([^"]+)"/', '.*'),
+            $this->filter('batch_kind', 'Batch', Promql::call('query_result', $this->batches->kinds()), '/batch="([^"]+)"/', '.*', self::ON_TIME_RANGE_CHANGE),
             // "All" is the listed queues, not .*: so the Supervisor filter works on every panel (queue metrics
             // have no supervisor label)
             $this->filter('queue', 'Queue', $this->queueQuery(), '/queue="([^"]+)"/'),
-            // "All" is the listed jobs, not .*: so the Batch filter works on every panel. The text is the class
-            // without its namespace, the value the full class name.
-            $this->filter('job_class', 'Job', $this->jobQuery(), '/display="(?<text>[^"]+)".*job_class="(?<value>[^"]+)"/'),
+            // "All" is .+, not the listed jobs (ADDENDUM R2.4 O2: the list was inlined into every job-filtered
+            // selector); the Batch filter reaches the panels as the batch scope of those selectors instead. The
+            // text is the class without its namespace, the value the full class name.
+            $this->filter('job_class', 'Job', $this->jobQuery(), '/display="(?<text>[^"]+)".*job_class="(?<value>[^"]+)"/', '.+'),
             // Hidden: the queue table repeats by it, the text is the table title
             $this->hiddenFilter('supervisor_title', $this->supervisorTitleQuery(), '/display="(?<text>[^"]+)".*supervisor="(?<value>[^"]+)"/'),
             // Hidden: the batch tables repeat by it, the text is the table title
-            $this->hiddenFilter('batch_title', $this->batchTitleQuery(), '/batch="(?<value>[^"]+)".*display="(?<text>[^"]+)"/'),
+            $this->hiddenFilter('batch_title', $this->batchTitleQuery(), '/batch="(?<value>[^"]+)".*display="(?<text>[^"]+)"/', self::ON_TIME_RANGE_CHANGE),
             // Hidden: the Horizon URL of this environment for the Horizon link, exported by the application. Not
             // in the URL: a dashboard link opened in another environment would lead to the wrong Horizon.
             $this->info('horizon_url', 'url'),
             // Hidden: the speech service for alert phrases, exported like horizon_url; without it only the tone
             $this->info('tts_url', 'tts_url'),
+            // Hidden: the path of the application's job list API (horizon-observability.path), exported like
+            // horizon_url; the Infinity URLs are relative to the datasource URL: ${api_path}/jobs/<list>
+            $this->info('api_path', 'api_path'),
+            // Hidden: the scrape interval of the package endpoint, the min interval of every Prometheus panel;
+            // ?var-scrape_interval=30s overrides it
+            $this->textbox('scrape_interval', $this->options->scrapeIntervalText()),
+            // Hidden: the window of the worker utilisation (Utilization bars, the Supervisor Processes colour), at
+            // least one scrape interval; ?var-busy_window=30s overrides it
+            $this->textbox('busy_window', $this->options->busyWindow()),
             // Hidden: the Infinity datasource with the application's job lists, by type: in a production Grafana
             // the datasource is created in the UI and has its own uid
             $this->datasource('app_api', 'yesoreyeram-infinity-datasource', $this->options->infinityDatasourceRegex),
+        ];
+    }
+
+    /**
+     * The hidden `prometheus_job` variable (Arch Q5.2): the jobs that export the Horizon status, "All" as `.+`.
+     *
+     * @return array<string, mixed>
+     */
+    private function scope(): array
+    {
+        $query = Promql::call('label_values', $this->promql->name(Metric::HorizonStatus), 'job');
+        $job = $this->options->job;
+
+        return [
+            'current' => $job === null ? ['text' => 'All', 'value' => '$__all'] : ['text' => $job, 'value' => $job],
+            'datasource' => Common::prometheus(),
+            'definition' => $query,
+            'hide' => 2,
+            'includeAll' => true,
+            'allValue' => '.+',
+            'multi' => false,
+            'name' => 'prometheus_job',
+            'options' => [],
+            'query' => $query,
+            'refresh' => self::ON_LOAD,
+            'regex' => '',
+            'sort' => 1,
+            'type' => 'query',
         ];
     }
 
@@ -79,7 +146,7 @@ final readonly class Variables
     private function supervisorQuery(): string
     {
         return Promql::call('query_result', Promql::group(
-            Promql::range('last_over_time', $this->promql->selector('horizon_supervisor_processes'), self::KNOWN_FOR),
+            $this->promql->over('last_over_time', Metric::SupervisorProcesses, self::KNOWN_FOR),
             'supervisor',
         ));
     }
@@ -90,9 +157,9 @@ final readonly class Variables
      */
     private function queueQuery(): string
     {
-        $queues = Promql::group($this->promql->selector('queue_pending_jobs'), 'queue');
+        $queues = Promql::group($this->promql->selector(Metric::QueuePendingJobs), 'queue');
         $supervised = fn (string ...$matchers): string => Promql::group(
-            Promql::range('last_over_time', $this->promql->selector('horizon_supervisor_processes', ...$matchers), self::KNOWN_FOR),
+            $this->promql->over('last_over_time', Metric::SupervisorProcesses, self::KNOWN_FOR, array_values($matchers)),
             'queue',
         );
 
@@ -101,7 +168,7 @@ final readonly class Variables
             Promql::paren(Promql::andOn(Promql::unlessOn($queues, $supervised(), 'queue'), Selection::isAll('supervisor'))),
         );
 
-        return Promql::call('query_result', $this->selection->batchFiltered($rows, 'queue'));
+        return Promql::call('query_result', $this->promql->batchScoped(Promql::paren($rows), 'queue'));
     }
 
     /**
@@ -111,24 +178,18 @@ final readonly class Variables
      */
     private function jobQuery(): string
     {
-        $families = Promql::re('__name__', implode('|', array_map(
-            $this->promql->metric(...),
-            ['queue_jobs_total', 'queue_jobs_pending', 'queue_jobs_reserved'],
-        )));
-        $seen = Promql::group(Promql::vector('', $families, Promql::re('queue', '$queue')), 'queue', 'job_class');
+        $families = [Metric::JobsTotal, Metric::QueueJobsPending, Metric::QueueJobsReserved];
+        $seen = Promql::group($this->promql->anyOf($families, Promql::re('queue', '$queue')), 'queue', 'job_class');
         $neverRan = Promql::withLabel(
             Promql::unlessOn(
-                Promql::group($this->promql->selector('queue_job_classes'), 'job_class'),
-                Promql::group(Promql::vector('', $families), 'job_class'),
+                Promql::group($this->promql->selector(Metric::JobClasses), 'job_class'),
+                Promql::group($this->promql->anyOf($families), 'job_class'),
                 'job_class',
             ),
             'queue',
             Glyph::DASH,
         );
-        $rows = $this->selection->batchFiltered(
-            Promql::either($seen, Promql::andOn($neverRan, Selection::unfiltered())),
-            'job_class',
-        );
+        $rows = $this->promql->batchScoped(Promql::paren(Promql::either($seen, Promql::andOn($neverRan, Selection::unfiltered()))));
 
         return Promql::call('query_result', Promql::group(
             Promql::labelReplace($rows, 'display', '$1', 'job_class', '(?:.*\\\\)?([^\\\\]*)'),
@@ -147,21 +208,25 @@ final readonly class Variables
      */
     private function supervisorTitleQuery(): string
     {
-        $known = Promql::group(Promql::range(
+        $known = Promql::group($this->promql->over(
             'last_over_time',
-            $this->promql->selector('horizon_supervisor_processes', Promql::re('supervisor', '$supervisor'), Promql::re('queue', '$queue')),
+            Metric::SupervisorProcesses,
             self::KNOWN_FOR,
+            [Promql::re('supervisor', '$supervisor'), Promql::re('queue', '$queue')],
         ), 'supervisor');
-        $processes = fn (string $label, string $family): string => Promql::countValues(
+        // Per application (job): with all jobs selected, two applications may run supervisors of the same name, and
+        // a join on the name alone would fail on their duplicate series
+        $processes = fn (string $label, Metric $family): string => Promql::countValues(
             $label,
-            Promql::max($this->promql->selector($family), 'supervisor'),
+            Promql::max($this->promql->selector($family), 'job', 'supervisor'),
+            'job',
             'supervisor',
         );
         $facts = Promql::binary(
-            Promql::binary($processes('min', 'horizon_supervisor_min_processes'), '*', $processes('max', 'horizon_supervisor_max_processes'), on: ['supervisor'], groupLeft: ['max']),
+            Promql::binary($processes('min', Metric::SupervisorMinProcesses), '*', $processes('max', Metric::SupervisorMaxProcesses), on: ['job', 'supervisor'], groupLeft: ['max']),
             '*',
-            $this->promql->selector('horizon_supervisor_info'),
-            on: ['supervisor'],
+            $this->promql->selector(Metric::SupervisorInfo),
+            on: ['job', 'supervisor'],
             groupLeft: ['balance', 'connection'],
         );
 
@@ -170,13 +235,14 @@ final readonly class Variables
         }
 
         $dot = ' '.Glyph::DOT.' ';
-        $title = Promql::labelReplace(
+        // One option per supervisor and title: applications with the same settings give one
+        $title = Promql::group(Promql::labelReplace(
             Promql::labelJoin($facts, 'joined', ';', 'supervisor', 'min', 'max', 'balancing', 'connection'),
             'display',
             '$1'.$dot.'Processes: [min: $2, max: $3]'.$dot.'Balancing: $4'.$dot.'Connection: $5',
             'joined',
             '(.*);(.*);(.*);(.*);(.*)',
-        );
+        ), 'supervisor', 'display');
 
         return Promql::call('query_result', Promql::orOn(
             Promql::orOn(
@@ -196,7 +262,7 @@ final readonly class Variables
     private function batchTitleQuery(): string
     {
         $kinds = $this->batches->selectedKinds();
-        $info = $this->promql->selector('queue_batch_info');
+        $info = $this->promql->selector(Metric::BatchInfo);
         $dot = ' '.Glyph::DOT.' ';
         $title = Promql::labelReplace(
             Promql::labelJoin(Promql::andOn($info, $kinds, 'batch'), 'display', "\t", 'batch', 'queue', 'connection'),
@@ -217,7 +283,7 @@ final readonly class Variables
      *
      * @return array<string, mixed>
      */
-    private function filter(string $name, string $label, string $query, string $regex, ?string $allValue = null): array
+    private function filter(string $name, string $label, string $query, string $regex, ?string $allValue = null, int $refresh = self::ON_LOAD): array
     {
         $variable = [
             'current' => $this->allSelected(),
@@ -237,7 +303,7 @@ final readonly class Variables
             'name' => $name,
             'options' => [],
             'query' => $query,
-            'refresh' => 2,
+            'refresh' => $refresh,
             'regex' => $regex,
             'sort' => 1,
             'type' => 'query',
@@ -249,7 +315,7 @@ final readonly class Variables
      *
      * @return array<string, mixed>
      */
-    private function hiddenFilter(string $name, string $query, string $regex): array
+    private function hiddenFilter(string $name, string $query, string $regex, int $refresh = self::ON_LOAD): array
     {
         return [
             'current' => $this->allSelected(),
@@ -262,7 +328,7 @@ final readonly class Variables
             'name' => $name,
             'options' => [],
             'query' => $query,
-            'refresh' => 2,
+            'refresh' => $refresh,
             'regex' => $regex,
             'sort' => 1,
             'type' => 'query',
@@ -270,16 +336,18 @@ final readonly class Variables
     }
 
     /**
-     * A hidden variable with one label of horizon_info, refreshed on page load.
+     * A hidden variable with one label of horizon_info, refreshed on page load: the value the application exports
+     * now, else the last one it exported within the lookback (while it is not scraped). Not every value of the
+     * lookback: after a change (a new path or URL) the old series stays in the lookback, and Grafana would take
+     * whichever value comes first. The last value is the series seen last per job, to the subquery step.
      *
      * @return array<string, mixed>
      */
     private function info(string $name, string $label): array
     {
-        $query = Promql::call('query_result', Promql::group(
-            Promql::range('last_over_time', $this->promql->selector('horizon_info'), self::INFO_LOOKBACK),
-            $label,
-        ));
+        $info = $this->promql->selector(Metric::HorizonInfo);
+        $lastSeen = Promql::topk(1, Promql::range('max_over_time', Promql::call('timestamp', $info), self::INFO_LOOKBACK.':'.self::INFO_STEP), 'job');
+        $query = Promql::call('query_result', Promql::orOn(Promql::group($info, $label), Promql::group($lastSeen, $label)));
 
         return [
             'current' => new stdClass,
@@ -291,10 +359,27 @@ final readonly class Variables
             'name' => $name,
             'options' => [],
             'query' => $query,
-            'refresh' => 1,
+            'refresh' => self::ON_LOAD,
             'regex' => '/'.$label.'="([^"]+)"/',
             'skipUrlSync' => true,
             'type' => 'query',
+        ];
+    }
+
+    /**
+     * A hidden textbox: a render-time default that the URL can override.
+     *
+     * @return array<string, mixed>
+     */
+    private function textbox(string $name, string $value): array
+    {
+        return [
+            'current' => ['text' => $value, 'value' => $value],
+            'hide' => 2,
+            'name' => $name,
+            'options' => [['selected' => true, 'text' => $value, 'value' => $value]],
+            'query' => $value,
+            'type' => 'textbox',
         ];
     }
 
@@ -313,7 +398,7 @@ final readonly class Variables
             'name' => $name,
             'options' => [],
             'query' => $type,
-            'refresh' => 1,
+            'refresh' => self::ON_LOAD,
             'regex' => $regex,
             'skipUrlSync' => true,
             'type' => 'datasource',

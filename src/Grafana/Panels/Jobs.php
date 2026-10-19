@@ -10,6 +10,7 @@ use DF\HorizonObservability\Grafana\Promql;
 use DF\HorizonObservability\Grafana\Queries\Attempts;
 use DF\HorizonObservability\Grafana\Queries\Selection;
 use DF\HorizonObservability\Grafana\Queries\Workers;
+use DF\HorizonObservability\Metrics\Metric;
 use stdClass;
 
 /**
@@ -52,15 +53,14 @@ final readonly class Jobs
      */
     public function pendingChart(int $y): array
     {
-        $pending = $this->promql->selector('queue_jobs_pending');
         $pendingMax = Promql::either(
-            Promql::sum(Promql::range('max_over_time', $pending, Promql::INTERVAL), ...self::BY_JOB),
-            Promql::sum($pending, ...self::BY_JOB),
+            Promql::sum($this->promql->over('max_over_time', Metric::QueueJobsPending, Promql::INTERVAL), ...self::BY_JOB),
+            Promql::sum($this->promql->selector(Metric::QueueJobsPending), ...self::BY_JOB),
         );
         // A class series exists only while its jobs wait: zeros for the classes that waited in the period make
         // the lines drop to 0 instead of ending. The `job` label is the short class name for the legend.
         $byJob = Promql::labelReplace(
-            Promql::either(Promql::paren($pendingMax), '0 * '.Promql::group(Promql::range('max_over_time', $pending, Promql::RANGE), ...self::BY_JOB)),
+            Promql::either(Promql::paren($pendingMax), '0 * '.Promql::group($this->promql->over('max_over_time', Metric::QueueJobsPending, Promql::RANGE), ...self::BY_JOB)),
             'job',
             '$1',
             'job_class',
@@ -77,7 +77,7 @@ final readonly class Jobs
                 // zero only while its metrics are scraped: without metrics "No data", not zero.
                 $this->common->target(
                     'B',
-                    Promql::sum($pendingMax).' or 0 * '.Promql::group($this->promql->selector('queue_pending_jobs')),
+                    Promql::sum($pendingMax).' or 0 * '.Promql::group($this->promql->selector(Metric::QueuePendingJobs)),
                     instant: false,
                     legend: 'Total',
                 ),
@@ -143,26 +143,32 @@ final readonly class Jobs
         $rows = $this->rows();
         // Increase of a duration histogram series in the period, per class
         $durationIncrease = fn (string $series, string ...$labels): string => Promql::sum(
-            Promql::range('increase', $this->promql->selector('queue_job_duration_seconds_'.$series), Promql::RANGE),
+            $this->promql->over('increase', Metric::JobDuration, Promql::RANGE, series: $series),
             ...$labels,
         );
         $durationCount = $durationIncrease('count', ...$by);
-        $max = Promql::max(Promql::range('max_over_time', $this->promql->selector('queue_job_duration_max_seconds'), Promql::RANGE), ...$by);
+        $max = Promql::max($this->promql->over('max_over_time', Metric::JobDurationMax, Promql::RANGE), ...$by);
+        // The buckets are the largest per-class vector (16 series per class and application), so their batch scope
+        // (ADDENDUM R2.4 O2) comes after the sum by class, which keeps job_class: the same rows, fewer series in
+        // the set operation when several applications share the Prometheus. The selector carries the Job filter
+        // itself, so filtered() adds neither the filter nor the scope again.
+        $buckets = $this->promql->batchScoped(Promql::sum(
+            $this->promql->over('increase', Metric::JobDuration, Promql::RANGE, [Promql::re('job_class', '$job_class')], series: 'bucket'),
+            'le',
+            ...$by,
+        ));
         // Bucket estimates interpolate inside a bucket and can exceed the exact maximum, so the table caps p95
         // at the maximum. Without a maximum (attempts before the metric existed) the estimate stays as is.
         $p95 = Promql::paren(Promql::andOn(
-            Promql::call('histogram_quantile', '0.95', $durationIncrease('bucket', 'le', ...$by)),
+            Promql::call('histogram_quantile', '0.95', $buckets),
             Promql::paren($durationCount.' > 0'),
             ...$by,
         ));
-        $pending = Promql::sum($this->promql->selector('queue_jobs_pending'), ...$by).' or 0 * '.$rows;
+        $pending = Promql::sum($this->promql->selector(Metric::QueueJobsPending), ...$by).' or 0 * '.$rows;
 
         $targets = [
             'A' => $pending,
-            'B' => $this->count(Attempts::FAILED),
-            'C' => $this->count(Attempts::RETRIED),
-            'D' => $this->attemptsOf(Attempts::COMPLETED).' / '.Promql::paren($this->attemptsOf(Attempts::FINISHED).' > 0'),
-            'E' => Promql::sum($this->promql->selector('queue_jobs_reserved'), ...$by).' or 0 * '.$rows,
+            'E' => Promql::sum($this->promql->selector(Metric::QueueJobsReserved), ...$by).' or 0 * '.$rows,
             'F' => $durationIncrease('sum', ...$by).' / '.Promql::paren($durationCount.' > 0'),
             'G' => Promql::either(
                 Promql::orOn(
@@ -172,8 +178,7 @@ final readonly class Jobs
                 ),
                 $p95,
             ),
-            'H' => $this->count(Attempts::TIMED_OUT),
-            'I' => Promql::min(Promql::range('min_over_time', $this->promql->selector('queue_job_duration_min_seconds'), Promql::RANGE), ...$by),
+            'I' => Promql::min($this->promql->over('min_over_time', Metric::JobDurationMin, Promql::RANGE), ...$by),
             'J' => $max,
             // A stub row of dashes without jobs: otherwise an empty period shows only headers, without the Job
             // and Queue columns
@@ -209,27 +214,39 @@ final readonly class Jobs
             'id' => PanelRegistry::JOBS,
             // Classes that ran in the period above the idle ones: those have no Avg
             'options' => Common::tableOptions(['Pending' => true, 'Avg' => true]),
-            'targets' => array_map(
-                fn (string $refId, string $expr): array => $this->common->target($refId, $expr, format: 'table'),
-                array_keys($targets),
-                $targets,
-            ),
+            'targets' => [
+                ...array_map(
+                    fn (string $refId, string $expr): array => $this->common->target($refId, $expr, format: 'table'),
+                    array_keys($targets),
+                    $targets,
+                ),
+                // Failed, Timeouts, Retries and Success rate from one attempts query by status (ADDENDUM R2.4 O6; the
+                // legacy table evaluated attempts_delta five times): a series per (queue, class, status), 0 for the
+                // listed classes without such attempts. Pivoted into columns by "Labels to fields".
+                $this->common->target('B', $this->attemptsByStatus($rows)),
+            ],
             // The row carries the title
             'title' => '',
             'transformations' => [
+                // The attempts by status (query B) become a column per status
+                ['id' => 'labelsToFields', 'filter' => Common::byRefId('B'), 'options' => ['valueLabel' => 'status']],
                 Common::merge(),
+                // Failed counts timeouts too; without attempts in the period the success rate is 0 / 0, a dash
+                Common::calculateFields('failed_total', 'failed', '+', 'timed_out'),
+                Common::calculateFields('finished', 'completed', '+', 'failed_total'),
+                Common::calculateFields('success', 'completed', '/', 'finished'),
                 ['id' => 'organize', 'options' => [
-                    'excludeByName' => ['Time' => true, 'Value #Z' => true],
+                    'excludeByName' => ['Time' => true, 'Value #Z' => true, 'completed' => true, 'failed' => true, 'finished' => true],
                     'includeByName' => new stdClass,
                     'indexByName' => [
-                        'Time' => 0, 'job_class' => 1, 'queue' => 2, 'Value #A' => 3, 'Value #B' => 4, 'Value #C' => 5,
-                        'Value #D' => 6, 'Value #E' => 7, 'Value #I' => 8, 'Value #F' => 9, 'Value #G' => 10,
-                        'Value #J' => 11, 'Value #H' => 12,
+                        'Time' => 0, 'job_class' => 1, 'queue' => 2, 'Value #A' => 3, 'failed_total' => 4, 'retried' => 5,
+                        'success' => 6, 'Value #E' => 7, 'Value #I' => 8, 'Value #F' => 9, 'Value #G' => 10,
+                        'Value #J' => 11, 'timed_out' => 12,
                     ],
                     'renameByName' => [
-                        'job_class' => 'Job', 'queue' => 'Queue', 'Value #A' => 'Pending', 'Value #B' => 'Failed',
-                        'Value #C' => 'Retries', 'Value #D' => 'Success rate', 'Value #E' => 'Workers',
-                        'Value #F' => 'Avg', 'Value #G' => 'p95', 'Value #H' => 'Timeouts',
+                        'job_class' => 'Job', 'queue' => 'Queue', 'Value #A' => 'Pending', 'failed_total' => 'Failed',
+                        'retried' => 'Retries', 'success' => 'Success rate', 'Value #E' => 'Workers',
+                        'Value #F' => 'Avg', 'Value #G' => 'p95', 'timed_out' => 'Timeouts',
                         'Value #I' => 'Min', 'Value #J' => 'Max',
                     ],
                 ]],
@@ -247,13 +264,13 @@ final readonly class Jobs
     private function rows(): string
     {
         $by = self::BY_JOB;
-        $attempts = $this->promql->selector('queue_jobs_total');
-        $classes = $this->promql->selector('queue_job_classes');
+        $attempts = $this->promql->selector(Metric::JobsTotal);
+        $classes = $this->promql->selector(Metric::JobClasses);
 
         $active = Promql::either(
-            Promql::group($this->promql->selector('queue_jobs_pending'), ...$by),
-            Promql::group($this->promql->selector('queue_jobs_reserved'), ...$by),
-            Promql::group(Promql::range('increase', $attempts, Promql::RANGE).' > 0', ...$by),
+            Promql::group($this->promql->selector(Metric::QueueJobsPending), ...$by),
+            Promql::group($this->promql->selector(Metric::QueueJobsReserved), ...$by),
+            Promql::group($this->promql->over('increase', Metric::JobsTotal, Promql::RANGE).' > 0', ...$by),
         );
         $idle = Promql::andOn(Promql::group($attempts, ...$by), Promql::group($classes, 'job_class'), 'job_class');
         $never = Promql::paren(Promql::andOn(
@@ -273,22 +290,16 @@ final readonly class Jobs
     }
 
     /**
-     * Attempts in the period per class (legacy `attempts`).
+     * The attempts of the period per (queue, class, status) for the statuses the table counts, as whole numbers, and
+     * 0 for the listed classes ($rows) without them (legacy `job_count` per status).
      */
-    private function attemptsOf(string $statuses): string
+    private function attemptsByStatus(string $rows): string
     {
-        return Promql::sum($this->attempts->delta($statuses, Promql::RANGE), ...self::BY_JOB);
-    }
+        $statuses = explode('|', Attempts::COUNTED);
+        $byStatus = Promql::call('round', Promql::sum($this->attempts->delta(Attempts::COUNTED, Promql::RANGE), 'queue', 'job_class', 'status'));
+        $rowsByStatus = Promql::either(...array_map(static fn (string $status): string => Promql::withLabel($rows, 'status', $status), $statuses));
 
-    /**
-     * Attempts in the period, 0 for listed classes without such attempts so the column does not empty
-     * (legacy `job_count`).
-     */
-    private function count(string $statuses): string
-    {
-        $rows = $this->rows();
-
-        return Promql::either(Promql::andOn(Promql::call('round', $this->attemptsOf($statuses)), $rows, ...self::BY_JOB), '0 * '.$rows);
+        return Promql::either(Promql::andOn($byStatus, $rows, ...self::BY_JOB), '0 * '.Promql::paren($rowsByStatus));
     }
 
     /**

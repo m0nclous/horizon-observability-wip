@@ -142,13 +142,27 @@ it('provisions the Prometheus datasource for large POST queries at the scrape in
         ]);
 });
 
-it('provisions the Infinity datasource with the API bearer token', function (): void {
-    $datasource = devStackYaml('docker/grafana/provisioning/datasources/horizon-observability.yaml')['datasources'][0];
+it('provisions the shipped Infinity datasource with the API bearer token', function (): void {
+    // The package example (Arch Q5.5), mounted by the dev stack so it is tested
+    $datasource = devStackYaml('resources/grafana/provisioning/datasources/horizon-observability.yaml')['datasources'][0];
 
     expect($datasource['type'])->toBe('yesoreyeram-infinity-datasource')
         ->and($datasource['jsonData']['auth_method'])->toBe('bearerToken')
         ->and($datasource['secureJsonData'])->toBe(['bearerToken' => '${HORIZON_OBSERVABILITY_API_TOKEN}'])
-        ->and($datasource['jsonData']['customHealthCheckUrl'])->toEndWith('/horizon/'.RoutePath::SEGMENT.'/jobs/pending?limit=1');
+        ->and($datasource['jsonData']['customHealthCheckUrl'])->toEndWith('/horizon/'.RoutePath::SEGMENT.'/jobs/pending?limit=1')
+        ->and(devStackService('grafana')['volumes'])->toContain(
+            './resources/grafana/provisioning/datasources/horizon-observability.yaml:/etc/grafana/provisioning/datasources/horizon-observability.yaml:ro',
+        );
+});
+
+it('provisions the package render with the shipped dashboard provider', function (): void {
+    $provider = devStackYaml('resources/grafana/provisioning/dashboards/horizon-observability.yaml')['providers'][0];
+
+    expect(devStackService('grafana')['volumes'])->toContain(
+        './resources/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro',
+        './resources/grafana/alerting:/etc/grafana/provisioning/alerting:ro',
+        '${GRAFANA_DASHBOARDS:-./resources/grafana/dashboards}:'.$provider['options']['path'].':ro',
+    )->and($provider['type'])->toBe('file');
 });
 
 it('publishes every port on 127.0.0.1 unless BIND_ADDRESS says otherwise', function (): void {

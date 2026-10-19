@@ -9,7 +9,7 @@ use DF\HorizonObservability\Grafana\PanelRegistry;
 use DF\HorizonObservability\Grafana\Promql;
 use DF\HorizonObservability\Grafana\Queries\Attempts;
 use DF\HorizonObservability\Grafana\Queries\BatchState;
-use DF\HorizonObservability\Grafana\Thresholds;
+use DF\HorizonObservability\Metrics\Metric;
 
 /**
  * The batch panels: the current load per batch kind (Current Workload row) and the latest batches of each
@@ -31,6 +31,7 @@ final readonly class Batches
         private Promql $promql,
         private Attempts $attempts,
         private BatchState $batches,
+        private int $rpmMinutes,
     ) {}
 
     /**
@@ -45,7 +46,7 @@ final readonly class Batches
         $total = $this->batches->jobs('total');
         $pending = $this->batches->jobs('pending');
         $failed = $this->batches->jobs('failed');
-        $minutes = Thresholds::RPM_WINDOW_MINUTES;
+        $minutes = $this->rpmMinutes;
 
         // Progress of the running batches of the kind: 1000 + percent for the bar, 1999 (a dash) without any
         $progress = Common::PERCENT_OFFSET.' + '.Promql::paren(Promql::either(
@@ -58,26 +59,27 @@ final readonly class Batches
         ));
 
         $targets = [
-            $this->common->target('A', $this->batches->selectedKindsOrZero(Promql::sum($this->promql->selector('queue_batches_running'), 'batch')), format: 'table', jobFilter: false),
+            $this->common->target('A', $this->batches->selectedKindsOrZero(Promql::sum($this->promql->selector(Metric::BatchesRunning), 'batch')), format: 'table', jobFilter: false),
             $this->common->target('B', $progress, format: 'table', jobFilter: false),
             // Waiting: Laravel counts failed jobs as pending
             $this->common->target('C', $this->batches->selectedKindsOrZero(Promql::call('clamp_min', $pending.' - '.$failed, '0')), format: 'table', jobFilter: false),
-            // Failed in the period, as Failed in the queue tables, not only in the batches running now
-            $this->common->target('D', $this->batches->selectedKindsOrZero($this->batches->perKind($this->attempts->delta(Attempts::FAILED, Promql::RANGE))), format: 'table'),
-            $this->common->target('E', $this->batches->selectedKindsOrZero($this->batches->perKind($this->promql->selector('queue_jobs_reserved'))), format: 'table'),
+            // Failed in the period, as Failed in the queue tables, not only in the batches running now; the attempts
+            // columns take the kinds' classes of the period (an application whose scrape failed at the end keeps them)
+            $this->common->target('D', $this->batches->selectedKindsOrZero($this->batches->perKind($this->attempts->delta(Attempts::FAILED, Promql::RANGE), Promql::RANGE)), format: 'table'),
+            $this->common->target('E', $this->batches->selectedKindsOrZero($this->batches->perKind($this->promql->selector(Metric::QueueJobsReserved))), format: 'table'),
             $this->common->target(
                 'F',
                 Promql::either(
-                    Promql::andOn(Promql::max($this->promql->selector('queue_batch_oldest_age_seconds'), 'batch'), $kinds, 'batch'),
+                    Promql::andOn(Promql::max($this->promql->selector(Metric::BatchOldestAge), 'batch'), $kinds, 'batch'),
                     '-1 + 0 * '.$kinds,
                 ),
                 format: 'table',
                 jobFilter: false,
             ),
-            $this->common->target('G', $this->batches->selectedKindsOrZero($this->batches->perKind($this->attempts->delta(Attempts::COMPLETED, Promql::RANGE))), format: 'table'),
+            $this->common->target('G', $this->batches->selectedKindsOrZero($this->batches->perKind($this->attempts->delta(Attempts::COMPLETED, Promql::RANGE), Promql::RANGE)), format: 'table'),
             $this->common->target(
                 'H',
-                $this->batches->selectedKindsOrZero(Promql::call('round', $this->batches->perKind($this->attempts->delta(Attempts::COMPLETED, $minutes.'m')).' / '.$minutes)),
+                $this->batches->selectedKindsOrZero(Promql::call('round', $this->batches->perKind($this->attempts->delta(Attempts::COMPLETED, $minutes.'m'), Promql::RANGE).' / '.$minutes)),
                 format: 'table',
             ),
             // A stub row of dashes without batches in the period: otherwise only headers remain, without the Batch
@@ -147,7 +149,7 @@ final readonly class Batches
             'link',
             "([^\t]*)\t(.*)",
         );
-        $jobs = fn (string $state): string => $this->batches->valueOfLatest('queue_batch_job_counts', Promql::eq('state', $state));
+        $jobs = fn (string $state): string => $this->batches->valueOfLatest(Metric::BatchJobCounts, Promql::eq('state', $state));
 
         $targets = [
             $this->common->target('A', $linked, format: 'table'),
@@ -164,7 +166,7 @@ final readonly class Batches
                 format: 'table',
             ),
             $this->common->target('D', $jobs('failed'), format: 'table'),
-            $this->common->target('E', '1000 * '.$this->batches->valueOfLatest('queue_batch_created_timestamp_seconds'), format: 'table'),
+            $this->common->target('E', '1000 * '.$this->batches->valueOfLatest(Metric::BatchCreated), format: 'table'),
             $this->common->target('F', $this->batches->durationOfLatest(), format: 'table'),
             // A stub row of dashes without batches: otherwise only headers remain, without the Name column, and
             // the table does not stretch. Query A sets the rows.
