@@ -16,10 +16,10 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /*
-| WP7 (Arch Q7): InjectGrafanaLink inserts the "Grafana" sidebar item right after "Dashboard" in Horizon's page and
-| leaves every other response untouched, including when a marker is missing (C16 rendering side). The fixtures are
-| the verbatim horizon::layout sources of 5.22.0 (the original floor; the floor is 5.29.1 since the phase B
-| integration) and the latest release (5.50.1); the sidebar markup is the same in every release in between.
+| InjectGrafanaLink inserts the "Grafana" sidebar item right after "Dashboard" in Horizon's page and leaves every
+| other response untouched, including when a marker is missing. The fixtures are the verbatim horizon::layout
+| sources of 5.22.0 (the original floor; it is 5.29.1 now) and the latest release (5.50.1); the sidebar markup is
+| the same in every release in between.
 */
 
 const MENU_LINK_URL = 'http://localhost:3000/d/horizon-observability';
@@ -148,7 +148,7 @@ it('uses the first item end after the sidebar marker', function (): void {
         ->toBe('<ul><li>header</li></ul><div class="col-2 sidebar"><ul><li>Dashboard</li>'."\n".'<li>Grafana</li><li>Monitoring</li></ul></div>');
 });
 
-it('leaves a page with missing markers untouched (C16 rendering side)', function (string $html): void {
+it('leaves a page with missing markers untouched', function (string $html): void {
     $response = menuLinkRun(menuLinkPage($html));
 
     expect(InjectGrafanaLink::insert($html, menuLinkItem()))->toBeNull()

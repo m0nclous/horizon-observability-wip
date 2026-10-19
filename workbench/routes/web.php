@@ -12,7 +12,7 @@ use Workbench\App\Simulation\LoadGenerator;
 use Workbench\App\Simulation\TaskProfile;
 
 /*
-| Workbench routes (Arch 8.2). GET /demo/dispatch?count=&queue= dispatches a manual burst of simulated jobs with the
+| Workbench routes. GET /demo/dispatch?count=&queue= dispatches a manual burst of simulated jobs with the
 | continuous outcome mix: count 1-1000 (default 10), queue one of the simulated queues (default "default").
 */
 

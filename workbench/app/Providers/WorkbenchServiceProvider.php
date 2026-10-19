@@ -8,7 +8,7 @@ use Illuminate\Support\ServiceProvider;
 use Laravel\Horizon\Horizon;
 
 /**
- * Workbench wiring (Arch 8.2): Horizon's dashboard is open in the workbench.
+ * Workbench wiring: Horizon's dashboard is open in the workbench.
  */
 final class WorkbenchServiceProvider extends ServiceProvider
 {

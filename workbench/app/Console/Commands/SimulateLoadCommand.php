@@ -14,9 +14,9 @@ use Workbench\App\Simulation\SimulatedJob;
 use Workbench\App\Simulation\TaskProfile;
 
 /**
- * Generates queue load for the workbench dashboard (Arch 8.2, 8.3; replaces the pilot's queue-metrics:load-test).
+ * Generates queue load for the workbench dashboard (replaces the pilot's queue-metrics:load-test).
  *
- * It lives in the workbench only, so it never ships with the package (C25). It refuses the production environment and
+ * It lives in the workbench only, so it never ships with the package. It refuses the production environment and
  * any queue connection that does not use the redis driver: with sync the jobs would run inline in the command.
  *
  * One-shot (default): every task's jobs spread over --spread seconds after a --warmup, plus --batches batches of each

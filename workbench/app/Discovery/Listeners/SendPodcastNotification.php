@@ -9,7 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Workbench\App\Discovery\Events\PodcastPublished;
 
 /**
- * Discovery fixture (Arch 8.2): a queued listener. Found.
+ * Discovery fixture: a queued listener. Found.
  */
 final class SendPodcastNotification implements ShouldQueue
 {

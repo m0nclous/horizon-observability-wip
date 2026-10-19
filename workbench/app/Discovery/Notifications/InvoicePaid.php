@@ -9,7 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 
 /**
- * Discovery fixture (Arch 8.2): a queued notification (no handle()). Found.
+ * Discovery fixture: a queued notification (no handle()). Found.
  */
 final class InvoicePaid extends Notification implements ShouldQueue
 {

@@ -13,8 +13,8 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Http\Request;
 
 /*
-| Arch Q2.3 and 8.4: the full decision table of the access policy and its mode() for about and check (C4). A decision
-| costs no I/O (Q2.4): the denial lines are throttled in-process, never through the cache.
+| The full decision table of the access policy and its mode() for about and check. A decision costs no I/O: the
+| denial lines are throttled in-process, never through the cache.
 */
 
 const ACCESS_POLICY_TOKEN = 'metrics-token-0123456789abcdef';

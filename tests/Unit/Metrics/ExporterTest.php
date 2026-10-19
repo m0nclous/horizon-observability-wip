@@ -18,8 +18,8 @@ use DF\HorizonObservability\Tests\Unit\Metrics\Support\FakeCollector;
 use Illuminate\Http\Request;
 
 /*
-| Arch Q1.3, Q1.4 and 8.4 (Exporter with fake collectors): a throwing collector is isolated; a partial failure keeps
-| its data with success 0; the budget skips the rest in order; disabled collectors are absent; self-metrics are last.
+| The Exporter with fake collectors: a throwing collector is isolated; a partial failure keeps its data with
+| success 0; the budget skips the rest in order; disabled collectors are absent; self-metrics are last.
 */
 
 /**
@@ -117,7 +117,7 @@ it('isolates a throwing collector', function (): void {
         ->and($log->messages('warning'))->toBe(['horizon-observability: collector:queues failed: RuntimeException: Connection refused']);
 });
 
-it('isolates PHP warnings turned into ErrorException (C1 shape)', function (): void {
+it('isolates PHP warnings turned into ErrorException (an undefined array key)', function (): void {
     $collectors = [...exporterTestQuiet(),
         'batches' => exporterTestCollector('batches', static function (): array {
             $stats = [];
@@ -307,7 +307,7 @@ it('isolates a collector that cannot be resolved', function (): void {
 });
 
 it('runs the container collectors by default', function (): void {
-    // Bound in place of the real classes (other tasks' code that may need Redis), resolved through Exporter::COLLECTORS.
+    // Bound in place of the real classes (which may need Redis), resolved through Exporter::COLLECTORS.
     $collectors = exporterTestQuiet();
 
     foreach (Exporter::COLLECTORS as $id => $class) {

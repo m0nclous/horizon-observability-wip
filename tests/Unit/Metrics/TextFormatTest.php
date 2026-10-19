@@ -9,7 +9,7 @@ use DF\HorizonObservability\Metrics\TextFormat;
 use DF\HorizonObservability\Tests\Support\Exposition;
 
 /*
-| Arch Q1.1 and 8.4: escaping, 1e17 precision, NaN/+-Inf, integral floats, le spelling, family and sample order,
+| TextFormat: escaping, 1e17 precision, NaN/+-Inf, integral floats, le spelling, family and sample order,
 | empty namespace, empty families omitted.
 */
 

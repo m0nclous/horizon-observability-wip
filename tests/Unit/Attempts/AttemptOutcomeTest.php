@@ -10,17 +10,17 @@ use DF\HorizonObservability\Tests\Support\FakeEvents;
 use Illuminate\Queue\Events\JobTimedOut;
 
 /*
-| The Laravel 11.23 / 12 / 13 shim (Arch Q6.2, Appendix F, A05). The pilot read JobAttempted::$exceptionOccurred,
+| The Laravel 11.23 / 12 / 13 shim. The pilot read JobAttempted::$exceptionOccurred,
 | which Laravel 13 removed: every released job raised "Undefined property" into the worker. Real events of the
 | installed Laravel plus stdClass fakes of the 11.23/12 and 13 shapes run every branch on every CI leg.
 */
 
-it('reads whether the attempt threw from the 11.23/12 shape (A05)', function (): void {
+it('reads whether the attempt threw from the 11.23/12 shape', function (): void {
     expect(AttemptOutcome::threw(FakeEvents::attempted12(new FakeJob, true)))->toBeTrue()
         ->and(AttemptOutcome::threw(FakeEvents::attempted12(new FakeJob)))->toBeFalse();
 });
 
-it('reads whether the attempt threw from the 13 shape (A05)', function (): void {
+it('reads whether the attempt threw from the 13 shape', function (): void {
     expect(AttemptOutcome::threw(FakeEvents::attempted13(new FakeJob, new RuntimeException('boom'))))->toBeTrue()
         ->and(AttemptOutcome::threw(FakeEvents::attempted13(new FakeJob)))->toBeFalse();
 });
@@ -29,7 +29,7 @@ it('treats an event with neither property as not thrown', function (): void {
     expect(AttemptOutcome::threw(new stdClass))->toBeFalse();
 });
 
-it('maps the outcome of a real JobAttempted of the installed Laravel (A05)', function (string $state, bool $threw, AttemptStatus $status): void {
+it('maps the outcome of a real JobAttempted of the installed Laravel', function (string $state, bool $threw, AttemptStatus $status): void {
     $job = match ($state) {
         'released' => FakeJob::releasedOne(),
         'failed' => FakeJob::failedOne(),

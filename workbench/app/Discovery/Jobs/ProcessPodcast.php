@@ -10,7 +10,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 
 /**
- * Discovery fixture (Arch 8.2): a plain queued job. Found.
+ * Discovery fixture: a plain queued job. Found.
  */
 final class ProcessPodcast implements ShouldQueue
 {

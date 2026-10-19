@@ -9,10 +9,10 @@ use Generator;
 use InvalidArgumentException;
 
 /**
- * Deterministic synthetic metrics for the dashboard performance profile (ADDENDUM R2.2). A PHP port of the T01 probe
- * model `planning/reference/addendum-probes/probe/synth.py`: every value is a pure function of the Unix time, so the
- * backfill (workbench:perf-data) and the continuation exporter (workbench:perf-exporter) produce one continuous
- * history.
+ * Deterministic synthetic metrics for the dashboard performance profile (docker/perf/README.md). A PHP port of the
+ * Python probe model (`synth.py`) whose history the pilot dashboard was first measured on: every value is a pure
+ * function of the Unix time, so the backfill (workbench:perf-data) and the continuation exporter
+ * (workbench:perf-exporter) produce one continuous history.
  *
  * Profiles:
  * - medium: 4 supervisors, 12 queues, 160 job classes (180 queue/class tuples), 16 duration buckets and 8 batch kinds

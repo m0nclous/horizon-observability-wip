@@ -5,8 +5,8 @@ declare(strict_types=1);
 use Symfony\Component\Yaml\Yaml;
 
 /*
-| The CI workflow (Arch 8.5, ADDENDUM Q9' WP9; T11): triggers, the test matrix as GitHub expands it, both Grafana
-| versions in the grafana and e2e jobs, and the static and dist gates.
+| The CI workflow: triggers, the test matrix as GitHub expands it, both Grafana versions in the grafana and e2e jobs,
+| and the static and dist gates.
 */
 
 /**
@@ -82,7 +82,7 @@ it('runs on master, claude branches, pull requests, by hand and weekly', functio
         ->and(workflow('tests.yml')['concurrency']['group'])->toBe('tests-${{ github.ref }}-${{ github.event_name }}');
 });
 
-it('expands the test matrix to the 10 base and 6 targeted legs of Arch 8.5', function (): void {
+it('expands the test matrix to the 10 base and 6 targeted legs', function (): void {
     $legs = workflowLegs(workflow('tests.yml')['jobs']['tests']['strategy']['matrix']);
     $lowest = array_values(array_filter($legs, static fn (array $leg): bool => $leg['stability'] === 'prefer-lowest'));
 
@@ -106,7 +106,7 @@ it('runs the suite without the cluster and e2e groups on every leg', function ()
         ->and(implode("\n", $steps))->toContain('composer update --${{ matrix.stability }} --prefer-dist');
 });
 
-it('resolves the legs past the advisory block of Composer without turning off its malware block (T18 QA)', function (): void {
+it('resolves the legs past the advisory block of Composer without turning off its malware block', function (): void {
     $steps = workflow('tests.yml')['jobs']['tests']['steps'];
     $resolve = array_values(array_filter($steps, static fn (array $step): bool => ($step['name'] ?? null) === 'Resolve the leg'))[0] ?? [];
     $env = array_map(strval(...), $resolve['env'] ?? []);
@@ -121,13 +121,13 @@ it('resolves the legs past the advisory block of Composer without turning off it
         ->and($narrow)->toBeTrue();
 });
 
-it('fails a prefer-lowest leg that does not resolve the oldest point of its shims (T18)', function (): void {
+it('fails a prefer-lowest leg that does not resolve the oldest point of its shims', function (): void {
     $tests = workflow('tests.yml')['jobs']['tests'];
     $lowest = array_values(array_filter(workflowLegs($tests['strategy']['matrix']), static fn (array $leg): bool => $leg['stability'] === 'prefer-lowest'));
     $resolved = array_values(array_filter($tests['steps'], static fn (array $step): bool => ($step['name'] ?? null) === 'Resolved versions'))[0] ?? [];
     $resolve = array_values(array_filter($tests['steps'], static fn (array $step): bool => ($step['name'] ?? null) === 'Resolve the leg'))[0] ?? [];
 
-    // Laravel 11.23 is the declared floor (the first with JobAttempted, owner decision 3); the shims below 11.27.1
+    // Laravel 11.23 is the declared floor (the first with JobAttempted); the shims below 11.27.1
     // (no ServiceProvider::optimizes()) run only there. With Pest ^3.8 (collision 8.7) the leg would resolve 11.39.1.
     expect(array_map(static fn (array $leg): string => $leg['laravel'].' => '.($leg['floor'] ?? ''), $lowest))->toBe([
         '^11.23 => laravel/framework:11.23.0 laravel/horizon:5.29.1 predis/predis:2.0.2',
@@ -160,7 +160,7 @@ it('runs the e2e job weekly and by hand only, with the dedupe gate, screenshots 
         ->toContain('--budget docker/perf/budget.json');
 });
 
-it('times the README quick start on a fresh Laravel app weekly and by hand, on Grafana 12 and 13 (T14)', function (): void {
+it('times the README quick start on a fresh Laravel app weekly and by hand, on Grafana 12 and 13', function (): void {
     $job = workflow('tests.yml')['jobs']['first-dashboard'];
     $runs = implode("\n", array_filter(array_column($job['steps'], 'run')));
 
@@ -174,7 +174,7 @@ it('times the README quick start on a fresh Laravel app weekly and by hand, on G
 
 it('backfills the perf data with the metric names of the mounted dashboard', function (): void {
     $runs = implode("\n", array_column(workflow('tests.yml')['jobs']['e2e']['steps'], 'run'));
-    // The schema follows the mounted dashboard: the package render (T13) reads the catalog names
+    // The schema follows the mounted dashboard: the package render reads the catalog names
     expect($runs)->toContain("grep -q 'office_queue_jobs_total' build/dashboard.json")
         ->toContain('backfill.sh --profile=medium --hours=26 --schema="$PERF_SCHEMA"')
         ->toContain('workbench:perf-exporter --profile=medium --schema="$PERF_SCHEMA"');
@@ -199,7 +199,7 @@ it('gates style, types and composer.json in the static job', function (): void {
     );
 });
 
-it('allows only the package files in the dist archive (C25)', function (): void {
+it('allows only the package files in the dist archive', function (): void {
     $run = implode("\n", array_column(workflow('tests.yml')['jobs']['dist']['steps'], 'run'));
 
     expect($run)->toContain('git archive HEAD')

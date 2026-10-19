@@ -12,7 +12,7 @@ function captionFixtures(): array
     return require dirname(__DIR__, 2).'/Fixtures/live/captions.php';
 }
 
-it('formats every caption and level rule of Addendum R4.4', function (string $rule, array $arguments, mixed $expected): void {
+it('formats every caption and level rule as the fixtures expect', function (string $rule, array $arguments, mixed $expected): void {
     $method = lcfirst(str_replace('_', '', ucwords($rule, '_')));
 
     expect(Captions::{$method}(...$arguments))->toBe($expected);

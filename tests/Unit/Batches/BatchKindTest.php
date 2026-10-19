@@ -38,7 +38,7 @@ it('normalises a batch name to its kind', function (?string $name, string $kind)
 ]);
 
 it('keeps the pilot kinds for names without hex tokens', function (string $name): void {
-    // The pilot rule (legacy/src/BatchKind.php) without the hex step, applied verbatim.
+    // The pilot's rule (drop UUIDs and digit runs, collapse separator runs, trim) without the hex step, verbatim.
     $legacy = trim((string) preg_replace(
         ['/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i', '/\d+/', '/[\s_.:-]{2,}/'],
         ['', '', '_'],

@@ -10,7 +10,7 @@ use Predis\Connection\StreamConnection;
 use Predis\Response\ServerException;
 
 /*
-| The error replies of a Redis that answered (T14 QA round 3), as each client raises them: phpredis throws a
+| The error replies of a Redis that answered, as each client raises them: phpredis throws a
 | RedisException (RedisClusterException on a cluster) for every reply but ERR and a few others, predis a
 | ServerException, and the package's Lua scripts a RedisScriptFailed whose reason is the reply (a refused redis.call()
 | inside the script follows the script's own ERR). The messages are those of Redis 6.2, 7 and 8 and Valkey.

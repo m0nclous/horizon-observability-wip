@@ -9,7 +9,7 @@ use Workbench\App\Simulation\SimulatedJob;
 use Workbench\App\Simulation\TaskProfile;
 
 /*
-| The load simulation's scenario (T11): the simulated queues are exactly the queues the workbench Horizon topology runs,
+| The load simulation's scenario: the simulated queues are exactly the queues the workbench Horizon topology runs,
 | and the outcome arithmetic of the one-shot and continuous runs.
 */
 

@@ -5,7 +5,7 @@ declare(strict_types=1);
 use DF\HorizonObservability\Live\Captions;
 
 /*
-| Adversarial probe of Captions::oldestExact() (T12 QA round 3): for every exported age (3 decimals, as the exporter
+| Adversarial probe of Captions::oldestExact(): for every exported age (3 decimals, as the exporter
 | and the live builder round it) the live Pending caption must read exactly what the off-mode tile computes in
 | PromQL from the same value (Tiles::pending(): `round(age < 120)` " s", else `round((age >= 120) / 60)` " min",
 | a dash unless `age > 0`). Prometheus' round() is floor(v + 0.5) and count_values prints the shortest decimal.

@@ -9,7 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 
 /**
- * Discovery fixture (Arch 8.2): an abstract base job. Skipped: abstract.
+ * Discovery fixture: an abstract base job. Skipped: abstract.
  */
 abstract class QueuedJob implements ShouldQueue
 {

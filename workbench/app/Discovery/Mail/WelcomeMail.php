@@ -11,7 +11,7 @@ use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 
 /**
- * Discovery fixture (Arch 8.2): a queued mailable (no handle()). Found.
+ * Discovery fixture: a queued mailable (no handle()). Found.
  */
 final class WelcomeMail extends Mailable implements ShouldQueue
 {

@@ -20,7 +20,7 @@ it('computes the readiness of every parity fixture', function (string $payload, 
         ->and($decoded['displayName'])->toBe($displayName);
 })->with(array_map(array_values(...), payloadFixtures()));
 
-it('ignores a stale delay on a horizon retry (C19)', function (): void {
+it('ignores a stale delay on a horizon retry', function (): void {
     $retry = ['createdAt' => 1700000000, 'delay' => 600, 'pushedAt' => '1700005000.5', 'attempts' => 0, 'retry_of' => 'x'];
 
     expect(PayloadClock::readyAt($retry))->toBe(1700005000.5)
@@ -45,7 +45,7 @@ it('counts a payload as a first attempt when attempts is 0 or missing', function
         ->and(PayloadClock::isFirstAttempt(['attempts' => 3]))->toBeFalse();
 });
 
-it('reads finite attempts past the integer range as a retry instead of casting them (PHP 8.5, T18)', function (): void {
+it('reads finite attempts past the integer range as a retry instead of casting them (PHP 8.5)', function (): void {
     // (int) of such a float wraps on PHP 8.2-8.4 (2^64 wraps to 0, a first attempt) and warns on 8.5 (failOnWarning).
     expect(PayloadClock::isFirstAttempt(['attempts' => 1.8446744073709552E19]))->toBeFalse()
         ->and(PayloadClock::isFirstAttempt(['attempts' => 1e30]))->toBeFalse()
@@ -56,7 +56,7 @@ it('reads finite attempts past the integer range as a retry instead of casting t
         ->and(PayloadClock::isFirstAttempt(['attempts' => 1.0]))->toBeFalse();
 });
 
-it('reads attempts that are not finite as a first attempt, like (int) and queue_state.lua (T18 QA round 2)', function (): void {
+it('reads attempts that are not finite as a first attempt, like (int) and queue_state.lua', function (): void {
     // (int) truncates INF and -INF to 0 on PHP 8.2-8.5; first_attempt() in queue_state.lua counts them as a first
     // attempt too, so the queue wait (Lua) and the wait samples of the attempt tracker (PHP) read such a payload alike.
     expect(PayloadClock::isFirstAttempt(json_decode('{"attempts":1e999}', true, 512, JSON_THROW_ON_ERROR)))->toBeTrue()

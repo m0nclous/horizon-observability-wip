@@ -21,7 +21,7 @@ function supervisorsFrom(array $masters, array $supervisors): Supervisors
     return new Supervisors($masterRepository, $supervisorRepository);
 }
 
-it('builds snapshots from repository records (C14)', function (): void {
+it('builds snapshots from repository records, with the queues of a balance=false pool', function (): void {
     $snapshot = Supervisors::snapshot((object) [
         'name' => 'host-a1b2:supervisor-pool',
         'master' => 'host-a1b2',

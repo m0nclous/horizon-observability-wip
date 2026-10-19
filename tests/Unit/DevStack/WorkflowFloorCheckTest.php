@@ -6,9 +6,9 @@ use Symfony\Component\Process\Process;
 use Symfony\Component\Yaml\Yaml;
 
 /*
-| T18 QA round 2 (adversarial): the "Resolved versions" step of the tests job runs as GitHub runs it (`bash -e`, and
-| `bash -eo pipefail` for `shell: bash`) against a fake `composer show`, so the floor check is proven to fail a leg
-| whose resolution moved and to pass the legs it should, not only to contain the right words.
+| The "Resolved versions" step of the tests job runs as GitHub runs it (`bash -e`, and `bash -eo pipefail` for
+| `shell: bash`) against a fake `composer show`, so the floor check is proven to fail a leg whose resolution moved
+| and to pass the legs it should, not only to contain the right words.
 */
 
 /**
@@ -84,7 +84,7 @@ beforeEach(function (): void {
     }
 });
 
-it('passes a prefer-lowest leg that resolved its floor and a leg without a floor (T18 QA round 2)', function (string $shell): void {
+it('passes a prefer-lowest leg that resolved its floor and a leg without a floor', function (string $shell): void {
     $floor = 'laravel/framework:11.23.0 laravel/horizon:5.29.1 predis/predis:2.0.2';
 
     expect(workflowFloorRun($floor, workflowFloorL11(), $shell))->toMatchArray(['exit' => 0])
@@ -95,8 +95,8 @@ it('passes a prefer-lowest leg that resolved its floor and a leg without a floor
         ->not->toContain('::error::');
 })->with(['bash -e', 'bash -eo pipefail']);
 
-it('fails a prefer-lowest leg whose resolution moved one pin, and names the pin (T18 QA round 2)', function (string $shell): void {
-    // What the advisories policy (Composer 2.10) or Pest 3.8 (collision 8.7) did to the L11 leg before round 2.
+it('fails a prefer-lowest leg whose resolution moved one pin, and names the pin', function (string $shell): void {
+    // What the advisories policy (Composer 2.10) or Pest 3.8 (collision 8.7) once did to the L11 leg.
     $moved = workflowFloorRun('laravel/framework:11.23.0 laravel/horizon:5.29.1 predis/predis:2.0.2', ['laravel/framework' => '11.39.1'] + workflowFloorL11(), $shell);
     $horizon = workflowFloorRun('laravel/framework:11.23.0 laravel/horizon:5.29.1 predis/predis:2.0.2', ['laravel/horizon' => '5.30.0'] + workflowFloorL11(), $shell);
 
@@ -106,7 +106,7 @@ it('fails a prefer-lowest leg whose resolution moved one pin, and names the pin 
         ->and($horizon['output'])->toContain('::error::laravel/horizon resolved 5.30.0 instead of the floor 5.29.1');
 })->with(['bash -e', 'bash -eo pipefail']);
 
-it('fails a leg where a pinned package is not installed or only a longer name matches (T18 QA round 2)', function (string $shell): void {
+it('fails a leg where a pinned package is not installed or only a longer name matches', function (string $shell): void {
     $installed = workflowFloorL11();
     unset($installed['predis/predis']);
     $missing = workflowFloorRun('laravel/framework:11.23.0 predis/predis:2.0.2', $installed, $shell);
@@ -120,7 +120,7 @@ it('fails a leg where a pinned package is not installed or only a longer name ma
         ->and($prefix['output'])->toContain('::error::laravel/framework resolved 11.23.0 instead of the floor 9.9.9');
 })->with(['bash -e', 'bash -eo pipefail']);
 
-it('keeps every prefer-lowest floor in the format the check splits: package:version pairs (T18 QA round 2)', function (): void {
+it('keeps every prefer-lowest floor in the format the check splits: package:version pairs', function (): void {
     $parsed = Yaml::parseFile(dirname(__DIR__, 3).'/.github/workflows/tests.yml');
     $include = is_array($parsed) ? $parsed['jobs']['tests']['strategy']['matrix']['include'] : [];
     $floors = array_values(array_filter(array_column($include, 'floor')));
@@ -134,7 +134,7 @@ it('keeps every prefer-lowest floor in the format the check splits: package:vers
     }
 });
 
-it('lifts no other Composer policy anywhere in the workflows, at any env level (T18 QA round 2)', function (): void {
+it('lifts no other Composer policy anywhere in the workflows, at any env level', function (): void {
     // The step-level check of WorkflowTest would miss a workflow- or job-level env, a CLI flag or a policy config.
     $sources = array_map(static fn (string $file): string => (string) file_get_contents($file), glob(dirname(__DIR__, 3).'/.github/workflows/*.yml') ?: []);
     $text = implode("\n", $sources);

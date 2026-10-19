@@ -8,7 +8,7 @@ use DF\HorizonObservability\Batches\BatchSnapshot;
 use DF\HorizonObservability\Batches\BatchStatus;
 
 /*
-| The status matrix of a batch row (Arch Q6.7): BatchReader::snapshot() builds the BatchSnapshot of one row.
+| The status matrix of a batch row: BatchReader::snapshot() builds the BatchSnapshot of one row.
 */
 
 it('classifies a batch row', function (int $total, int $pending, int $failed, ?int $finished, ?int $cancelled, BatchStatus $status, ?int $closedAt): void {
@@ -54,7 +54,7 @@ it('reads rows as objects or arrays and keeps the raw name', function (): void {
         ->and(BatchReader::snapshot((object) $row, new BatchKind))->toEqual($expected);
 });
 
-it('reads a corrupt number past the integer range as missing instead of wrapping it (PHP 8.5, T18)', function (): void {
+it('reads a corrupt number past the integer range as missing instead of wrapping it (PHP 8.5)', function (): void {
     // (int) 1e30 wraps on PHP 8.2-8.4 and warns on 8.5 (failOnWarning), which would fail the whole collector.
     $snapshot = BatchReader::snapshot([
         'id' => 'b', 'name' => 'n', 'total_jobs' => 1e30, 'pending_jobs' => '1e30', 'failed_jobs' => '2',
