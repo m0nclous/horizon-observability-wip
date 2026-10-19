@@ -486,7 +486,8 @@ SupervisorRepository/MasterSupervisorRepository; scrape-interval invariance of i
 Redis restart reset; sync/deferred/background exclusion. Coverage gate: a test fails if a catalog family has no truth test.
 Acceptance: green on phpredis and predis; each family listed in a coverage table in the test README.
 
-### T17 Dashboard truth tests — `in progress` (depends on T13, T16, T11)
+### T17 Dashboard truth tests — `todo` (depends on T13, T16, T11)
+QA: 2026-10-19 14:50 UTC: parked under the prod-first rule (decision 15) after WP1: the thin end-to-end slice is green in CI on draft PR #25 (dashboard-truth 39271367496 on Grafana 12.4.13 and 13.2.4, tests 39271367630) after an independent review whose 7 findings were addressed; determinism 6 runs with 0 differences; mutants killed; the branch wip/T17-dashboard-truth stays unmerged; WP2-WP8 are T19 item 9
 **Owner decisions (2026-10-19)** on the design questions of planning/T17-DESIGN.md section 18: counter resets and
 in-range scrape gaps are documented as is (deviations D-R1, D-R2, D-G; ADDENDUM R3.1 to be amended), range-fed gauge
 tiles in `--live=off` show the last grid point (D-L), the three `increase()` cells (#6 F/G, #24 K) stay approximate with
