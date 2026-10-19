@@ -54,11 +54,14 @@ use Throwable;
  * it; the storage and reader Redis connections (reachable, latency, client, cluster, persistent flag, braces in the
  * prefix); the timeouts of Horizon's `horizon` connection, of the default cache store (a `failover` store by the stores
  * it tries, a `storage` store by its disk) and of the batching database connection (a store without a timeout can cost
- * a scrape its budget). A Redis connection's timeouts, persistent flag and prefix are those the client Laravel builds
- * for it reads ({@see RedisClientSettings}: phpredis and predis, one server or a cluster), and the fix lines name a
- * place that client reads them from; Horizon (version, status, topology, the Grafana link in the `horizon` group); capabilities;
+ * a scrape its budget); Horizon (version, status, topology, the Grafana link in the `horizon` group); capabilities;
  * batches; the job-class cache and cap; a dry run of every collector; the live block (enabled, stream URL, token,
  * stream id, the last push, and with `$livePushTest` one `tiles` frame pushed to the stream `<id>_check`).
+ *
+ * A Redis connection's timeouts, persistent flag and prefix are those the client Laravel builds for it reads
+ * ({@see RedisClientSettings}: phpredis and predis, one server or a cluster), and the fix lines name a place that
+ * client reads them from. A Redis error reply of a server that answered (read-only replica, ACL refusal, maxmemory,
+ * ...) gets the fix for that reply ({@see RedisErrorReply}), not the connectivity one.
  *
  * Database timeouts are connect timeouts (`PDO::ATTR_TIMEOUT`, `login_timeout` on SQL Server): PDO has no portable
  * read timeout.

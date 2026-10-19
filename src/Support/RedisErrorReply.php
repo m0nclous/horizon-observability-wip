@@ -16,8 +16,8 @@ use Throwable;
  *
  * The reply is read from the failure and its causes: a phpredis `RedisException` or `RedisClusterException` (phpredis
  * throws every error reply but `ERR`, `NOSCRIPT`, `WRONGTYPE` and a few cluster ones), a predis `ServerException` (or
- * the `ConnectionException` of a refused handshake), or {@see RedisScriptFailed} (a package Lua script; a reply of `redis.call()` inside it, such as a refused `TIME`,
- * follows the script's own `ERR`). Replies with a fix:
+ * the `ConnectionException` of a refused handshake), or {@see RedisScriptFailed} (a package Lua script; a reply of
+ * `redis.call()` inside it, such as a refused `TIME`, follows the script's own `ERR`). Replies with a fix:
  * - `READONLY`, `MASTERDOWN`: a replica (a `REDIS_HOST` on a replica, or a primary a failover demoted): point the
  *   connection at the writable primary;
  * - `NOPERM`, and `ERR ACL failure in script` (Redis 7+ and Valkey inside a script): an ACL refusal; the refused
