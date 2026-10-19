@@ -128,7 +128,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "last_over_time(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"firing\"}[90s])",
+          "expr": "GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"firing\"}",
           "legendFormat": "__auto",
           "range": false,
           "instant": true,
@@ -1213,7 +1213,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(count by (grafana_rule_uid) (last_over_time(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\"}[90s]))) or vector(0)",
+          "expr": "count(count by (grafana_rule_uid) (GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=~\"pending|firing\"} @ ${__to:date:seconds})) and on () (vector(time()) + ($__interval_ms / 1000) > ${__to:date:seconds}) or count(count by (grafana_rule_uid) (GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=~\"pending|firing\"})) unless on () (vector(time()) + ($__interval_ms / 1000) > ${__to:date:seconds}) or vector(0)",
           "legendFormat": "__auto",
           "range": true,
           "instant": false,
@@ -1225,7 +1225,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "1000000000 * ((2 * group(last_over_time(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"firing\"}[90s])) or group(last_over_time(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"pending\"}[90s])) or group(last_over_time(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"firing\"}[15m])) or vector(0)) < bool 1) * 2 + 1000000000 * ((2 * group(last_over_time(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"firing\"}[90s])) or group(last_over_time(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"pending\"}[90s])) or group(last_over_time(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"firing\"}[15m])) or vector(0)) < bool 2)",
+          "expr": "1000000000 * ((2 * group(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"firing\"}) or group(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"pending\"}) or group(last_over_time(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"firing\"}[15m])) or vector(0)) < bool 1) * 2 + 1000000000 * ((2 * group(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"firing\"}) or group(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"pending\"}) or group(last_over_time(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"firing\"}[15m])) or vector(0)) < bool 2)",
           "legendFormat": "level",
           "range": false,
           "instant": true,
@@ -1237,7 +1237,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(group(last_over_time(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"firing\"}[90s])), \"display\", \"Firing\", \"\", \"\") or on () label_replace(group(last_over_time(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"pending\"}[90s])), \"display\", \"Pending\", \"\", \"\") or on () label_replace(count_values(\"v\", ceil((900 - (time() - max(max_over_time(timestamp(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"firing\"})[15m:])))) / 60) > 0), \"display\", \"Stable in ${1}m\", \"v\", \"(.*)\") or on () label_replace(vector(1), \"display\", \"Stable\", \"\", \"\")",
+          "expr": "label_replace(group(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"firing\"}), \"display\", \"Firing\", \"\", \"\") or on () label_replace(group(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"pending\"}), \"display\", \"Pending\", \"\", \"\") or on () label_replace(count_values(\"v\", ceil((900 - (time() - max(max_over_time(timestamp(GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures|live)\", alertstate=\"firing\"})[15m:])))) / 60) > 0), \"display\", \"Stable in ${1}m\", \"v\", \"(.*)\") or on () label_replace(vector(1), \"display\", \"Stable\", \"\", \"\")",
           "legendFormat": "caption",
           "range": false,
           "instant": true,

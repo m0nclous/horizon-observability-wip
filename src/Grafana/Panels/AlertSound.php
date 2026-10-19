@@ -52,8 +52,9 @@ final readonly class AlertSound
                 'styles' => '',
                 'wrap' => false,
             ],
-            // Firing rules: GRAFANA_ALERTS instances, one per queue for the per-queue rules
-            'targets' => [$this->common->target('A', $this->alerts->seen('firing'), format: 'table')],
+            // Firing rules: GRAFANA_ALERTS instances, one per queue for the per-queue rules, firing as the Alerts tile
+            // counts them (AlertState::active())
+            'targets' => [$this->common->target('A', $this->alerts->active('firing'), format: 'table')],
             'title' => '',
             'transparent' => true,
             'type' => 'marcusolsson-dynamictext-panel',

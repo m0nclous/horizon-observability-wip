@@ -61,12 +61,6 @@ final class Thresholds
     public const RPM_WINDOW_MINUTES = 5;
 
     /**
-     * Alerts tile and alert sound: Grafana writes `GRAFANA_ALERTS` once per evaluation (1m), so a rule counts while
-     * it has a point in this window (1.5 evaluation intervals).
-     */
-    public const ALERT_SEEN_WINDOW = '90s';
-
-    /**
      * Alerts tile: yellow for this many minutes after the last firing point.
      */
     public const ALERT_STABILIZATION_MINUTES = 15;

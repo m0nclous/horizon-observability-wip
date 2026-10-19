@@ -328,6 +328,19 @@ Alert rules (evaluated every minute):
 
 A render deletes the optional rules it leaves out, so switching modes leaves no stale rule behind.
 
+**Alerts tile.** The number is how many of these rules are active: a rule counts while it is pending or firing, once
+whatever its queues. The colour:
+
+- red while a rule fires (the dashboard rings for firing rules only);
+- yellow while a rule is pending and none fires, and for 15 minutes after the last firing point of a resolved alert
+  (caption "Stable in 12m", number 0);
+- green otherwise (caption "Stable").
+
+A rule counts from the evaluation that makes it pending to the one that resolves it, as soon as Grafana has written
+that state to Prometheus, usually within seconds. The rules are evaluated every minute and most need their condition
+for 5 minutes, so the live tiles above can turn red minutes before a rule fires. If Grafana stops while an alert is
+active, the tile can count that alert for up to 5 minutes more, Prometheus' lookback.
+
 **Horizon sidebar link.** Set `HORIZON_OBSERVABILITY_GRAFANA_URL` to the dashboard URL, and Horizon's sidebar gets a
 "Grafana" link right after "Dashboard".
 

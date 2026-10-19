@@ -406,30 +406,39 @@ final readonly class Tiles
     }
 
     /**
-     * Alerts: the number of the dashboard's rules that are not normal (firing or pending). Red with firing
-     * rules, yellow with only pending ones or while a resolved alert fired less than the stabilization period
-     * ago: zero does not yet mean things settled. The caption is the state ("Firing", "Pending", "Stable in
-     * 12m" rounded up from the last firing point, else "Stable"); it is always present, otherwise the number
-     * would jump. Which rules fire is behind the dashboard's Alert rules button.
+     * Alerts: the number of the dashboard's rules that are active, pending or firing ({@see AlertState}); each counts
+     * once. Red while a rule fires; yellow while a rule is pending and none fires, and while a resolved alert fired
+     * less than the stabilization period ago: zero does not yet mean things settled; green otherwise. The caption is
+     * the state ("Firing", "Pending", "Stable in 12m" rounded up from the last firing point, else "Stable"); it is
+     * always present, otherwise the number would jump. Which rules fire is behind the dashboard's Alert rules button.
+     *
+     * The number is the last point of the sparkline, and Grafana puts that point on the last multiple of the step at
+     * or before the end of the period (up to 20 s before it at 1 hour, 10 minutes at 24 hours on a 1920-px screen), so
+     * that point counts the rules active at `${__to}` instead, the time of the caption and the colour (instant queries).
      *
      * @param  array{h: int, w: int, x: int, y: int}  $gridPos
      * @return array<string, mixed>
      */
     private function alerts(array $gridPos): array
     {
-        $count = Promql::either(Promql::count(Promql::count($this->alerts->seen(), 'grafana_rule_uid')), 'vector(0)');
+        $lastStep = Promql::paren('vector(time()) + '.Promql::paren(Promql::INTERVAL_MS.' / 1000').' > '.Promql::TO_SECONDS);
+        $count = Promql::either(
+            Promql::andOn($this->alerts->activeRules(Promql::TO_SECONDS), $lastStep),
+            Promql::unlessOn($this->alerts->activeRules(), $lastStep),
+            'vector(0)',
+        );
         $level = Promql::either(
-            '2 * '.Promql::group($this->alerts->seen('firing')),
-            Promql::group($this->alerts->seen('pending')),
-            Promql::group($this->alerts->seen('firing', AlertState::stabilization())),
+            '2 * '.Promql::group($this->alerts->active('firing')),
+            Promql::group($this->alerts->active('pending')),
+            $this->alerts->firedRecently(),
             'vector(0)',
         );
         $remaining = Promql::call(
             'ceil',
             Promql::paren((Thresholds::ALERT_STABILIZATION_MINUTES * 60).' - '.Promql::paren('time() - '.$this->alerts->lastFiring())).' / 60',
         );
-        $caption = Promql::withLabel(Promql::group($this->alerts->seen('firing')), 'display', 'Firing');
-        $caption = Promql::orOn($caption, Promql::withLabel(Promql::group($this->alerts->seen('pending')), 'display', 'Pending'));
+        $caption = Promql::withLabel(Promql::group($this->alerts->active('firing')), 'display', 'Firing');
+        $caption = Promql::orOn($caption, Promql::withLabel(Promql::group($this->alerts->active('pending')), 'display', 'Pending'));
         $caption = Promql::orOn($caption, Promql::labelReplace(Promql::countValues('v', $remaining.' > 0'), 'display', 'Stable in ${1}m', 'v', '(.*)'));
         $caption = Promql::orOn($caption, Promql::withLabel('vector(1)', 'display', 'Stable'));
 
