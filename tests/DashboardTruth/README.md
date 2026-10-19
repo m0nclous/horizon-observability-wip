@@ -24,6 +24,12 @@ ASSERT   Pest (DashboardTruthTest, DASHBOARD_TRUTH_STACK=1): every spec on Grafa
          the next coarser step, the DOM, the checks, then the runtime gate -> report.{md,json}
 ```
 
+**Grafana's grid** (`Contracts/Grid`, `Compare/Observation::grid()`): the step comes from `Step:` of the frame's
+`meta.executedQueryString`, the phase from the earliest returned point, and the grid is the full progression of the
+step from the multiple in (from - step, from] to the one in (to - step, to], the way Grafana's backend aligns the range
+query. It is never the set of points the dashboard returned: a dropped zero, a gap, a cut start or end is a missing
+point (`expected 0, actual no point`), a point off the grid an unexpected one, even when the tile sum is right.
+
 Everything lives under `build/dashboard-truth/<run>/`. Expectations come from the stored samples through restated
 documented semantics (`Expect/Core`), never from the dashboard's PromQL (`IndependenceTest`).
 
@@ -42,7 +48,7 @@ php tests/DashboardTruth/bin/run --slot=30              # another port block (se
 | `--keep` | leave the stack, the router and the Redis worlds running (`bin/run cleanup --run=<id>` removes them) |
 | `--set=pr\|full`, `--cases=S01,S02` | the case set, or only these cases |
 | `--grafana=12\|13\|both` | Grafana versions (default both) |
-| `--slot=<N>` | ports: Prometheus 19000+N, Grafana 13.2.4 13000+N, 12.4.13 13500+N, router 18000+N (env overrides: `PROMETHEUS_PORT`, `GRAFANA_PORT`, `GRAFANA12_PORT`, `APP_PORT`, `COMPOSE_PROJECT_NAME`) |
+| `--slot=<N>` | ports: Prometheus 19000+N, Grafana 13.2.4 13000+N, 12.4.13 13500+N, router 18000+N (env overrides: `PROMETHEUS_PORT`, `GRAFANA_PORT`, `GRAFANA12_PORT`, `APP_PORT`, `COMPOSE_PROJECT_NAME`). One run holds a slot at a time (`build/dashboard-truth/slot-<N>.lock` until its cleanup): another run exits 3 naming the holder and its cleanup command, and the ingest stage refuses a Prometheus that already holds samples, leaving a stack it did not start as it is |
 | `--mutant=<name> --expect-red` | import a synthetic mutant (`Mutants/Synthetic.php`) and require its cases to fail with a dashboard defect |
 | `--ci` | CI output groups |
 
@@ -51,7 +57,9 @@ a step and prints its frame; every failure in the report carries this command. `
 compares the observations of two runs (the determinism check, `Compare/Determinism`): the sent queries, the frames
 (series and rows order-insensitive), the DOM and the scene variables must be identical. Only the measured durations
 are masked: attempt durations (#6 F, G, I, J and their DOM cells) and Horizon's job runtimes and record stamps (the
-job lists' Runtime, their times compared to the second), plus the random job ids in the job-list links.
+job lists' Runtime, their times compared to the second), plus the random job ids in the job-list links. The DOM of
+those panels compares its table rows (`role="row"`, captured by the observer) as a multiset, because #6 sorts by
+Pending, then the measured Avg: two classes with Pending 0 swap with their averages from run to run.
 
 The record stage needs Redis on `REDIS_HOST:REDIS_PORT` (127.0.0.1:6379); it writes only under its world prefix and
 `bin/run` deletes the worlds at the end (also on failure and SIGINT/SIGTERM) unless `--keep`. Normal `pest` runs skip
@@ -61,7 +69,7 @@ The record stage needs Redis on `REDIS_HOST:REDIS_PORT` (127.0.0.1:6379); it wri
 
 | Dataset | Epoch | Span | Targets | Content |
 |---|---|---|---|---|
-| `slice` | E_0 = 2025-03-03T00:00Z | 1 h 40 min | `app` / `app:8080`, S 10 s, phase 3.2 s | `supervisor-default` (default, auto, 3 processes); Truth\Invoice completed, failed and retried every 30 s; batch `import`; Truth\Born held birth 5 s after the 2-minute boundary at 3600 s |
+| `slice` | E_6 = 2025-04-20T00:00Z (k = 6, the first after the design's core to quiet, 0 to 5: the slice shares `app` / `app:8080` with core and stays next to it) | 1 h 40 min | `app` / `app:8080`, S 10 s, phase 3.2 s | `supervisor-default` (default, auto, 3 processes); Truth\Invoice completed, failed and retried every 30 s; batch `import`; Truth\Born held birth 5 s after the 2-minute boundary at 3600 s |
 
 ## Cases
 
@@ -100,28 +108,35 @@ None.
 ## Sensitivity evidence
 
 - Mutant `completed-retried` (#8 A counts retried attempts as completed): killed on both versions, 8 dashboard
-  defects in S01 (grid, both replays and DOM per version); CI runs it after every PR run.
+  defects in S01 (grid, both replays and DOM per version).
+- Mutant `drop-zeros` (#8 A as `(<expr>) > 0`: gaps instead of 0 while the application exports metrics; the sum, the
+  tile number and the DOM stay right): killed on both versions, 6 dashboard defects in S01 (the grid and both replays
+  per version: 120 of 241, 158 of 361 and 121 of 181 points). It survived while the grid was the set of returned
+  points. CI runs both mutants after every PR run.
 - Negative control S02: fails as `case setup` only, on both versions.
-- Determinism: full local runs, each recording its own world, give identical observations (`bin/run compare`,
-  measured durations masked): two on phpredis and a third recorded on predis, 4 of 4 observations each.
+- Determinism: six full local runs, each recording its own world (four on phpredis, one recorded on predis, one with
+  `TZ=America/St_Johns` for PHP and Node), give identical observations (`bin/run compare`, measured durations masked):
+  4 of 4 observations, 0 differences, for each run against the first. The review's pairs whose #6 rows swapped with
+  the measured Avg (Born 831 µs against Invoice 817 µs) give 0 differences too, and a cell moved to another row of #6
+  is a difference (`Unit/Compare/DeterminismTest`).
 
 ## Stage timings
 
 Seconds per stage of the slice (S01 and S02 on both versions; `timings.json` of the run). The CI column is the range
-of the first two green runs of the `dashboard-truth` job on the draft PR (runs 39257113648 and 39258521067,
-ubuntu-24.04, 2 vCPU), which feeds the 15-minute bound of the PR set (design section 12).
+of the green runs of the `dashboard-truth` job on the draft PR (ubuntu-24.04, 2 vCPU: 39257113648, 39258521067 and
+39259163392), which feeds the 15-minute bound of the PR set (design section 12).
 
 | Stage | Local (24 threads, slot 30) | CI runner (ubuntu-24.04, 2 vCPU) |
 |---|---|---|
 | setup (job start to the suite: Redis service, checkout, PHP, Composer, Playwright with its system packages, plugins) | - | 65 |
-| record (one dataset, 1 h 40 min, 600 scrapes) | 5.8-6.3 | 4.4-7.4 |
-| ingest (55,869 samples; includes waiting for Prometheus) | 1.2-1.5 | 1.8-2.0 |
+| record (one dataset, 1 h 40 min, 600 scrapes) | 5.5-6.3 | 4.4-7.4 |
+| ingest (55,869 samples; includes waiting for Prometheus) | 1.2-1.5 | 1.8-5.6 |
 | stack (Grafanas healthy, router, imports, plan) | 1.2-3.0 | 1.7-2.2 |
-| capture (2 cases x 2 versions, two browsers in parallel) | 8.7-9.4 | 11.0-15.3 |
-| assert (3 frame comparisons per range target incl. the replays, DOM, checks, gate) | 0.6 | 0.6-0.9 |
+| capture (2 cases x 2 versions, two browsers in parallel) | 8.6-9.4 | 11.0-15.3 |
+| assert (3 frame comparisons per range target incl. the replays, DOM, checks, gate) | 0.5-0.6 | 0.6-0.9 |
 | slice total (`bin/run`) | 18-20 | 20-28 |
-| mutant `completed-retried` (stack, capture, assert of S01) | 5.6 | 7.1-9.7 |
-| whole job (queue excluded) | - | 97-101 |
+| one mutant (stack, capture, assert of S01) | 5.5-5.6 | 6.8-9.7 |
+| whole job (queue excluded) | - | 97-121 |
 
 Capture dominates: 4.4 to 8.1 s per page load on the runner (one Chromium per version, in parallel), so the 31 page
 loads per version of the PR set need about 2.5 to 4.5 minutes. Recording grows with the scrapes: 7 to 12 ms per
@@ -131,6 +146,22 @@ With setup, ingest and assert the PR set stays near 10 minutes, inside the 15-mi
 ## Known limits (WP1)
 
 - `Expect/Core/Counters` models one instance per job (the replica dedupe is WP5) and the All selection only.
+- Contract widenings left to their work packages (review of WP1; nothing is persisted across runs, so each is a
+  schema bump without migration):
+  - WP2: the manifest holds one world (one Redis prefix, SQLite database and token) and its attempts carry no app or
+    scrape job, so `AttemptLog`'s birth key (connection, queue, class) would merge the two apps of `multi-job`, which
+    share queue `default` and App\Jobs\SendEmail. The multi-job dataset needs per-app worlds and attempts keyed by
+    app. The slice world also exports the queues and job classes of the workbench Horizon config (default, mail,
+    reports, slow, sms), which the variable expectations of WP7 need recorded as the configured universe.
+  - WP6/WP7: `Expectation` models numeric series and `DomSpec` text lines; table rows and string cells (the Infinity
+    job lists, the #5, #6 and #24 cells), colours and transformed table data need forms of their own (the observer now
+    captures every table row of the DOM; it captures transformed frames for stat panels only). There is no clone
+    dimension in `CaseContext`, `TargetSpec`, `Assertion` or the runtime gate, and the observer does not capture the
+    clones' scoped variables yet (design sections 5.8 and 7.1).
+- The slice is not sensitive to the step edges: scrapes at a phase of 3.2 s and a 1 h range on whole minutes never
+  put a sample on a step boundary or on from/to, so the left-open/right-closed edges, the step that holds `from` and
+  the last point that ends at `to` are checked point by point in `Unit/Expect/CountersTest` (samples on every
+  boundary and at from and to, a shifted grid) and wait for the WP2 datasets (held births on boundaries) end to end.
 - The fixed browser clock is released (`page.clock.setSystemTime(V)`) once every query panel has answered: under a
   fixed `Date.now()` the `-- Dashboard --` datasource of #5 never leaves Loading. Every query is sent on the fixed
   clock; a query sent after the release on another range is an infrastructure failure.
