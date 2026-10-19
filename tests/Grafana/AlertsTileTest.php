@@ -55,14 +55,14 @@ it('renders the Alerts tile and the alert sound on the active states of GRAFANA_
     $active = $selector('=~"pending|firing"');
     $firing = $selector('="firing"');
     $pending = $selector('="pending"');
-    $lastStep = '(vector(time()) + ($__interval_ms / 1000) > ${__to:date:seconds})';
+    $lastStep = '(vector(time()) + ($__interval_ms / 1000) > ${__to}e-3)';
     $level = '2 * group('.$firing.') or group('.$pending.') or group(last_over_time('.$firing.'[15m])) or vector(0)';
     $targets = alertsTileTargets($mode);
 
     expect(array_keys($targets))->toBe(['23 A', '21 A', '21 C', '21 B'])
         // The number: the active rules at each point of the sparkline, at ${__to} for the last point
         ->and($targets['21 A']['expr'])->toBe(
-            'count(count by (grafana_rule_uid) ('.$active.' @ ${__to:date:seconds})) and on () '.$lastStep
+            'count(count by (grafana_rule_uid) ('.$active.' @ ${__to}e-3)) and on () '.$lastStep
             .' or count(count by (grafana_rule_uid) ('.$active.')) unless on () '.$lastStep
             .' or vector(0)',
         )

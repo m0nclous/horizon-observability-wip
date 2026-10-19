@@ -1227,7 +1227,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(count by (grafana_rule_uid) (GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures)\", alertstate=~\"pending|firing\"} @ ${__to:date:seconds})) and on () (vector(time()) + ($__interval_ms / 1000) > ${__to:date:seconds}) or count(count by (grafana_rule_uid) (GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures)\", alertstate=~\"pending|firing\"})) unless on () (vector(time()) + ($__interval_ms / 1000) > ${__to:date:seconds}) or vector(0)",
+          "expr": "count(count by (grafana_rule_uid) (GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures)\", alertstate=~\"pending|firing\"} @ ${__to}e-3)) and on () (vector(time()) + ($__interval_ms / 1000) > ${__to}e-3) or count(count by (grafana_rule_uid) (GRAFANA_ALERTS{grafana_rule_uid=~\"horizon-observability-(no-metrics|down|long-wait|failures)\", alertstate=~\"pending|firing\"})) unless on () (vector(time()) + ($__interval_ms / 1000) > ${__to}e-3) or vector(0)",
           "legendFormat": "__auto",
           "range": true,
           "instant": false,

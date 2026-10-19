@@ -458,9 +458,10 @@ final readonly class Tiles
      */
     private function alerts(array $gridPos): array
     {
-        $lastStep = Promql::paren('vector(time()) + '.Promql::paren(Promql::INTERVAL_MS.' / 1000').' > '.Promql::TO_SECONDS);
+        // The exact period end: Grafana rounds ${__to:date:seconds}, so the guard missed the last step on some refreshes
+        $lastStep = Promql::paren('vector(time()) + '.Promql::paren(Promql::INTERVAL_MS.' / 1000').' > '.Promql::TO);
         $count = Promql::either(
-            Promql::andOn($this->alerts->activeRules(Promql::TO_SECONDS), $lastStep),
+            Promql::andOn($this->alerts->activeRules(Promql::TO), $lastStep),
             Promql::unlessOn($this->alerts->activeRules(), $lastStep),
             'vector(0)',
         );
