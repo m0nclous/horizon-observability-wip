@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dashboard-truth/plan.schema.json",
+  "title": "<run dir>/plan.json: the cases of a run, for the capture and assert stages",
+  "type": "object",
+  "required": ["schema", "run", "runDir", "mutant", "routerLog", "grafanas", "renders", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": 1},
+    "run": {"type": "string", "pattern": "^[a-z0-9]{4,20}$"},
+    "runDir": {"type": "string"},
+    "mutant": {"type": ["string", "null"], "description": "the synthetic mutant applied to the renders, or null"},
+    "routerLog": {"type": "string"},
+    "grafanas": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["url", "version"],
+        "additionalProperties": false,
+        "properties": {"url": {"type": "string", "pattern": "^http://"}, "version": {"type": "string"}}
+      }
+    },
+    "renders": {"type": "object", "additionalProperties": {"type": "string"}, "description": "mode => the imported dashboard JSON"},
+    "cases": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/case"}}
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "required": ["case", "id", "uid", "path", "fakeNow", "timezone", "width", "height", "rows", "panels"],
+      "additionalProperties": false,
+      "properties": {
+        "case": {
+          "type": "object",
+          "required": ["id", "dataset", "mode", "from", "to", "vars", "timezone", "width", "view", "set", "custom", "purpose", "expect"],
+          "properties": {
+            "id": {"type": "string"},
+            "dataset": {"type": "string"},
+            "mode": {"enum": ["off", "poll", "stream"]},
+            "from": {"type": "string"},
+            "to": {"type": "string"},
+            "vars": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+            "timezone": {"type": "string"},
+            "width": {"type": "integer"},
+            "view": {"enum": ["normal", "kiosk"]},
+            "set": {"enum": ["pr", "full"]},
+            "custom": {"type": "boolean"},
+            "purpose": {"type": "string"},
+            "expect": {"enum": [null, "exporter mismatch", "dashboard defect", "infrastructure", "case setup"], "description": "a negative control: the only category it must fail with"}
+          }
+        },
+        "id": {"type": "string"},
+        "uid": {"type": "string", "pattern": "^t17m?-"},
+        "path": {"type": "string", "pattern": "^/d/"},
+        "fakeNow": {"type": "integer", "description": "the browser's fixed clock, epoch ms (the dataset's end V)"},
+        "timezone": {"type": "string"},
+        "width": {"type": "integer", "minimum": 320},
+        "height": {"type": "integer", "minimum": 600},
+        "rows": {"type": "array", "items": {"type": "string"}},
+        "panels": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "type", "title", "refIds", "repeat", "queried", "datasources"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"type": "integer", "minimum": 1},
+              "type": {"type": "string"},
+              "title": {"type": "string"},
+              "refIds": {"type": "array", "items": {"type": "string"}},
+              "repeat": {"type": ["string", "null"]},
+              "queried": {"type": "boolean"},
+              "datasources": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        }
+      }
+    }
+  }
+}

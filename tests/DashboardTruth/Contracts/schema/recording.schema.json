@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dashboard-truth/recording.schema.json",
+  "title": "One line of datasets/<name>/recording.ndjson: one scrape slot of one target",
+  "type": "object",
+  "required": ["target", "t", "ok", "exposition"],
+  "additionalProperties": false,
+  "properties": {
+    "target": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$", "description": "the target name of the manifest"},
+    "t": {"type": "integer", "minimum": 0, "description": "slot time, epoch milliseconds"},
+    "ok": {"type": "boolean", "description": "false for a failed slot (up 0, staleness markers)"},
+    "exposition": {"type": ["string", "null"], "description": "the text exposition the endpoint served; null for a failed slot"}
+  }
+}

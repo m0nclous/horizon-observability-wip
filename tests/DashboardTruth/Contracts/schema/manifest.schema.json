@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dashboard-truth/manifest.schema.json",
+  "title": "datasets/<name>/manifest.json: what the record stage leaves for ingest, stack, capture and assert",
+  "type": "object",
+  "required": ["schema", "dataset", "epoch", "end", "scrapeInterval", "prefix", "sqlite", "token", "targets", "topology", "events", "attempts", "ttl", "renders"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": 1},
+    "dataset": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+    "epoch": {"type": "integer", "minimum": 1740960000, "description": "E_k, epoch seconds"},
+    "end": {"type": "integer", "description": "V_k, epoch seconds: the fake browser clock and the router's pinned clock"},
+    "scrapeInterval": {"type": "integer", "minimum": 5, "description": "S in seconds: the datasource interval and --scrape-interval of the renders"},
+    "prefix": {"type": "string", "pattern": "^ho_t17_[a-z0-9]+_[a-z0-9-]+:$", "description": "the kept Redis world"},
+    "sqlite": {"type": "string", "description": "the world's SQLite database (batches)"},
+    "token": {"type": "string", "minLength": 1},
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "job", "instance", "interval", "phase", "from", "to", "failed"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string"},
+          "job": {"type": "string"},
+          "instance": {"type": "string"},
+          "interval": {"type": "integer", "minimum": 1},
+          "phase": {"type": "number"},
+          "from": {"type": "integer", "description": "active interval start, epoch seconds"},
+          "to": {"type": "integer", "description": "active interval end, epoch seconds"},
+          "failed": {"type": "array", "items": {"type": "integer"}, "description": "failed slot times, epoch milliseconds"}
+        }
+      }
+    },
+    "topology": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "masters"],
+        "properties": {
+          "from": {"type": "integer"},
+          "to": {"type": "integer"},
+          "masters": {"type": "array"}
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["at", "kind", "detail"],
+        "additionalProperties": false,
+        "properties": {
+          "at": {"type": "number"},
+          "kind": {"type": "string"},
+          "detail": {"type": "string"}
+        }
+      }
+    },
+    "attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["connection", "queue", "class", "status", "at"],
+        "additionalProperties": false,
+        "properties": {
+          "connection": {"type": "string"},
+          "queue": {"type": "string"},
+          "class": {"type": "string"},
+          "status": {"enum": ["completed", "released", "retried", "failed", "timed_out"]},
+          "at": {"type": "number"}
+        }
+      }
+    },
+    "ttl": {"type": "object", "additionalProperties": {"type": "integer"}},
+    "renders": {"type": "array", "minItems": 1, "items": {"enum": ["off", "poll", "stream"]}}
+  }
+}
