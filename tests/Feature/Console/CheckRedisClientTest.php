@@ -537,6 +537,41 @@ it('judges the Horizon connection by its client, and names the connection Horizo
     }, false],
 ]);
 
+it('names the cluster Horizon copies when horizon.use is a cluster', function (): void {
+    config()->set('database.redis.client', 'phpredis');
+    config()->set('database.redis.clusters.probe', [['host' => redisModelHost(), 'port' => redisModelPort()]]);
+    config()->set('horizon.use', 'probe');
+    // Horizon with cluster support (Laravel's Connection::hasHashTag()) copies the cluster into clusters.horizon,
+    // older Horizon its first node into database.redis.horizon.
+    config()->set('database.redis', Arr::except(config('database.redis'), 'horizon'));
+    Horizon::use('probe');
+    $standalone = is_array(config('database.redis.horizon'));
+    $truth = static function () use ($standalone): bool {
+        if ($standalone) {
+            return min(redisModelPhpredisTimeouts('horizon')) > 0;
+        }
+
+        $options = redisModelPhpredisClusterOptions('horizon');
+
+        return (float) ($options['timeout'] ?? 0) > 0 && (float) ($options['read_timeout'] ?? 0) > 0;
+    };
+    $result = redisModelResult('Timeouts', 'Horizon connection');
+
+    expect($truth())->toBeFalse()
+        ->and($result?->status->value)->toBe('warning')
+        ->and($result?->message)->toStartWith('horizon (a copy of probe) has no timeout or read_timeout')
+        ->and($result?->fix)->toBe($standalone
+            ? "Add 'timeout' => 2.0 and 'read_timeout' => 2.0 to database.redis.clusters.probe.0 in config/database.php; Horizon copies it into its horizon connection."
+            : "Add 'timeout' => 2.0 and 'read_timeout' => 2.0 to the options of database.redis.clusters.probe in config/database.php; Horizon copies it into its horizon connection.");
+
+    redisModelApplyTimeoutFix($result?->fix);
+    config()->set('database.redis', Arr::except(config('database.redis'), 'horizon'));
+    Horizon::use('probe');
+
+    expect($truth())->toBeTrue()
+        ->and(redisModelResult('Timeouts', 'Horizon connection')?->status->value)->toBe('ok');
+});
+
 it('warns about a persistent client exactly when the client Laravel builds is persistent, and its fix line ends it', function (string $client, Closure $configure, bool $persistent): void {
     config()->set('database.redis.client', $client);
     config()->set('database.redis.probe', ['host' => redisModelHost(), 'port' => redisModelPort(), 'database' => 0, 'persistent_id' => 'ho-probe-'.bin2hex(random_bytes(4))]);
