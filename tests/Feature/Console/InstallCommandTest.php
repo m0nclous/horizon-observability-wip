@@ -348,16 +348,20 @@ it('keeps a dashboard that differs from the render unless --force, and asks when
         ->and(file_get_contents($dashboard))->toBe("{\"rendered\": \"--live=stream by hand\"}\n")
         ->and($output)->toContain('kept (differs from the --live=poll render; --force renders it again)');
 
+    [, $output] = install(['--docker' => true, '--force' => true]);
+
+    expect(file_get_contents($dashboard))->not->toContain('by hand')
+        ->and($output)->toContain('rendered (--live=poll)');
+
+    // Interactive last: before Laravel 11.44 the mocked console output of $this->artisan() stays bound after the
+    // command, so a later Artisan::call() would ask its questions through that mock.
+    file_put_contents($dashboard, "{\"rendered\": \"--live=stream by hand\"}\n");
+
     $this->artisan('horizon-observability:install', ['--docker' => true, '--app-url' => 'http://host.docker.internal:8000'])
         ->expectsConfirmation('The dashboard in docker/observability/grafana differs from the --live=poll render. Render it again?', 'no')
         ->assertExitCode(0);
 
     expect(file_get_contents($dashboard))->toBe("{\"rendered\": \"--live=stream by hand\"}\n");
-
-    [, $output] = install(['--docker' => true, '--force' => true]);
-
-    expect(file_get_contents($dashboard))->not->toContain('by hand')
-        ->and($output)->toContain('rendered (--live=poll)');
 });
 
 it('points the endpoints, the scrape jobs and the Infinity URL at the package domain', function (): void {
