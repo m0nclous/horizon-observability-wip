@@ -6,6 +6,7 @@ namespace DF\HorizonObservability\Tests\Grafana\Support;
 
 use DF\HorizonObservability\Grafana\Json;
 use DF\HorizonObservability\Grafana\Live\LiveMode;
+use DF\HorizonObservability\Grafana\Live\LivePanels;
 use RuntimeException;
 
 /**
@@ -175,6 +176,23 @@ final class LayoutProjection
                 unset($panel['options']['afterRender']);
             }
 
+            // The queue tables join the snapshot's columns of now (LivePanels::queueTable()): other transformations,
+            // the same columns
+            if ($id === self::QUEUES && is_array($offPanels[$id] ?? null) && is_array($panel['transformations'] ?? null)) {
+                /** @var array<string, mixed> $offPanel */
+                $offPanel = $offPanels[$id];
+                $live = (new LivePanels($mode, 'horizon_observability'))->queueTable($offPanel);
+                // As the rendered JSON decodes: empty objects become arrays
+                $transformations = json_decode(json_encode(is_array($live['transformations'] ?? null) ? $live['transformations'] : [], JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
+                $transformations = is_array($transformations) ? $transformations : [];
+
+                if (self::columns($transformations) !== self::columns($panel['transformations'])) {
+                    throw new RuntimeException('The live table #'.$id.' shows other columns than the off one.');
+                }
+
+                $panel['transformations'] = $transformations;
+            }
+
             $expected[] = $panel;
         }
 
@@ -191,7 +209,8 @@ final class LayoutProjection
     public static function columns(array $transformations): array
     {
         foreach ($transformations as $transformation) {
-            if (! is_array($transformation) || ($transformation['id'] ?? null) !== 'organize' || ! is_array($transformation['options'] ?? null)) {
+            // An organize step of some frames only (a filter) does not lay out the table
+            if (! is_array($transformation) || ($transformation['id'] ?? null) !== 'organize' || isset($transformation['filter']) || ! is_array($transformation['options'] ?? null)) {
                 continue;
             }
 

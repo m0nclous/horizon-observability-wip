@@ -1828,7 +1828,38 @@
         },
         {
           "id": "merge",
-          "options": {}
+          "options": {},
+          "filter": {
+            "id": "byRefId",
+            "options": "M|C|K|Z"
+          }
+        },
+        {
+          "id": "organize",
+          "filter": {
+            "id": "byRefId",
+            "options": "W"
+          },
+          "options": {
+            "excludeByName": {},
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {
+              "queue": "queue",
+              "Value #A": "Value #A",
+              "Value #D": "Value #D",
+              "Value #B": "Value #B",
+              "Value #G": "Value #G",
+              "cell": "cell"
+            }
+          }
+        },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "queue",
+            "mode": "outerTabular"
+          }
         },
         {
           "id": "filterByValue",

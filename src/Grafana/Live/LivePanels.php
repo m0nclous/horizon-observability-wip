@@ -99,6 +99,11 @@ final readonly class LivePanels
     public const WORKLOAD_REF = 'W';
 
     /**
+     * The queue source's Prometheus queries in the live renders, the frames the queue tables merge before they join W.
+     */
+    public const QUEUE_SOURCE_PROMETHEUS_REFS = 'M|C|K|Z';
+
+    /**
      * The snapshot's `workload` rows as the queue source's columns, named like the Prometheus fields they replace,
      * so the tables' merge and organize steps stay those of the off render.
      */
@@ -137,9 +142,8 @@ final readonly class LivePanels
     /**
      * The hidden queue source #24 of this mode, given its `--live=off` panel: in poll and stream modes a Mixed panel
      * whose Prometheus queries keep the rows (M), the totals of the period (C, K) and the stub row (Z), and whose
-     * snapshot query W brings the columns of now. W comes last: Grafana's merge adds a frame's values to the earlier
-     * rows of the same queue, and its fields are new to those rows, so they join every supervisor's row of the queue.
-     * Stream mode polls too (a table cannot carry a stream), at the dashboard refresh.
+     * snapshot query W brings the columns of now; the tables join W by queue ({@see queueTable()}). Stream mode polls
+     * too (a table cannot carry a stream), at the dashboard refresh.
      *
      * @param  array<string, mixed>  $panel
      * @return array<string, mixed>
@@ -157,6 +161,46 @@ final readonly class LivePanels
         $targets[] = self::snapshotTarget(self::WORKLOAD_REF, 'workload', self::WORKLOAD_COLUMNS);
 
         return $this->changed($panel, ['datasource' => self::mixed(), 'targets' => $targets]);
+    }
+
+    /**
+     * The queue table #5 of this mode, given its `--live=off` panel: in poll and stream modes the merge takes only the
+     * Prometheus frames of the source and the snapshot rows W join its result by queue. One merge of all frames would
+     * not join: Grafana's merge keys the rows on the fields every frame has, which is `Time` for the Prometheus frames
+     * (the stub Z has no queue when it is empty) and nothing once W, which has no time, is among them. The outer
+     * tabular join keeps every (queue, supervisor) row, with empty columns of now when the snapshot is unavailable.
+     *
+     * @param  array<string, mixed>  $panel
+     * @return array<string, mixed>
+     */
+    public function queueTable(array $panel): array
+    {
+        if (! $this->mode->isLive()) {
+            return $panel;
+        }
+
+        $transformations = [];
+
+        foreach (is_array($panel['transformations'] ?? null) ? $panel['transformations'] : [] as $transformation) {
+            if (is_array($transformation) && ($transformation['id'] ?? null) === 'merge') {
+                $transformations[] = [...$transformation, 'filter' => Common::byRefId(self::QUEUE_SOURCE_PROMETHEUS_REFS)];
+                // The snapshot columns keep their names through the join: without a display name of their own, a joined
+                // field is named after its query too ("Value #A W"), which the table's organize would not find
+                $names = array_column(self::WORKLOAD_COLUMNS, 1);
+                $transformations[] = [
+                    'id' => 'organize',
+                    'filter' => Common::byRefId(self::WORKLOAD_REF),
+                    'options' => ['excludeByName' => new stdClass, 'includeByName' => new stdClass, 'indexByName' => new stdClass, 'renameByName' => array_combine($names, $names)],
+                ];
+                $transformations[] = ['id' => 'joinByField', 'options' => ['byField' => 'queue', 'mode' => 'outerTabular']];
+
+                continue;
+            }
+
+            $transformations[] = $transformation;
+        }
+
+        return $this->changed($panel, ['transformations' => $transformations]);
     }
 
     /**

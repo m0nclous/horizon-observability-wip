@@ -140,7 +140,7 @@ final readonly class DashboardBuilder
 
         $panels[] = Common::row(PanelRegistry::WORKLOAD_ROW, 'Current Workload', $y);
         $y += Common::ROW_HEIGHT;
-        $panels[] = $queues->table($y);
+        $panels[] = $live->queueTable($queues->table($y));
         $y += Queues::HEIGHT;
         $panels[] = $batches->workload($y);
         $y += Batches::WORKLOAD_HEIGHT;
