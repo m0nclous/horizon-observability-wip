@@ -31,7 +31,8 @@ The first public release: a rewrite of the internal pilot `sushi-market/horizon-
   requests do no cache, database or Redis work. The endpoints stay reachable during maintenance mode.
 - Job attempts recorded with one Redis `EVAL` per attempt on a private short-timeout client behind a circuit
   breaker: counters, duration and wait histograms, duration extremes, a counter reset guard and the live ring
-  buffer; the legacy `ready_at` side channel only on stacks that need it.
+  buffer; the legacy `ready_at` side channel only on stacks that need it. The Lua scripts go to Redis without their
+  comments: about 4.2 KB per job end instead of 9.6 KB, and 42 KB instead of 74 KB per scrape of five queues.
 - Horizon status, supervisors, wait thresholds and links, and the queue state (pending by class, oldest wait,
   reserved, delayed) read with bounded Lua scans, also on Redis Cluster.
 - `horizon_supervisor_queues{supervisor, queue, pool}`: the queues of every supervisor, so that `balance => false`
