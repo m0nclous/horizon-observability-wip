@@ -25,8 +25,14 @@ final class EnvFile
     private const NO_VALUE = '(?i:null|\\(null\\)|empty|\\(empty\\))';
 
     /**
-     * The value of the key: null when the key is absent, `''` when it has no value. Surrounding quotes are removed;
-     * the last definition wins, as in phpdotenv.
+     * Escapes phpdotenv reads in a double-quoted value.
+     */
+    private const ESCAPES = ['"' => '"', '\\' => '\\', '$' => '$', 'n' => "\n", 't' => "\t", 'r' => "\r", 'f' => "\f", 'v' => "\v"];
+
+    /**
+     * The value of the key: null when the key is absent, `''` when it has no value. Read as phpdotenv reads it: the
+     * last definition wins, an unquoted value ends at the first `#` (a comment), a single-quoted one at the next quote,
+     * and a double-quoted one at the next unescaped quote, with its escapes (`\"`, `\\`, `\$`, `\n`, ...) read.
      */
     public static function value(string $contents, string $key): ?string
     {
@@ -41,13 +47,41 @@ final class EnvFile
 
             if ($raw === '' || $raw[0] === '#') {
                 $value = '';
-            } elseif ($raw[0] === '"' || $raw[0] === "'") {
-                $quote = $raw[0];
-                $end = strpos($raw, $quote, 1);
+            } elseif ($raw[0] === '"') {
+                $value = self::doubleQuoted($raw);
+            } elseif ($raw[0] === "'") {
+                $end = strpos($raw, "'", 1);
                 $value = $end === false ? substr($raw, 1) : substr($raw, 1, $end - 1);
             } else {
-                $value = trim((string) preg_replace('/\s+#.*$/', '', $raw));
+                $value = trim(explode('#', $raw, 2)[0]);
             }
+        }
+
+        return $value;
+    }
+
+    /**
+     * A double-quoted value without its quotes, up to the first unescaped quote, with its escapes read.
+     */
+    private static function doubleQuoted(string $raw): string
+    {
+        $value = '';
+
+        for ($index = 1, $length = strlen($raw); $index < $length; $index++) {
+            $char = $raw[$index];
+
+            if ($char === '"') {
+                break;
+            }
+
+            if ($char === '\\' && $index + 1 < $length) {
+                $next = $raw[++$index];
+                $value .= self::ESCAPES[$next] ?? '\\'.$next;
+
+                continue;
+            }
+
+            $value .= $char;
         }
 
         return $value;
@@ -85,30 +119,23 @@ final class EnvFile
     }
 
     /**
-     * The contents with the key set: appended when absent, filled in when it has no value for Laravel (every such
-     * definition, in place); unchanged when it has a value.
+     * The contents with the key set: appended when absent, filled in when it has no value for Laravel; unchanged when
+     * it has a value. phpdotenv reads the last definition, so that one decides: when it can be filled in place (no
+     * comment after it), every definition without a value is filled in place; otherwise (`KEY=null # later`,
+     * `KEY=null#x`) the key is appended after it.
      */
     public static function with(string $contents, string $key, #[SensitiveParameter] string $value): string
     {
-        $current = self::value($contents, $key);
-
         if (! self::hasNoValue($contents, $key)) {
             return $contents;
         }
 
         $line = $key.'='.$value;
+        $empty = '/^([ \t]*(?:export[ \t]+)?)'.preg_quote($key, '/').'[ \t]*=[ \t]*(?:"'.self::NO_VALUE.'?"|\''.self::NO_VALUE.'?\'|'.self::NO_VALUE.')?[ \t]*(?=\r?$)/m';
+        $last = self::lastDefinition($contents, $key);
 
-        if ($current !== null) {
-            $filled = (string) preg_replace_callback(
-                '/^([ \t]*(?:export[ \t]+)?)'.preg_quote($key, '/').'[ \t]*=[ \t]*(?:"'.self::NO_VALUE.'?"|\''.self::NO_VALUE.'?\'|'.self::NO_VALUE.')?[ \t]*(?=\r?$)/m',
-                static fn (array $match): string => $match[1].$line,
-                $contents,
-            );
-
-            // No value with a comment after it: a later line wins, as in phpdotenv.
-            if ($filled !== $contents) {
-                return $filled;
-            }
+        if ($last !== null && preg_match($empty, $last) === 1) {
+            return (string) preg_replace_callback($empty, static fn (array $match): string => $match[1].$line, $contents);
         }
 
         if ($contents !== '' && ! str_ends_with($contents, "\n")) {
@@ -116,6 +143,22 @@ final class EnvFile
         }
 
         return $contents.($contents === '' ? '' : "\n").$line."\n";
+    }
+
+    /**
+     * The last line that defines the key (the one phpdotenv reads), without its line break; null without one.
+     */
+    private static function lastDefinition(string $contents, string $key): ?string
+    {
+        $last = null;
+
+        foreach (preg_split('/\R/', $contents) ?: [] as $line) {
+            if (preg_match('/^\s*(?:export\s+)?'.preg_quote($key, '/').'\s*=/', $line) === 1) {
+                $last = $line;
+            }
+        }
+
+        return $last;
     }
 
     /**

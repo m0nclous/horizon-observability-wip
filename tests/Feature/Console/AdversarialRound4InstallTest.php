@@ -10,14 +10,13 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 
 /*
-| Adversarial probe of horizon-observability:install and a token defined twice without a value.
+| Adversarial probe of horizon-observability:install and a token defined twice without a value (fixed for #29).
 |
-| EnvFile::with() fills every no-value definition of the key in place, and appends the key only when none of them can
-| be filled (a comment after the value). With two definitions where only the last one has a comment
-| (KEY=null ... KEY=null # set later), it fills the first one and stops: the last definition still wins for
-| phpdotenv, so the next start of the app reads "null", i.e. no token. install sees it in its read-back and exits 1 with
-| "fix .env (e.g. an unclosed quote above that line)", which is not the cause, and .env now holds a token the app
-| never reads. Appending the key (as for a single commented definition) gives the app the token.
+| EnvFile::with() filled every no-value definition of the key in place, and appended the key only when none of them
+| could be filled (a comment after the value). With two definitions where only the last one has a comment
+| (KEY=null ... KEY=null # set later), it filled the first one and stopped: the last definition still wins for
+| phpdotenv, so the next start of the app read "null", i.e. no token, and install exited 1. It now decides by the last
+| definition and appends the key after it, as for a single commented definition.
 */
 
 pest()->group('redis');
@@ -59,4 +58,4 @@ it('gives the app the token when a later definition without a value has a commen
     expect(in_array(strtolower((string) $read), ['null', '(null)', 'empty', '(empty)', ''], true))->toBeFalse('the app reads HORIZON_OBSERVABILITY_TOKEN='.$read.'; install said: '.trim($output))
         ->and(strlen((string) $read))->toBeGreaterThanOrEqual(Config::MIN_TOKEN_LENGTH)
         ->and($code)->toBe(0);
-})->with(['null', '', '(empty)'])->skip('Known issue #29: a later commented no-value token line is not filled');
+})->with(['null', '', '(empty)']);

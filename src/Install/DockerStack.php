@@ -52,6 +52,11 @@ final readonly class DockerStack
     public const DASHBOARD_UID = 'horizon-observability';
 
     /**
+     * The default host port of Grafana (`GRAFANA_PORT`).
+     */
+    public const GRAFANA_PORT = 3000;
+
+    /**
      * A host name the containers can map with `extra_hosts`.
      */
     public const HOST_PATTERN = '/^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/';
@@ -70,6 +75,7 @@ final readonly class DockerStack
      * @param  string  $metricPrefix  the metric name prefix of the app, e.g. `ho_`
      * @param  string|null  $hostAlias  a host name the containers resolve to the Docker host, e.g. the package
      *                                  domain of an app served locally (its routes answer only on that host)
+     * @param  int  $grafanaPort  the host port of Grafana (`GRAFANA_PORT` when the stack was written)
      *
      * @throws InvalidArgumentException for an unsupported Grafana major or a host alias that is not a host name
      */
@@ -81,6 +87,7 @@ final readonly class DockerStack
         public string $grafana = '13',
         public string $metricPrefix = 'ho_',
         public ?string $hostAlias = null,
+        public int $grafanaPort = self::GRAFANA_PORT,
     ) {
         if (! isset(self::GRAFANA_IMAGES[$grafana])) {
             throw new InvalidArgumentException('--grafana must be 12 or 13.');
@@ -129,6 +136,11 @@ final readonly class DockerStack
         $missing = 'set HORIZON_OBSERVABILITY_TOKEN in .env (php artisan horizon-observability:install)';
         $wait = self::FIRST_SCRAPE_WAIT_SECONDS;
         $home = self::DASHBOARD_UID;
+        $grafanaPort = $this->grafanaPort;
+        // The app is served on this machine (Docker reaches it through the host gateway): say how.
+        $serve = $this->app->host === 'host.docker.internal' || $this->hostAlias !== null
+            ? sprintf(", e.g.\n# php artisan serve --host=0.0.0.0 --port=%d,", $this->app->port ?? ($this->app->scheme === 'https' ? 443 : 80))
+            : '';
         $hosts = "['".implode("', '", array_map(
             static fn (string $host): string => $host.':host-gateway',
             array_values(array_unique(['host.docker.internal', ...($this->hostAlias === null ? [] : [$this->hostAlias])])),
@@ -139,10 +151,9 @@ final readonly class DockerStack
             # php artisan horizon-observability:install --docker (run it again with --force to rewrite this file).
             #
             #   docker compose -f docker-compose.observability.yml up -d
-            #   open http://localhost:3000/d/{$home} (also Grafana's home page; admin/admin to edit)
+            #   open http://localhost:{$grafanaPort}/d/{$home} (also Grafana's home page; admin/admin to edit)
             #
-            # Prometheus scrapes {$app} every 10 s, so serve the app there, e.g.
-            # php artisan serve --host=0.0.0.0 --port=8000, and run php artisan horizon.
+            # Prometheus scrapes {$app} every 10 s, so serve the app there{$serve} and run php artisan horizon.
             # The bearer token is HORIZON_OBSERVABILITY_TOKEN from the .env file next to this file (the first one
             # of a comma-separated list).
             # Local use only: the ports listen on 127.0.0.1 and Grafana lets anonymous visitors view.
@@ -207,7 +218,7 @@ final readonly class DockerStack
                   - ./docker/observability/grafana/alerting:/etc/grafana/provisioning/alerting:ro
                   - ./docker/observability/grafana/dashboards:/etc/grafana/dashboards/horizon-observability:ro
                   - grafana-data:/var/lib/grafana
-                ports: ['127.0.0.1:\${GRAFANA_PORT:-3000}:3000']
+                ports: ['127.0.0.1:\${GRAFANA_PORT:-{$grafanaPort}}:3000']
                 restart: unless-stopped
 
             volumes:

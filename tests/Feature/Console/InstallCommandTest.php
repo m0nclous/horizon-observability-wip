@@ -13,6 +13,8 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Yaml\Yaml;
@@ -49,10 +51,17 @@ beforeEach(function (): void {
     }
 
     FakeGrafanaCommand::$calls = [];
+    // docker compose's GRAFANA_PORT of a dev shell (several stacks side by side) must not reach the install output.
+    $this->grafanaPort = getenv('GRAFANA_PORT');
+    putenv('GRAFANA_PORT');
 });
 
 afterEach(function (): void {
     (new Filesystem)->deleteDirectory($this->base);
+
+    if (is_string($this->grafanaPort)) {
+        putenv('GRAFANA_PORT='.$this->grafanaPort);
+    }
 });
 
 /**
@@ -518,6 +527,66 @@ it('asks where Docker reaches the app when interactive', function (): void {
     $prometheus = Yaml::parseFile($this->base.'/docker/observability/prometheus/prometheus.yml');
 
     expect($prometheus['scrape_configs'][0]['static_configs'][0]['targets'])->toBe(['host.docker.internal:9000']);
+});
+
+it('prints the banner before it asks where Docker reaches the app', function (): void {
+    $answers = fopen('php://memory', 'r+');
+    assert($answers !== false);
+    fwrite($answers, str_repeat("\n", 10));
+    rewind($answers);
+    $input = new ArrayInput(['--docker' => true]);
+    $input->setStream($answers);
+    $output = new BufferedOutput;
+
+    expect($this->app->make(Kernel::class)->all()['horizon-observability:install']->run($input, $output))->toBe(0);
+
+    $text = $output->fetch();
+
+    expect(strpos($text, 'Installing Horizon Observability.'))->toBeInt()
+        ->toBeLessThan(strpos($text, 'At which URL do Prometheus and Grafana in Docker reach the app?'));
+});
+
+it('opens Grafana on the GRAFANA_PORT docker compose reads, from the environment or .env', function (string $where): void {
+    if ($where === 'environment') {
+        putenv('GRAFANA_PORT=3300');
+    } else {
+        file_put_contents($this->base.'/.env', "GRAFANA_PORT=3300\n", FILE_APPEND);
+    }
+
+    try {
+        [$code, $output] = install(['--docker' => true]);
+    } finally {
+        putenv('GRAFANA_PORT');
+    }
+
+    $compose = (string) file_get_contents($this->base.'/'.DockerStack::COMPOSE_FILE);
+
+    expect($code)->toBe(0)
+        ->and(Yaml::parse($compose)['services']['grafana']['ports'])->toBe(['127.0.0.1:${GRAFANA_PORT:-3300}:3000'])
+        ->and($compose)->toContain('#   open http://localhost:3300/d/horizon-observability')
+        ->and($compose)->toContain('# php artisan serve --host=0.0.0.0 --port=8000, and run php artisan horizon.')
+        // The stream steps call that Grafana too.
+        ->and($output)->toContain('http://localhost:3300/api/serviceaccounts')
+        ->and($output)->not->toContain('localhost:3000')
+        ->and(trim($output))->toEndWith('Open http://localhost:3300/d/horizon-observability.');
+})->with(['environment', '.env']);
+
+it('says that the endpoint URL depends on the parameters of the domain', function (): void {
+    config()->set('horizon-observability.domain', '{tenant}.shop.test');
+    $this->app->forgetInstance(Config::class);
+
+    [, $output] = install();
+
+    expect($output)->toContain('http://{tenant}.shop.test/horizon/observability/{metrics,jobs/*,live}')
+        ->and($output)->toContain('The endpoints answer on http://{tenant}.shop.test, one host per value of its route parameters')
+        ->and($output)->toContain('--app-url=<the app on one of those hosts>')
+        // No host to scrape: APP_URL, as the warning says.
+        ->and($output)->toContain("targets: ['localhost:80']");
+
+    [, $output] = install(['--app-url' => 'http://acme.shop.test']);
+
+    expect($output)->not->toContain('one host per value of its route parameters')
+        ->and($output)->toContain("targets: ['acme.shop.test:80']");
 });
 
 it('selects Grafana 12 and the app URL, and rejects an unknown Grafana', function (): void {
