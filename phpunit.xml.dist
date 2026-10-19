@@ -35,8 +35,10 @@
         </include>
     </source>
     <php>
-        <!-- The whole suite peaks above PHP's default 128M (Laravel, Horizon and 2000+ tests in one process). -->
-        <ini name="memory_limit" value="1G"/>
+        <!-- The whole suite peaks above PHP's default 128M (Laravel, Horizon and 3000+ tests in one process); with
+             pcov, Pest reads the serialized coverage back after the run (about 270 MB with T13 and T14) next to the
+             collected data, which exceeds 1G. -->
+        <ini name="memory_limit" value="4G"/>
         <env name="APP_ENV" value="testing"/>
         <env name="REDIS_CLIENT" value="phpredis"/>
         <env name="REDIS_HOST" value="127.0.0.1"/>
