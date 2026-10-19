@@ -33,7 +33,8 @@ use Throwable;
  * 1. Publishes `config/horizon-observability.php` (asks; keeps an existing file unless `--force` or confirmed).
  * 2. Writes a 40-character `HORIZON_OBSERVABILITY_TOKEN` to `.env` (or `--token`, which must be an RFC 6750 bearer
  *    token: written unquoted, anything else would not read back the same), checks that `.env` reads it back, and adds
- *    an empty placeholder to `.env.example`; an existing value is never overwritten; `--no-env` prints the token
+ *    an empty placeholder to `.env.example`; an existing value is never overwritten, while a line Laravel reads as no
+ *    value (`KEY=`, `KEY=null`, `(null)`, `empty`, `(empty)`) gets the token in place; `--no-env` prints the token
  *    instead.
  * 3. Prints the endpoints, the Prometheus scrape job at 10 s, the Infinity datasource, the render command of each live
  *    mode and the stream mode steps (Grafana service account with role Editor); with `live.enabled` false only the
@@ -184,14 +185,19 @@ final class InstallCommand extends Command
     /**
      * The token the endpoints accept after the install (for the Docker stack and the checks): the existing one, or
      * a new one written to `.env`. Applied to the running process as well, so the checks see it.
+     *
+     * The `.env` line is read as Laravel's `env()` reads it ({@see EnvFile::resolve()}): `null`, `(null)`, `empty` and
+     * `(empty)` (any case, bare or quoted) are no value, so the token is written in place of that line; any other
+     * value, `true` and `false` included, is never overwritten.
      */
     private function token(#[SensitiveParameter] ?string $option, Repository $config): ?string
     {
         $env = $this->laravel->environmentFilePath();
         $contents = is_file($env) ? (string) file_get_contents($env) : null;
-        $existing = $contents === null ? null : EnvFile::value($contents, self::TOKEN_ENV);
+        $literal = $contents === null ? null : EnvFile::value($contents, self::TOKEN_ENV);
+        $existing = EnvFile::resolve($literal);
 
-        if ($existing !== null && $existing !== '') {
+        if (is_bool($existing) || (is_string($existing) && $existing !== '')) {
             $this->components->twoColumnDetail('Token', self::TOKEN_ENV.' <fg=gray>(already in .env, kept)</>');
 
             if ($option !== null && $option !== $existing) {
@@ -203,7 +209,7 @@ final class InstallCommand extends Command
                 $this->apply($config, $existing);
             }
 
-            return $this->first($existing);
+            return is_string($existing) ? $this->first($existing) : null;
         }
 
         /** @var Config $settings */
@@ -230,7 +236,7 @@ final class InstallCommand extends Command
                 $read = $this->readBack($env);
 
                 if ($read === $token) {
-                    $this->components->twoColumnDetail('Token', self::TOKEN_ENV.' <fg=green>(written to .env)</>');
+                    $this->components->twoColumnDetail('Token', self::TOKEN_ENV.' <fg=green>(written to .env'.($literal === null || $literal === '' ? '' : ': Laravel reads "'.OutputFormatter::escape($literal).'" as no value').')</>');
                     $this->placeholder();
                 } else {
                     $this->failed = true;
@@ -264,9 +270,10 @@ final class InstallCommand extends Command
     }
 
     /**
-     * Use the token in this process too, so the checks see what the application sees after its next start.
+     * Use the token in this process too, so the checks see what the application sees after its next start (a
+     * boolean is what `env()` returns for `true` or `false`).
      */
-    private function apply(Repository $config, #[SensitiveParameter] string $token): void
+    private function apply(Repository $config, #[SensitiveParameter] string|bool $token): void
     {
         $config->set('horizon-observability.token', $token);
         $this->laravel->forgetInstance(Config::class);

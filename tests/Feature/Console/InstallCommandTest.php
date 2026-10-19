@@ -158,6 +158,101 @@ it('fills in an empty token and uses --token', function (): void {
         ->and(file_get_contents($this->base.'/.env'))->toBe("APP_NAME=Shop\nHORIZON_OBSERVABILITY_TOKEN=given-token-0123456789\nAPP_DEBUG=true");
 });
 
+/**
+ * The literals Laravel's env() reads as no value (Illuminate\Support\Env::get()), as a project writes them: the
+ * skeleton's .env.example uses KEY=null for a value that is not set yet (T14 QA round 3).
+ *
+ * @return array<string, array{0: string, 1: string}> name => [line, newline]
+ */
+function installNoValueLines(): array
+{
+    $lines = [];
+
+    foreach (['null', 'NULL', 'Null', '(null)', '(NULL)', 'empty', 'EMPTY', '(empty)', '(Empty)', '"null"', "'NULL'", '"(empty)"', "'empty'"] as $literal) {
+        $lines[$literal] = ['HORIZON_OBSERVABILITY_TOKEN='.$literal, "\n"];
+    }
+
+    $lines['null, CRLF'] = ['HORIZON_OBSERVABILITY_TOKEN=null', "\r\n"];
+    $lines['"(null)", CRLF'] = ['HORIZON_OBSERVABILITY_TOKEN="(null)"', "\r\n"];
+    $lines['export EMPTY, CRLF'] = ['export HORIZON_OBSERVABILITY_TOKEN=EMPTY', "\r\n"];
+
+    return $lines;
+}
+
+it('writes the token in place of a value Laravel reads as no value, and changes nothing when it runs again', function (string $line, string $newline): void {
+    $before = implode($newline, ['APP_NAME="My Shop"', 'APP_ENV=local', $line, 'APP_URL=http://localhost', '']);
+    file_put_contents($this->base.'/.env', $before);
+
+    [$code, $output] = install();
+    $contents = (string) file_get_contents($this->base.'/.env');
+    // As the next start of the app reads it.
+    $token = Dotenv\Dotenv::parse($contents)['HORIZON_OBSERVABILITY_TOKEN'] ?? null;
+
+    expect($code)->toBe(0)
+        ->and($token)->toMatch('/^[A-Za-z0-9]{40}$/')
+        // Only that line changed, in place, with the file's line endings.
+        ->and($contents)->toBe(str_replace($line, (str_starts_with($line, 'export ') ? 'export ' : '').'HORIZON_OBSERVABILITY_TOKEN='.$token, $before))
+        ->and($output)->toContain('HORIZON_OBSERVABILITY_TOKEN (written to .env: Laravel reads')
+        ->and($output)->not->toContain('already in .env')
+        ->and($output)->not->toContain('shorter than')
+        ->and($output)->not->toContain('none valid')
+        ->and($output)->toMatch('/Check: 0 errors, \d+ warnings?/')
+        ->and($output)->not->toContain((string) $token);
+
+    // The token works right away.
+    $this->get('/horizon/observability/metrics')->assertUnauthorized();
+    $this->get('/horizon/observability/metrics', ['Authorization' => 'Bearer '.$token])->assertOk();
+
+    $files = installFiles($this->base);
+    [$again, $output] = install();
+
+    expect($again)->toBe(0)
+        ->and(installFiles($this->base))->toBe($files)
+        ->and($output)->toContain('HORIZON_OBSERVABILITY_TOKEN (already in .env, kept)');
+})->with(installNoValueLines());
+
+it('gives the Docker stack the token it writes in place of null', function (): void {
+    file_put_contents($this->base.'/.env', "APP_NAME=\"My Shop\"\nAPP_ENV=local\nHORIZON_OBSERVABILITY_TOKEN=null\n");
+
+    [$code] = install(['--docker' => true]);
+    $token = installToken($this->base);
+    $config = new Process(['docker', 'compose', '-f', DockerStack::COMPOSE_FILE, 'config', '--format', 'json'], $this->base);
+    $config->run();
+    $resolved = json_decode($config->getOutput(), true);
+
+    // docker compose reads .env itself, without Laravel's literals: "null" would have become Bearer null.
+    expect($code)->toBe(0)
+        ->and($token)->toMatch('/^[A-Za-z0-9]{40}$/')
+        ->and($config->getExitCode())->toBe(0, $config->getErrorOutput())
+        ->and($resolved['services']['prometheus']['environment']['HORIZON_OBSERVABILITY_TOKEN'])->toBe($token)
+        ->and($resolved['services']['grafana']['environment']['HORIZON_OBSERVABILITY_API_TOKEN'])->toBe($token);
+
+    $files = installFiles($this->base);
+    [$again] = install(['--docker' => true]);
+
+    expect($again)->toBe(0)
+        ->and(installFiles($this->base))->toBe($files);
+})->skip(function (): bool {
+    $probe = new Process(['docker', 'compose', 'version']);
+    $probe->run();
+
+    return ! $probe->isSuccessful();
+}, 'docker compose is not available');
+
+it('never overwrites true or false, and checks what env() gives the app for them', function (string $literal): void {
+    $before = "APP_NAME=Shop\nAPP_ENV=local\nHORIZON_OBSERVABILITY_TOKEN={$literal}\n";
+    file_put_contents($this->base.'/.env', $before);
+
+    [$code, $output] = install();
+
+    // env() returns a boolean, not a token: the app reports the same problem and locks the endpoints.
+    expect($code)->toBe(1)
+        ->and(file_get_contents($this->base.'/.env'))->toBe($before)
+        ->and($output)->toContain('HORIZON_OBSERVABILITY_TOKEN (already in .env, kept)')
+        ->and($output)->toContain('token must be a comma-separated string or a list of strings')
+        ->and($output)->not->toContain('shorter than');
+})->with(['true', '(FALSE)']);
+
 it('keeps a token that is set outside .env', function (): void {
     config()->set('horizon-observability.token', 'from-the-environment-0123456789');
     $this->app->forgetInstance(Config::class);
