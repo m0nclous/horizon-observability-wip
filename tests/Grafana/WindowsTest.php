@@ -76,7 +76,9 @@ it('defines the hidden scrape_interval and busy_window textboxes and refreshes a
         // Overridable in the URL: ?var-scrape_interval=30s
         ->and($variables['scrape_interval'])->not->toHaveKey('skipUrlSync')
         ->and($variables['busy_window'])->toMatchArray(['hide' => 2, 'type' => 'textbox', 'query' => '20s', 'current' => ['text' => '20s', 'value' => '20s']])
-        ->and($expressions)->toContain('[$busy_window]')
+        // Busy workers over the window: the off render's Supervisor Processes tile and queue utilisation; the live
+        // renders read both from the snapshot
+        ->and(substr_count($expressions, '[$busy_window]') > 0)->toBe($mode === LiveMode::Off)
         ->and(substr_count($expressions, '[$busy_window]'))->toBe(substr_count($expressions, 'sum_over_time(ho_queue_jobs_reserved') * 2)
         ->and($dashboard['refresh'])->toBe($refresh)
         ->and($dashboard['timepicker']['refresh_intervals'])->toContain($refresh);

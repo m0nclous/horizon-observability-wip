@@ -93,16 +93,17 @@ it('sends at most 12 requests per refresh: the queue tables read the hidden sour
 
     expect($budget->requests())->toBe($requests)
         ->and($budget->requests())->toBeLessThanOrEqual(StaticBudget::MAX_REQUESTS)
-        // The live tiles: poll #3 S, #2 L and C, #8 C and #9 L; stream only the #8 caption
+        // The live tiles (poll #3 S, #2 L and C, #8 C and #9 L; stream only the #8 caption) and the queue source's
+        // columns of now (#24 L) in both live modes
         ->and($budget->liveRequests())->toBe($live)
         ->and($budget->liveRequests())->toBeLessThanOrEqual(StaticBudget::MAX_LIVE_REQUESTS)
         ->and($budget->queueSource())->toBe([])
         ->and($source[0]['maxDataPoints'] ?? null)->toBe(100)
         ->and($budget->panelBytes()[5])->toBe(0);
 })->with([
-    'poll (package render)' => [LiveMode::Poll, 11, 5],
+    'poll (package render)' => [LiveMode::Poll, 11, 6],
     'off' => [LiveMode::Off, 12, 0],
-    'stream' => [LiveMode::Stream, 9, 1],
+    'stream' => [LiveMode::Stream, 9, 2],
 ]);
 
 it('meets every static gate of the budget (ADDENDUM R2.3) with one attempts query per table (O6)', function (LiveMode $mode): void {
@@ -130,11 +131,13 @@ it('counts the live snapshot calls apart and Grafana Live subscriptions not at a
         budgetPanel(4, [], 'grafana', ['targets' => [['refId' => 'A', 'datasource' => ['type' => 'datasource', 'uid' => 'grafana'], 'channel' => 'stream/x/tiles']]]),
         // A repeated copy calls the snapshot once per copy
         budgetPanel(5, [], '${app_api}', ['targets' => [$live('S')], 'repeat' => 'supervisor_title']),
+        // One call more than the budget
+        budgetPanel(6, [], '${app_api}', ['targets' => [$live('S')]]),
     ]), repeats: 3);
 
     expect($budget->requests())->toBe(1 + 1)
-        ->and($budget->liveRequests())->toBe(2 + 1 + 3)
-        ->and($budget->violations())->toBe(['6 live snapshot calls per refresh, more than 5']);
+        ->and($budget->liveRequests())->toBe(2 + 1 + 3 + 1)
+        ->and($budget->violations())->toBe(['7 live snapshot calls per refresh, more than 6']);
 });
 
 it('finds a day-long counter lookback, also in collapsed rows and variables', function (): void {

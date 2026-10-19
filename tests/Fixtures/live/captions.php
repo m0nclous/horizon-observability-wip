@@ -103,4 +103,25 @@ return [
         'above 2' => [[3], 'red'],
         'below 0' => [[-1], 'green'],
     ],
+    'percent_cell' => [
+        'unknown' => [[null], 1999],
+        'not finite' => [[NAN], 1999],
+        'idle' => [[0.0], 1000],
+        'rounds' => [[0.496], 1050],
+        'full' => [[1.0], 1100],
+    ],
+    'duration' => [
+        'zero' => [[0.0], '0 s'],
+        'rounds half up' => [[9.5], '10 s'],
+        'last second value' => [[119.4], '119 s'],
+        'unit from the exact value' => [[119.6], '120 s'],
+        'first minute value' => [[120.0], '2 min'],
+        'minutes' => [[1020.0], '17 min'],
+    ],
+    'oldest_cell' => [
+        'no limit' => [[12.3, null, 0], '0|12 s'],
+        'within the limit' => [[5.0, 30, 0], '0|5 s / 30 s'],
+        'over the limit' => [[45.0, 30, 1], '1|45 s / 30 s'],
+        'minutes, the limit below 120 s in seconds' => [[300.0, 60, 2], '2|5 min / 60 s'],
+    ],
 ];

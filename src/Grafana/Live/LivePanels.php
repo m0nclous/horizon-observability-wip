@@ -37,6 +37,10 @@ use stdClass;
  * channel `stream/<id>/delayed` (15 minutes at 5 s), and #8 is the poll panel. The other tiles read Prometheus in
  * every mode.
  *
+ * The queue tables (Current Workload) read their columns of now (Utilization, Processes, Pending, Delayed, Oldest
+ * wait) from the snapshot's `workload` in both live modes, through the hidden queue source #24
+ * ({@see queueSource()}); the rows and the totals of the period stay Prometheus queries.
+ *
  * Every column and field a panel reads is a field of the snapshot JSON (`LiveSnapshot::toArray()`, `tiles()`) or of
  * the line protocol (`LineProtocol`); `tests/Grafana/LiveContractTest` holds them to it.
  *
@@ -83,6 +87,30 @@ final readonly class LivePanels
 
     private const MIXED = '-- Mixed --';
 
+    /**
+     * The Prometheus queries of the queue source that the live renders replace with the snapshot: utilisation (A),
+     * pending (B), processes (D), the Oldest wait cell (F) and delayed (G).
+     */
+    public const QUEUE_SOURCE_LIVE_REFS = ['A', 'B', 'D', 'F', 'G'];
+
+    /**
+     * The queue source's snapshot query (W for workload; L is a live value merged into a tile's series).
+     */
+    public const WORKLOAD_REF = 'W';
+
+    /**
+     * The snapshot's `workload` rows as the queue source's columns, named like the Prometheus fields they replace,
+     * so the tables' merge and organize steps stay those of the off render.
+     */
+    public const WORKLOAD_COLUMNS = [
+        ['queue', 'queue', 'string'],
+        ['utilization', 'Value #A', 'number'],
+        ['processes', 'Value #D', 'number'],
+        ['pending', 'Value #B', 'number'],
+        ['delayed', 'Value #G', 'number'],
+        ['oldest_cell', 'cell', 'string'],
+    ];
+
     public function __construct(private LiveMode $mode, private string $streamId) {}
 
     /**
@@ -104,6 +132,31 @@ final readonly class LivePanels
             PanelRegistry::DELAYED => $this->delayed($tile),
             default => $tile,
         }, $tiles);
+    }
+
+    /**
+     * The hidden queue source #24 of this mode, given its `--live=off` panel: in poll and stream modes a Mixed panel
+     * whose Prometheus queries keep the rows (M), the totals of the period (C, K) and the stub row (Z), and whose
+     * snapshot query W brings the columns of now. W comes last: Grafana's merge adds a frame's values to the earlier
+     * rows of the same queue, and its fields are new to those rows, so they join every supervisor's row of the queue.
+     * Stream mode polls too (a table cannot carry a stream), at the dashboard refresh.
+     *
+     * @param  array<string, mixed>  $panel
+     * @return array<string, mixed>
+     */
+    public function queueSource(array $panel): array
+    {
+        if (! $this->mode->isLive()) {
+            return $panel;
+        }
+
+        $targets = array_values(array_filter(
+            is_array($panel['targets'] ?? null) ? $panel['targets'] : [],
+            static fn (mixed $target): bool => is_array($target) && ! in_array($target['refId'] ?? null, self::QUEUE_SOURCE_LIVE_REFS, true),
+        ));
+        $targets[] = self::snapshotTarget(self::WORKLOAD_REF, 'workload', self::WORKLOAD_COLUMNS);
+
+        return $this->changed($panel, ['datasource' => self::mixed(), 'targets' => $targets]);
     }
 
     /**

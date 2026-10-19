@@ -26,10 +26,11 @@ use UnexpectedValueException;
  * @phpstan-type ThroughputPart array{window_seconds: int, bucket_seconds: int, completed: int|null, failed: int|null, retried: int|null, completed_per_minute: int|null, failed_per_minute: float|null, caption: string}
  * @phpstan-type SupervisorRow array{name: string, display: string, connection: string, balance: string, processes: int, min_processes: int, max_processes: int, busy: int, utilization: float, level: int, color: string, caption: string, queues: list<string>}
  * @phpstan-type QueueRow array{connection: string, queue: string, pending: int, reserved: int, delayed: int, delayed_due: int, oldest_seconds: int, wait_threshold_seconds: int|null, wait_ratio: float|null, level: int, color: string, completed_per_minute: int|null, failed_per_minute: float|null, supervisors: list<string>}
+ * @phpstan-type WorkloadRow array{queue: string, utilization: int, processes: int, pending: int, delayed: int|null, oldest_cell: string}
  * @phpstan-type TileRow array{tile: string, key: string, caption: string, value: float|null, color: string, level: int}
  * @phpstan-type ErrorRow array{source: string, message: string}
- * @phpstan-type SupervisorInput array{name: string, connection: string, balance: string, processes: int, min_processes: int, max_processes: int, busy: int, queues: list<string>}
- * @phpstan-type QueueInput array{connection: string, queue: string, pending: int, reserved: int, delayed: int, delayed_due: int, oldest_seconds: int|float, wait_threshold_seconds: int|null, completed_per_minute: int|null, failed_per_minute: float|null, supervisors: list<string>}
+ * @phpstan-type SupervisorInput array{name: string, connection: string, balance: string, processes: int, min_processes: int, max_processes: int, busy: int, queues: list<string>, pools?: array<string, int>}
+ * @phpstan-type QueueInput array{connection: string, queue: string, pending: int, reserved: int, delayed: int, delayed_due: int, oldest_seconds: int|float, wait_threshold_seconds: int|null, completed_per_minute: int|null, failed_per_minute: float|null, supervisors: list<string>, processes?: int, utilization?: float|null, job_pending?: int, job_reserved?: int}
  * @phpstan-type ThroughputInput array{completed: int, failed: int, retried: int}
  *
  * @internal
@@ -60,6 +61,7 @@ final readonly class LiveSnapshot
      * @param  list<SupervisorRow>  $supervisors  sorted by display name
      * @param  list<QueueRow>  $queues
      * @param  list<ErrorRow>  $errors
+     * @param  list<WorkloadRow>  $workload  the queue tables' current columns, one row per queue name
      */
     public function __construct(
         public int $generatedAt,
@@ -74,6 +76,7 @@ final readonly class LiveSnapshot
         public array $supervisors,
         public array $queues,
         public array $errors,
+        public array $workload = [],
     ) {}
 
     /**
@@ -224,7 +227,67 @@ final readonly class LiveSnapshot
             supervisors: $supervisorRows,
             queues: $queueRows,
             errors: $errors,
+            workload: self::workload($scope, $running, $queues, $queueRows),
         );
+    }
+
+    /**
+     * The current columns of the queue tables (the Current Workload row of the dashboard), one row per queue name over
+     * every connection, read by its live renders in place of the Prometheus queries of those columns, so they show the
+     * state of now instead of the last scrape:
+     * - `utilization`: the percent bar value of the busiest supervisor that works the queue ({@see Captions::percentCell()};
+     *   the job filter does not apply), "unknown" without a supervisor;
+     * - `processes`: the supervisors' processes of the pools that work the queue, 0 while Horizon is not running; with a
+     *   Job or Batch filter the busy workers of the selected classes;
+     * - `pending`: ready jobs; with a Job or Batch filter those of the selected classes;
+     * - `delayed`: delayed jobs not due yet, and `oldest_cell` the Oldest wait cell of the worst connection
+     *   ({@see Captions::oldestCell()}); null and a dash with a Job or Batch filter (delayed jobs and ages have no
+     *   classes).
+     *
+     * @param  list<QueueInput>  $queues
+     * @param  list<QueueRow>  $rows  the queue rows derived from $queues, in the same order
+     * @return list<WorkloadRow>
+     */
+    private static function workload(LiveScope $scope, bool $running, array $queues, array $rows): array
+    {
+        /** @var array<string, array{queue: string, utilization: float|null, processes: int, pending: int, delayed: int|null, oldest_cell: string}> $table */
+        $table = [];
+        /** @var array<string, array{0: QueueInput, 1: float|null}> $worst */
+        $worst = [];
+
+        foreach ($queues as $index => $queue) {
+            $name = $queue['queue'];
+            $row = $table[$name] ?? ['queue' => $name, 'utilization' => null, 'processes' => 0, 'pending' => 0, 'delayed' => $scope->jobFilter ? null : 0, 'oldest_cell' => '0|'.Captions::DASH];
+            $utilization = $queue['utilization'] ?? null;
+
+            if ($utilization !== null) {
+                $row['utilization'] = max($row['utilization'] ?? 0.0, $utilization);
+            }
+
+            if ($scope->jobFilter) {
+                $row['pending'] += $queue['job_pending'] ?? 0;
+                $row['processes'] += $queue['job_reserved'] ?? 0;
+            } else {
+                $row['pending'] += $queue['pending'];
+                $row['processes'] += $running ? ($queue['processes'] ?? 0) : 0;
+                $row['delayed'] = ($row['delayed'] ?? 0) + $queue['delayed'];
+                $threshold = $queue['wait_threshold_seconds'];
+                $limit = $threshold !== null && $threshold > 0 ? $threshold : null;
+                $ratio = $limit === null ? null : $queue['oldest_seconds'] / $limit;
+
+                if (! isset($worst[$name]) || self::worse($queue, $ratio, $worst[$name][0], $worst[$name][1])) {
+                    $worst[$name] = [$queue, $ratio];
+                    $row['oldest_cell'] = Captions::oldestCell((float) $queue['oldest_seconds'], $limit, $rows[$index]['level'] ?? 0);
+                }
+            }
+
+            $table[$name] = $row;
+        }
+
+        return array_values(array_map(
+            static fn (array $row): array => [...$row, 'utilization' => Captions::percentCell($row['utilization'])],
+            $table,
+        ));
     }
 
     /**
@@ -314,6 +377,7 @@ final readonly class LiveSnapshot
             $this->supervisors,
             $this->queues,
             $this->errors,
+            $this->workload,
         );
     }
 
@@ -342,6 +406,7 @@ final readonly class LiveSnapshot
             'throughput' => $this->throughput,
             'supervisors' => $this->supervisors,
             'queues' => $this->queues,
+            'workload' => $this->workload,
             'tiles' => $this->tiles(),
             'errors' => $this->errors,
         ];
@@ -459,6 +524,21 @@ final readonly class LiveSnapshot
             ];
         }
 
+        $workload = [];
+
+        // Absent from documents cached before the queue tables read it: empty, the tables then show dashes until the
+        // next build
+        foreach (array_key_exists('workload', $data) ? self::rows($data, 'workload') : [] as $row) {
+            $workload[] = [
+                'queue' => self::string($row, 'queue'),
+                'utilization' => self::int($row, 'utilization'),
+                'processes' => self::int($row, 'processes'),
+                'pending' => self::int($row, 'pending'),
+                'delayed' => self::nullableInt($row, 'delayed'),
+                'oldest_cell' => self::string($row, 'oldest_cell'),
+            ];
+        }
+
         $errors = [];
 
         foreach (self::rows($data, 'errors') as $row) {
@@ -504,6 +584,7 @@ final readonly class LiveSnapshot
             supervisors: $supervisors,
             queues: $queues,
             errors: $errors,
+            workload: $workload,
         );
     }
 

@@ -126,13 +126,16 @@ final readonly class DashboardBuilder
         $jobLists = new JobLists;
         $batches = new Batches($common, $promql, $attempts, $batchState, $this->options->rpmMinutes());
 
-        // The hidden top row: the alert sound and the shared source of the queue tables (O5)
-        $panels = [(new AlertSound($common, $alertState, Resources::alertSoundScript()))->panel(), $queues->source()];
+        $live = new LivePanels($this->options->live, $this->options->liveStreamId);
+
+        // The hidden top row: the alert sound and the shared source of the queue tables (O5), whose columns of now
+        // read the live snapshot in the live renders
+        $panels = [(new AlertSound($common, $alertState, Resources::alertSoundScript()))->panel(), $live->queueSource($queues->source())];
         $y = AlertSound::HEIGHT;
 
         $panels[] = Common::row(PanelRegistry::OVERVIEW_ROW, $this->options->live->overviewTitle(), $y);
         $y += Common::ROW_HEIGHT;
-        array_push($panels, ...(new LivePanels($this->options->live, $this->options->liveStreamId))->tiles($tiles->all($y)));
+        array_push($panels, ...$live->tiles($tiles->all($y)));
         $y += Tiles::HEIGHT;
 
         $panels[] = Common::row(PanelRegistry::WORKLOAD_ROW, 'Current Workload', $y);

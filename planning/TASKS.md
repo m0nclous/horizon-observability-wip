@@ -562,4 +562,6 @@ skip reason names the item, so a fix turns them into regression tests.
     form and Discussions work only after the transfer to sushi-market and once both are enabled in the repository.
 14. Process: the frozen board tooling branch `wip/board-sync` (owner, 2026-10-19), only if the board is kept after the
     repository transfer.
+15. QA of the live columns of the Current Workload tables (owner request 2026-10-19, implemented on master without a
+    QA round, QA deferred by the owner): issue #42.
 

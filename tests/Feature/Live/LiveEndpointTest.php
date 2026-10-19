@@ -61,7 +61,7 @@ it('answers the snapshot JSON of schema v1 without caching headers', function ()
     $document = $response->json();
     $golden = json_decode((string) file_get_contents(dirname(__DIR__, 2).'/Fixtures/live/snapshot.json'), true);
 
-    expect(array_keys($document))->toBe(['v', 'generated_at', 'age_ms', 'ttl_ms', 'scope', 'horizon', 'pending', 'delayed', 'reserved', 'throughput', 'supervisors', 'queues', 'tiles', 'errors'])
+    expect(array_keys($document))->toBe(['v', 'generated_at', 'age_ms', 'ttl_ms', 'scope', 'horizon', 'pending', 'delayed', 'reserved', 'throughput', 'supervisors', 'queues', 'workload', 'tiles', 'errors'])
         ->and([...$document, 'age_ms' => 0])->toBe($golden)
         ->and($response->getContent())->toContain('"caption":"Oldest: 17 s '."\u{00B7}".' default"')
         ->and($response->getContent())->toContain('"value":5.0');

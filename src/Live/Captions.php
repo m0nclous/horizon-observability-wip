@@ -60,6 +60,52 @@ final class Captions
     public const DASH = "\u{2014}";
 
     /**
+     * Percent bars of the queue tables: the cell value is OFFSET + percent, so a four-digit string sorts like the
+     * number; OFFSET + UNKNOWN means "unknown" and prints a dash. The Grafana renderer reads the same constants.
+     */
+    public const PERCENT_OFFSET = 1000;
+
+    public const UNKNOWN_PERCENT = 999;
+
+    /**
+     * Percent bar value of a utilisation (0-1), or "unknown" without one: `PERCENT_OFFSET + round(100 u)`.
+     */
+    public static function percentCell(?float $utilization): int
+    {
+        if ($utilization === null || ! is_finite($utilization)) {
+            return self::PERCENT_OFFSET + self::UNKNOWN_PERCENT;
+        }
+
+        return self::PERCENT_OFFSET + (int) round(100 * $utilization);
+    }
+
+    /**
+     * A duration as the queue tables print it: `round(s)` s below {@see self::SECONDS_TEXT_LIMIT}, else `round(s / 60)`
+     * min, the unit chosen from the exact value.
+     */
+    public static function duration(float $seconds): string
+    {
+        if ($seconds < self::SECONDS_TEXT_LIMIT) {
+            return sprintf('%.0f s', round($seconds));
+        }
+
+        return sprintf('%.0f min', round($seconds / 60));
+    }
+
+    /**
+     * The Oldest wait cell of the queue tables: the level in front of "age / limit" (`2|5 min / 1 min`), which the
+     * column's value mappings cut off and colour by; level 0 and the age alone without a wait limit (`0|12 s`).
+     */
+    public static function oldestCell(float $ageSeconds, ?int $limitSeconds, int $level): string
+    {
+        if ($limitSeconds === null) {
+            return '0|'.self::duration($ageSeconds);
+        }
+
+        return $level.'|'.self::duration($ageSeconds).' / '.self::duration((float) $limitSeconds);
+    }
+
+    /**
      * Pending caption: `Oldest: 17 s \u{00B7} default`, `Oldest: 3 min \u{00B7} slow` (from 120 s, rounded
      * minutes), or `Oldest: \u{2014}`
      * when nothing waits (age 0 or unknown) or no queue is named. For whole seconds; an exact age goes through

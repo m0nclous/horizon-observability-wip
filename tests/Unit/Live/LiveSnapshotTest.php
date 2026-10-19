@@ -56,6 +56,11 @@ it('matches the Addendum R4.4 example document', function () use ($dot): void {
             ['connection' => 'redis', 'queue' => 'default', 'pending' => 7, 'reserved' => 2, 'delayed' => 0, 'delayed_due' => 0, 'oldest_seconds' => 17, 'wait_threshold_seconds' => 60, 'wait_ratio' => 0.28, 'level' => 0, 'color' => 'green', 'completed_per_minute' => 40, 'failed_per_minute' => 1.0, 'supervisors' => ['supervisor-default']],
             ['connection' => 'redis', 'queue' => 'emails', 'pending' => 0, 'reserved' => 1, 'delayed' => 0, 'delayed_due' => 0, 'oldest_seconds' => 0, 'wait_threshold_seconds' => 60, 'wait_ratio' => 0.0, 'level' => 0, 'color' => 'green', 'completed_per_minute' => 2, 'failed_per_minute' => 0.0, 'supervisors' => []],
         ],
+        // The example's queue inputs carry no pools: unknown utilisation and no processes per queue
+        'workload' => [
+            ['queue' => 'default', 'utilization' => 1999, 'processes' => 0, 'pending' => 7, 'delayed' => 0, 'oldest_cell' => '0|17 s / 60 s'],
+            ['queue' => 'emails', 'utilization' => 1999, 'processes' => 0, 'pending' => 0, 'delayed' => 0, 'oldest_cell' => '0|0 s / 60 s'],
+        ],
         'tiles' => [
             ['tile' => 'pending', 'key' => '', 'caption' => "Oldest: 17 s {$dot} default", 'value' => 7.0, 'color' => 'green', 'level' => 0],
             ['tile' => 'delayed', 'key' => '', 'caption' => '', 'value' => 0.0, 'color' => 'text', 'level' => 0],

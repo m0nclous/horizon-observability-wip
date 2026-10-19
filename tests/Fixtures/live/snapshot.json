@@ -193,6 +193,48 @@
             ]
         }
     ],
+    "workload": [
+        {
+            "queue": "default",
+            "utilization": 1067,
+            "processes": 3,
+            "pending": 3,
+            "delayed": 1,
+            "oldest_cell": "1|17 s / 10 s"
+        },
+        {
+            "queue": "slow",
+            "utilization": 1000,
+            "processes": 1,
+            "pending": 2,
+            "delayed": 0,
+            "oldest_cell": "0|12 s / 30 s"
+        },
+        {
+            "queue": "reports",
+            "utilization": 1000,
+            "processes": 1,
+            "pending": 0,
+            "delayed": 0,
+            "oldest_cell": "0|0 s / 60 s"
+        },
+        {
+            "queue": "mail",
+            "utilization": 1100,
+            "processes": 2,
+            "pending": 0,
+            "delayed": 0,
+            "oldest_cell": "0|0 s / 60 s"
+        },
+        {
+            "queue": "sms",
+            "utilization": 1100,
+            "processes": 2,
+            "pending": 0,
+            "delayed": 1,
+            "oldest_cell": "0|0 s / 60 s"
+        }
+    ],
     "tiles": [
         {
             "tile": "pending",
