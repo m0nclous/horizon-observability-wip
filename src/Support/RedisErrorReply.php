@@ -29,7 +29,7 @@ use Throwable;
  *
  * @internal
  */
-final class RedisErrorReply
+final readonly class RedisErrorReply
 {
     /**
      * The codes this class has a fix for, as the first word of an error reply.
@@ -40,9 +40,9 @@ final class RedisErrorReply
      * @param  string|null  $refused  the refused command when the reply does not name it (Redis 6.2 inside a script)
      */
     private function __construct(
-        public readonly string $code,
-        public readonly string $message,
-        private readonly ?string $refused = null,
+        public string $code,
+        public string $message,
+        private ?string $refused = null,
     ) {}
 
     /**

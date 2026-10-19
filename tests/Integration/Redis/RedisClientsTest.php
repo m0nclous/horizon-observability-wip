@@ -77,7 +77,7 @@ it('caps the timeouts of every node a predis cluster reader connects to, also th
     foreach ($parameters as $node) {
         expect((float) $node->timeout)->toBe(2.0)
             ->and((float) $node->read_write_timeout)->toBe(2.0)
-            ->and((bool) filter_var($node->persistent, FILTER_VALIDATE_BOOLEAN))->toBeFalse()
+            ->and(filter_var($node->persistent, FILTER_VALIDATE_BOOLEAN))->toBeFalse()
             // The app's own parameters stay.
             ->and($node->password)->toBe('from-the-options');
     }

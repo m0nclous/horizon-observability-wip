@@ -324,9 +324,7 @@ final readonly class RedisClientSettings
         unset($connection['options']);
         $ownPlace = 'the options of '.$base;
         // Both connectors put a set connection `prefix` over the options.
-        $prefix = isset($connection['prefix'])
-            ? $connection['prefix']
-            : self::first([[$ownPlace, $own], [self::GLOBAL_OPTIONS, $global]], 'prefix');
+        $prefix = $connection['prefix'] ?? self::first([[$ownPlace, $own], [self::GLOBAL_OPTIONS, $global]], 'prefix');
 
         if ($client !== 'predis') {
             return new self($client, false, $base, [[[$ownPlace, $own], [self::GLOBAL_OPTIONS, $global], [$base, $connection]]], [], [], null, self::text($prefix));

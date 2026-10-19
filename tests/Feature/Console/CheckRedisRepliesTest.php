@@ -48,7 +48,6 @@ function replyServer(TestCase $test, string $client): PrivateRedis
         $GLOBALS['ho_reply_server'] = $redis;
     }
 
-    /** @var PrivateRedis $redis */
     $redis = $GLOBALS['ho_reply_server'];
 
     foreach ([['REPLICAOF', 'NO', 'ONE'], ['CONFIG', 'SET', 'maxmemory', '0'], ['ACL', 'DELUSER', 'ho'], ['ACL', 'SETUSER', 'ho', 'on', '>secret', '~*', '+@all'], ['FLUSHALL']] as $command) {

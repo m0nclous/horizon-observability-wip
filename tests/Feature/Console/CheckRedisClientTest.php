@@ -135,7 +135,7 @@ function redisModelPhpredisTimeouts(string $name): array
     $client = redisModelManager()->connection($name)->client();
     assert($client instanceof Redis);
 
-    return [(float) $client->getTimeout(), (float) $client->getReadTimeout()];
+    return [(float) $client->getTimeout(), $client->getReadTimeout()];
 }
 
 /**
@@ -150,18 +150,16 @@ function redisModelPhpredisClusterOptions(string $name): array
     $captured = new ArrayObject;
 
     // Not static: RedisManager::extend() binds the closure (Laravel 11).
-    $manager->extend('phpredis', function () use ($captured): PhpRedisConnector {
-        return new class($captured) extends PhpRedisConnector
+    $manager->extend('phpredis', fn (): PhpRedisConnector => new class($captured) extends PhpRedisConnector
+    {
+        public function __construct(private readonly ArrayObject $captured) {}
+
+        protected function createRedisClusterInstance(array $servers, array $options): never
         {
-            public function __construct(private readonly ArrayObject $captured) {}
+            $this->captured->exchangeArray($options);
 
-            protected function createRedisClusterInstance(array $servers, array $options): never
-            {
-                $this->captured->exchangeArray($options);
-
-                throw new RuntimeException('captured');
-            }
-        };
+            throw new RuntimeException('captured');
+        }
     });
 
     try {
@@ -309,7 +307,7 @@ it('judges a phpredis server by the timeouts its client gets, and its fix line g
     "on the connection, 0 in the connection's options" => [static function (): void {
         config()->set('database.redis.probe', [...config('database.redis.probe'), 'timeout' => 1.5, 'read_timeout' => 2.5, 'options' => ['read_timeout' => 0]]);
     }, false],
-    'nowhere' => [static fn () => null, false],
+    'nowhere' => [static fn (): null => null, false],
 ]);
 
 it('judges a phpredis cluster by the timeouts new RedisCluster() gets, and its fix line gives them to it', function (Closure $configure, bool $applied): void {
@@ -347,7 +345,7 @@ it('judges a phpredis cluster by the timeouts new RedisCluster() gets, and its f
         config()->set('database.redis.clusters.options', ['timeout' => 1.5, 'read_timeout' => 2.5]);
         config()->set('database.redis.clusters.probe.options', ['read_timeout' => null]);
     }, false],
-    'nowhere' => [static fn () => null, false],
+    'nowhere' => [static fn (): null => null, false],
 ]);
 
 it('names the cluster node timeouts phpredis does not read', function (): void {
@@ -397,13 +395,13 @@ it('judges a predis server by its connection parameters, and its fix line gives 
     // A key the connection has, even null, is never taken from the parameters.
     'in the parameters, null on the connection' => [static function (): void {
         config()->set('database.redis.options.parameters', ['read_write_timeout' => 2.5]);
-        config()->set('database.redis.probe.read_write_timeout', null);
+        config()->set('database.redis.probe.read_write_timeout');
     }, false],
     "in the parameters of database.redis.options, other parameters in the connection's options" => [static function (): void {
         config()->set('database.redis.options.parameters', ['read_write_timeout' => 2.5]);
         config()->set('database.redis.probe.options', ['parameters' => ['timeout' => 1]]);
     }, false],
-    'nowhere' => [static fn () => null, false],
+    'nowhere' => [static fn (): null => null, false],
 ]);
 
 it('names the predis options it does not read as connection parameters', function (): void {
@@ -457,7 +455,7 @@ it('judges a predis cluster by the parameters of every node it connects to, and 
         config()->set('database.redis.clusters.options', ['parameters' => ['read_write_timeout' => 2.5]]);
         config()->set('database.redis.clusters.probe.0.read_write_timeout', 0);
     }, false],
-    'nowhere' => ['redis', static fn () => null, false],
+    'nowhere' => ['redis', static fn (): null => null, false],
 ]);
 
 it('names where to add the predis cluster parameters', function (): void {

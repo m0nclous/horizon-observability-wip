@@ -438,7 +438,7 @@ final readonly class Diagnostics
         $client = $this->container->make(Versions::class)->redisClient();
         $cluster = $clients->isCluster($name);
 
-        if ($settings === null) {
+        if (! $settings instanceof RedisClientSettings) {
             return [CheckResult::error($section, 'Connection', sprintf('Redis connection [%s] is not configured', $name), sprintf('Add database.redis.%s to config/database.php, or set HORIZON_OBSERVABILITY_REDIS_CONNECTION to an existing connection.', $name))];
         }
 
@@ -553,7 +553,7 @@ final readonly class Diagnostics
                     : CheckResult::error($section, 'Redis '.$redis, 'unreachable: '.FailureReporter::describe($e), sprintf('Start Redis or fix database.redis.%s in config/database.php (the queue connection %s uses it).', $redis, $connection));
             }
 
-            if ($settings !== null && $settings->persistentPlaces() !== []) {
+            if ($settings instanceof RedisClientSettings && $settings->persistentPlaces() !== []) {
                 $results[] = $this->persistentWarning($section, $redis, $settings);
             }
         }
@@ -575,7 +575,7 @@ final readonly class Diagnostics
         $results = [];
         $horizon = $this->redis('horizon');
 
-        if ($horizon !== null) {
+        if ($horizon instanceof RedisClientSettings) {
             $results[] = $this->redisTimeout($section, 'Horizon connection', 'horizon', sprintf('horizon (a copy of %s)', $this->horizonUse()), $horizon, sprintf(
                 "a hung Redis holds every scrape until PHP's default_socket_timeout (%s s)",
                 $this->scalarText(ini_get('default_socket_timeout')),
@@ -657,7 +657,7 @@ final readonly class Diagnostics
             $connection = is_string($settings['connection'] ?? null) && $settings['connection'] !== '' ? $settings['connection'] : 'default';
             $redis = $this->redis($connection);
 
-            if ($redis === null) {
+            if (! $redis instanceof RedisClientSettings) {
                 return CheckResult::error($section, $name, sprintf('%s uses the Redis connection [%s], which is not configured', $store, $connection), sprintf('Add database.redis.%s to config/database.php or point cache.stores.%s.connection at an existing connection.', $connection, $store));
             }
 
