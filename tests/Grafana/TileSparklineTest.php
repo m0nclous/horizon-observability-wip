@@ -6,16 +6,19 @@ use DF\HorizonObservability\Grafana\PanelRegistry;
 use DF\HorizonObservability\Grafana\Promql;
 use DF\HorizonObservability\Grafana\Queries\Attempts;
 use DF\HorizonObservability\Grafana\Queries\Selection;
+use DF\HorizonObservability\Metrics\Metric;
 use DF\HorizonObservability\Tests\Grafana\Support\ProfileSeries;
 use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * ADDENDUM R2.4 O4 (as amended in T13 QA round 2): the Completed (#8) and Failed (#4) sparklines compute the attempts
- * per step per series, next minus current for the series present at both edges, and sum them; the first and the last
- * step are clipped to the period. Their points add up to the tile number, so they must equal the legacy series-level
- * form (Attempts::perStep() summed) at every step of a period on continuous data, the medium perf profile here. A
- * counter reset costs the attempts of its series in the one step it falls in, not the period or the other series.
+ * ADDENDUM R2.4 O4 (as amended in T13 QA rounds 2 and 3): the Completed (#8) and Failed (#4) sparklines compute the
+ * attempts per step per series, the value at the end of the step minus the one at its start (or the series' first
+ * value inside the step), and sum them; the first and the last step are clipped to the period. Their points add up to
+ * the tile number, so on continuous data (the medium perf profile here) they must equal the legacy form, the pilot's
+ * attempts_per_step summed, at every step of a period, and so must the per-step graph #14 (Attempts::perStep(), per
+ * series since QA round 3). A counter reset costs the attempts of its series in the one step it falls in, not the
+ * period or the other series.
  *
  * Grafana's range query is emulated by one promtool evaluation per step: 15-minute range ending at 19m, 1m steps.
  */
@@ -31,9 +34,38 @@ function sparklineInterpolate(string $expr): string
 }
 
 /**
- * The legacy tile expression: Attempts::perStep() summed, as the WP8B render wrote it.
+ * The legacy tile expression: the pilot's attempts_per_step per (queue, job_class, status), summed, as the WP8B render
+ * wrote it (Attempts::perStep() before T13 QA round 3).
  */
 function legacySparkline(string $statuses): string
+{
+    $promql = new Promql('ho_');
+    $status = [Promql::re('status', $statuses)];
+    $labels = ['queue', 'job_class', 'status'];
+    $sum = static fn (string $expr): string => Promql::sum($expr, ...$labels);
+    $stepEnd = Promql::paren(Promql::either(
+        $sum($promql->over('last_over_time', Metric::JobsTotal, Promql::INTERVAL, $status, offset: '-'.Promql::INTERVAL)),
+        $sum($promql->shifted(Metric::JobsTotal, $status, offset: '-'.Promql::INTERVAL)),
+    ));
+    $stepStart = Promql::paren(Promql::either(
+        $sum($promql->over('last_over_time', Metric::JobsTotal, Promql::INTERVAL, $status)),
+        $sum($promql->selector(Metric::JobsTotal, ...$status)),
+    ));
+    $stepFirst = $sum($promql->over('min_over_time', Metric::JobsTotal, Promql::INTERVAL, $status, offset: '-'.Promql::INTERVAL));
+    $periodEnd = $sum($promql->shifted(Metric::JobsTotal, $status, at: Promql::TO_SECONDS));
+    $periodStart = $sum($promql->over('last_over_time', Metric::JobsTotal, '10m', $status, at: Promql::FROM_SECONDS));
+    $later = '(('.$stepEnd.' <= '.$periodEnd.') or ('.Promql::andOn($periodEnd, $stepEnd, ...$labels).') or ('.Promql::unlessOn($stepEnd, $periodEnd, ...$labels).'))';
+    $since = '(('.$stepStart.' >= '.$periodStart.') or ('.Promql::andOn($periodStart, $stepStart, ...$labels).') or ('
+        .Promql::unlessOn($stepStart, $periodStart, ...$labels).') or ('.Promql::unlessOn($stepFirst, $stepStart, ...$labels).'))';
+    $perStep = '(('.$later.' - '.$since.') >= 0 or ('.$later.' < '.$since.'))';
+
+    return $promql->filtered(Promql::sum($perStep).' or '.(new Selection($promql))->zeroIfMetrics(), true);
+}
+
+/**
+ * The graph #14's Total line as a sum of attempts per step: Attempts::perStep() summed.
+ */
+function perStepSparkline(string $statuses): string
 {
     $promql = new Promql('ho_');
 
@@ -49,10 +81,12 @@ beforeEach(function (): void {
 it('gives the legacy value at every step of the period (O4)', function (string $title, string $statuses): void {
     $now = sparklineInterpolate(Rendered::expressions()['panel '.PanelRegistry::idOf(Rendered::dashboard(), $title).' A']);
     $legacy = sparklineInterpolate(legacySparkline($statuses));
+    $graph = sparklineInterpolate(perStepSparkline($statuses));
     $tests = [];
 
     foreach (range(4, 19) as $minute) {
         $tests[] = ['expr' => '# step '.$minute."\n".ProfileSeries::difference($now, $legacy), 'eval_time' => $minute.'m', 'exp_samples' => []];
+        $tests[] = ['expr' => '# graph step '.$minute."\n".ProfileSeries::difference($graph, $legacy), 'eval_time' => $minute.'m', 'exp_samples' => []];
         // Not trivially equal: the steps have attempts
         $tests[] = ['expr' => 'count('.$now.' > 0)', 'eval_time' => $minute.'m', 'exp_samples' => [['labels' => '{}', 'value' => 1]]];
     }
