@@ -254,11 +254,14 @@ it('tells a server at its maxclients to raise it, never that it is reachable', f
         fclose($held);
     }
 
+    // The server answers the first command and closes the connection. Whether the client reads that reply before it
+    // sees the closed connection depends on the timing (predis reads it in its handshake and reports the closed
+    // stream): with the reply, the maxclients fix; without, the connectivity one. Never "reachable".
     expect($storage->status->value)->toBe('error');
 
-    // predis reads only the closed connection (its handshake gets the reply).
-    if ($client === 'phpredis') {
-        expect($storage->message)->toContain('max number of clients reached')
-            ->and($storage->fix)->toBe('Raise maxclients on the Redis of database.redis.ho-private, or close idle clients (CLIENT LIST shows them): at its limit it refuses every new connection.');
+    if (str_contains($storage->message, 'max number of clients reached')) {
+        expect($storage->fix)->toBe('Raise maxclients on the Redis of database.redis.ho-private, or close idle clients (CLIENT LIST shows them): at its limit it refuses every new connection.');
+    } else {
+        expect($storage->message)->toStartWith('ho-private unreachable: ');
     }
 })->with(['phpredis', 'predis']);

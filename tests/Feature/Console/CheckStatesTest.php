@@ -12,6 +12,7 @@ use DF\HorizonObservability\Tests\Support\RedisKeys;
 use DF\HorizonObservability\Tests\TestCase;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 
@@ -330,18 +331,19 @@ it('reads the clock once for the age of the last push, so a second boundary betw
     config()->set('horizon-observability.live.stream.token', 'glsa_check-states-token-0123456789');
     $pushed = CarbonImmutable::parse('2026-10-18 11:59:55.999999', 'UTC');
     RedisKeys::client()->hset(TestCase::redisPrefix().'horizon:'.(new Keys)->meta(), 'live_push_at', $pushed->format('U.u'));
-    // A clock that ticks on every reading the Last push row makes, across the second boundary at 12:00:00.
+    // A clock that ticks on every reading the Last push row makes, across the second boundary at 12:00:00. Set on
+    // the class now() returns: Carbon 2 keeps the test clock of Carbon and CarbonImmutable apart.
     $readings = 0;
-    CarbonImmutable::setTestNow(static function () use (&$readings): CarbonImmutable {
+    Carbon::setTestNow(static function () use (&$readings): Carbon {
         $lastPush = in_array('lastPush', array_column(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS), 'function'), true);
 
-        return CarbonImmutable::parse('2026-10-18 11:59:59.999990', 'UTC')->addMicroseconds($lastPush ? 10 * $readings++ : 0);
+        return Carbon::parse('2026-10-18 11:59:59.999990', 'UTC')->addMicroseconds($lastPush ? 10 * $readings++ : 0);
     });
 
     try {
         $age = checkState('Live / Last push');
     } finally {
-        CarbonImmutable::setTestNow();
+        Carbon::setTestNow();
     }
 
     expect($age[1])->toBe('4.0 s ago');

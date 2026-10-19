@@ -1258,7 +1258,8 @@ final readonly class Diagnostics
     /**
      * EXISTS on the connection, as the Storage and Queues lines probe it. phpredis answers an `ERR` reply (such as
      * "ERR max number of clients reached") with false and keeps it in `getLastError()`: that reply is thrown here, as
-     * phpredis throws the other replies.
+     * phpredis throws the other replies. A reply to the connect (AUTH, SELECT) counts too: a server at maxclients
+     * answers it and closes the connection, so EXISTS then fails without a reply of its own.
      *
      * @throws RedisException for an error reply phpredis did not throw
      */
@@ -1266,16 +1267,24 @@ final readonly class Diagnostics
     {
         $client = $connection->client();
         $phpredis = $client instanceof Redis || $client instanceof RedisCluster;
+        $connect = $phpredis ? $client->getLastError() : null;
+        $connect = is_string($connect) && $connect !== '' ? $connect : null;
 
         if ($phpredis) {
             $client->clearLastError();
         }
 
-        if ($connection->command('exists', [$key]) === false && $phpredis) {
+        try {
+            $result = $connection->command('exists', [$key]);
+        } catch (RedisException $e) {
+            throw $connect === null ? $e : new RedisException($connect, 0, $e);
+        }
+
+        if ($result === false && $phpredis) {
             $error = $client->getLastError();
 
             // Without a reply: a connection problem, which gets the connectivity fix.
-            throw new RedisException(is_string($error) && $error !== '' ? $error : 'the server answered EXISTS with false');
+            throw new RedisException(is_string($error) && $error !== '' ? $error : ($connect ?? 'the server answered EXISTS with false'));
         }
     }
 
