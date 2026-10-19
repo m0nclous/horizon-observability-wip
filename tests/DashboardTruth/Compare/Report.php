@@ -122,8 +122,13 @@ final class Report
                         continue;
                     }
 
-                    if ($target->range && count(array_unique(array_map(static fn (Assertion $one): string => $one->source, $mine))) < 2) {
-                        $missing[] = sprintf('%s on Grafana %s: #%d %s was not compared at its replay steps', $caseId, $grafana, $target->panel, $target->refId);
+                    // Grafana's grid and both replays (S and the next coarser step): the captured step is never
+                    // below S (the datasource's minimum interval), so the two replay steps are always distinct
+                    $sources = array_unique(array_map(static fn (Assertion $one): string => $one->source, $mine));
+                    $replays = array_filter($sources, static fn (string $source): bool => str_starts_with($source, 'replay '));
+
+                    if ($target->range && (! in_array('grid', $sources, true) || count($replays) < 2)) {
+                        $missing[] = sprintf('%s on Grafana %s: #%d %s was not compared on the grid and at both replay steps', $caseId, $grafana, $target->panel, $target->refId);
                     }
 
                     if (array_filter($mine, static fn (Assertion $one): bool => $one->nonTrivial) === []) {

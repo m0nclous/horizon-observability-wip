@@ -48,7 +48,10 @@ php tests/DashboardTruth/bin/run --slot=30              # another port block (se
 
 `bin/run replay --run-dir=<dir> --case=S01 --grafana=13 --panel=8 --ref=A --step=10s` re-posts a captured query at
 a step and prints its frame; every failure in the report carries this command. `bin/run compare <run A> <run B>`
-compares the observations of two runs (the determinism check).
+compares the observations of two runs (the determinism check, `Compare/Determinism`): the sent queries, the frames
+(series and rows order-insensitive), the DOM and the scene variables must be identical. Only the measured durations
+are masked: attempt durations (#6 F, G, I, J and their DOM cells) and Horizon's job runtimes and record stamps (the
+job lists' Runtime, their times compared to the second), plus the random job ids in the job-list links.
 
 The record stage needs Redis on `REDIS_HOST:REDIS_PORT` (127.0.0.1:6379); it writes only under its world prefix and
 `bin/run` deletes the worlds at the end (also on failure and SIGINT/SIGTERM) unless `--keep`. Normal `pest` runs skip
@@ -99,6 +102,8 @@ None.
 - Mutant `completed-retried` (#8 A counts retried attempts as completed): killed on both versions, 8 dashboard
   defects in S01 (grid, both replays and DOM per version); CI runs it after every PR run.
 - Negative control S02: fails as `case setup` only, on both versions.
+- Determinism: two full local runs (`wp1a`, `wp1b`, each recording its own world) gave identical observations, 4 of 4
+  (`bin/run compare`, measured durations masked).
 
 ## Stage timings
 

@@ -33,6 +33,7 @@ declare(strict_types=1);
 use DF\HorizonObservability\Tests\DashboardTruth\Cases\Cases;
 use DF\HorizonObservability\Tests\DashboardTruth\Cases\Plan;
 use DF\HorizonObservability\Tests\DashboardTruth\Cases\Renders;
+use DF\HorizonObservability\Tests\DashboardTruth\Compare\Determinism;
 use DF\HorizonObservability\Tests\DashboardTruth\Compare\Observation as Frames;
 use DF\HorizonObservability\Tests\DashboardTruth\Compare\Replays;
 use DF\HorizonObservability\Tests\DashboardTruth\Compare\Report;
@@ -407,8 +408,9 @@ final class Runner
     }
 
     /**
-     * The determinism check of two runs: their observations must be identical (frames order-insensitive, DOM and
-     * scene variables), apart from the measured durations (design section 4); prints every difference.
+     * The determinism check of two runs (Compare/Determinism): their observations must be identical (frames and rows
+     * order-insensitive, the sent queries, the DOM and the scene variables), apart from the measured durations
+     * (design section 4); prints every difference.
      */
     private function compare(): int
     {
@@ -420,69 +422,33 @@ final class Runner
 
         $differences = 0;
         $compared = 0;
+        $first = array_map(static fn (string $path): string => substr($path, strlen($dirs[0])), glob($dirs[0].'/observations/*/*.json') ?: []);
+        $second = array_map(static fn (string $path): string => substr($path, strlen($dirs[1])), glob($dirs[1].'/observations/*/*.json') ?: []);
 
-        foreach (glob($dirs[0].'/observations/*/*.json') ?: [] as $first) {
-            $relative = substr($first, strlen($dirs[0]));
-            $second = $dirs[1].$relative;
+        foreach (array_diff($second, $first) as $relative) {
+            fwrite(STDOUT, $relative.": missing in the first run\n");
+            $differences++;
+        }
+
+        foreach ($first as $relative) {
             $compared++;
 
-            if (! is_file($second)) {
+            if (! in_array($relative, $second, true)) {
                 fwrite(STDOUT, $relative.": missing in the second run\n");
                 $differences++;
 
                 continue;
             }
 
-            $a = self::canonical(Observation::read($first));
-            $b = self::canonical(Observation::read($second));
-
-            foreach (array_unique([...array_keys($a), ...array_keys($b)]) as $key) {
-                if (($a[$key] ?? null) !== ($b[$key] ?? null)) {
-                    fwrite(STDOUT, sprintf("%s %s differs\n", $relative, $key));
-                    $differences++;
-                }
+            foreach (Determinism::differences(Observation::read($dirs[0].$relative), Observation::read($dirs[1].$relative)) as $difference) {
+                fwrite(STDOUT, $relative.' '.$difference."\n");
+                $differences++;
             }
         }
 
-        fwrite(STDOUT, sprintf("%d observations compared, %d differences\n", $compared, $differences));
+        fwrite(STDOUT, sprintf("%d observations compared, %d differences (measured durations masked)\n", $compared, $differences));
 
         return $compared > 0 && $differences === 0 ? 0 : 1;
-    }
-
-    /**
-     * An observation in a run-independent form: per panel title and refId the frames (series sorted by labels),
-     * per panel key the DOM lines, and the scene variables.
-     *
-     * @return array<string, string>
-     */
-    private static function canonical(Observation $observation): array
-    {
-        $canonical = [];
-
-        foreach ($observation->requests() as $request) {
-            $body = is_array($request['body']) ? $request['body'] : [];
-
-            foreach (is_array($body['queries'] ?? null) ? $body['queries'] : [] as $query) {
-                $refId = (string) ($query['refId'] ?? '');
-                $last = $observation->request((string) $request['panelId'], $refId);
-                $series = Frames::series(Frames::frames(is_array($last['response'] ?? null) ? $last['response'] : null, $refId));
-                $text = array_map(static fn (array $one): string => json_encode($one['labels']).json_encode($one['points']), $series);
-                sort($text);
-                $canonical[sprintf('frame %s/%s %s', $request['panelTitle'] ?? '?', $request['panelId'] ?? '?', $refId)] = implode("\n", $text);
-            }
-        }
-
-        foreach ($observation->data['dom'] as $key => $dom) {
-            $canonical['dom '.$key] = implode(' | ', $dom['lines']);
-        }
-
-        foreach ($observation->variables() as $name => $variable) {
-            $canonical['variable '.$name] = json_encode([$variable['value'], $variable['text'], $variable['options']]) ?: '';
-        }
-
-        ksort($canonical);
-
-        return $canonical;
     }
 
     private function cleanupCommand(): int

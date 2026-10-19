@@ -20,6 +20,15 @@ use DF\HorizonObservability\Tests\DashboardTruth\Contracts\Observation;
 
 pest()->group('grafana');
 
+afterEach(function (): void {
+    foreach ($GLOBALS['dashboardTruthGateDirs'] ?? [] as $dir) {
+        array_map(unlink(...), glob($dir.'/*') ?: []);
+        rmdir($dir);
+    }
+
+    $GLOBALS['dashboardTruthGateDirs'] = [];
+});
+
 /**
  * A run directory with a plan of S01 (off) and its report.
  */
@@ -27,6 +36,7 @@ function dashboardTruthGateDir(): string
 {
     $dir = sys_get_temp_dir().'/ho-t17-gate-'.bin2hex(random_bytes(4));
     mkdir($dir);
+    $GLOBALS['dashboardTruthGateDirs'][] = $dir;
     $case = new CaseDef('S01', 'slice', Mode::Off);
     file_put_contents($dir.'/plan.json', json_encode([
         'schema' => 1,
@@ -85,6 +95,14 @@ it('fails the runtime gate when #8 A or B made no assertion', function (string $
     expect($report->gate(Plan::read($dir.'/plan.json'), [['S01', '13']]))->toBe([sprintf('S01 on Grafana 13: #8 %s made no frame assertion', $refId)]);
 })->with(['A', 'B']);
 
+it('fails the runtime gate when one replay step is missing', function (): void {
+    $dir = dashboardTruthGateDir();
+    $report = Report::open($dir, fresh: true);
+    $report->record('S01', '13', array_values(array_filter(dashboardTruthCompleteAssertions(), static fn (Assertion $one): bool => $one->source !== 'replay 20s')));
+
+    expect($report->gate(Plan::read($dir.'/plan.json'), [['S01', '13']]))->toBe(['S01 on Grafana 13: #8 A was not compared on the grid and at both replay steps']);
+});
+
 it('fails the runtime gate without the replays, with trivial expectations only, and without the DOM', function (): void {
     $dir = dashboardTruthGateDir();
     $report = Report::open($dir, fresh: true);
@@ -95,7 +113,7 @@ it('fails the runtime gate without the replays, with trivial expectations only, 
     ]);
 
     expect($report->gate(Plan::read($dir.'/plan.json'), [['S01', '13']]))->toBe([
-        'S01 on Grafana 13: #8 A was not compared at its replay steps',
+        'S01 on Grafana 13: #8 A was not compared on the grid and at both replay steps',
         'S01 on Grafana 13: #8 A had only trivial expectations (empty, all 0 or a dash)',
         'S01 on Grafana 13: #8 made no DOM assertion',
     ]);
