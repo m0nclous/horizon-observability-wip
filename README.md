@@ -310,6 +310,7 @@ the source of the alert sound script that the dashboard already contains.
 | `--datasource-uid=` | `${HORIZON_OBSERVABILITY_PROMETHEUS_UID}` | uid of the Prometheus datasource of the alert rules |
 | `--prometheus-datasource=` | Grafana's default | name regex of the Prometheus datasource |
 | `--infinity-datasource=` | the first one | name regex of the Infinity datasource |
+| `--down-for` | `5m` | how long Horizon must be paused or not running before "Horizon is down" fires, `0s` to `60m`; the rules are evaluated every minute, so `1m` fires one to two minutes after Horizon stops |
 | `--health-rules` | off | add the rules "Metrics collector failing" and "Duplicate metrics exporters" |
 | `--recording-rules` | off | also write `prometheus/horizon-observability.rules.yml` (the dashboard does not read them) |
 | `--defaults` | off | ignore the app config (the metric prefix still follows the namespace) |
@@ -320,7 +321,7 @@ Alert rules (evaluated every minute):
 | Rule (uid suffix) | Fires when |
 |---|---|
 | No queue metrics (`-no-metrics`) | Prometheus has no `ho_horizon_status` for 5 minutes |
-| Horizon is down (`-down`) | Horizon is paused or has no master supervisor, for 5 minutes |
+| Horizon is down (`-down`) | Horizon is paused or has no master supervisor, for 5 minutes (`--down-for`) |
 | Queue wait over 2x limit (`-long-wait`) | the oldest pending job of a queue waits more than twice its `horizon.waits` threshold, for 5 minutes |
 | High failure rate (`-failures`) | failed and timed-out attempts are at least 5 % of a queue's attempts over 15 minutes, for 5 minutes. Below 100 attempts the ratio is taken over 100, so it needs at least 5 failures |
 | Live overview stalled (`-live`, stream mode only) | the last stream push is more than 30 s old, for 1 minute |

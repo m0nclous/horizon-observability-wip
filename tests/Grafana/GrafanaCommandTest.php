@@ -163,6 +163,25 @@ it('writes the dashboard and the alert rules', function (): void {
         ->and(array_keys((new Render(new DashboardOptions))->files()))->toBe([Render::DASHBOARD, Render::ALERTING]);
 });
 
+it('fires Horizon is down after --down-for and keeps the other rules at 5 minutes', function (string $value, string $for): void {
+    [$status] = runGrafana(['path' => $this->output, '--down-for' => $value]);
+    $rules = json_decode((string) file_get_contents($this->output.'/'.Render::ALERTING), true, flags: JSON_THROW_ON_ERROR)['groups'][0]['rules'];
+
+    expect($status)->toBe(0)
+        ->and(array_column($rules, 'for', 'uid'))->toBe([
+            'horizon-observability-no-metrics' => '5m',
+            'horizon-observability-down' => $for,
+            'horizon-observability-long-wait' => '5m',
+            'horizon-observability-failures' => '5m',
+        ]);
+})->with([
+    'the default' => ['5m', '5m'],
+    'one minute' => ['1m', '1m'],
+    'seconds' => ['90s', '90s'],
+    'whole minutes in seconds' => ['120s', '2m'],
+    'at once' => ['0s', '0s'],
+]);
+
 it('writes the recording rules only with --recording-rules, and checks them', function (): void {
     [$status, $output] = runGrafana(['path' => $this->output, '--recording-rules' => true, '--scrape-interval' => '30s']);
     $render = (new Render(new DashboardOptions(scrapeInterval: 30, recordingRules: true)))->files();
@@ -308,6 +327,9 @@ it('refuses invalid options and writes nothing', function (array $options, strin
     'poll interval in milliseconds' => [['--live-poll-interval' => '500ms'], '--live-poll-interval must be'],
     'poll interval without a unit' => [['--live-poll-interval' => '5'], '--live-poll-interval must be'],
     'poll interval in hours' => [['--live-poll-interval' => '1h'], '--live-poll-interval must be'],
+    'down period over an hour' => [['--down-for' => '61m'], '--down-for must be'],
+    'down period without a unit' => [['--down-for' => '60'], '--down-for must be'],
+    'negative down period' => [['--down-for' => '-1m'], '--down-for must be'],
     'stream id with a slash' => [['--live' => 'stream', '--live-stream-id' => 'a/b'], '--live-stream-id must be'],
     'stream id with a dot' => [['--live-stream-id' => 'queues.prod'], '--live-stream-id must be'],
     'stream id of 65 characters' => [['--live-stream-id' => str_repeat('s', 65)], '--live-stream-id must be'],

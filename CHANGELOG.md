@@ -12,6 +12,8 @@ The first public release: a rewrite of the internal pilot `sushi-market/horizon-
 
 ### Added
 
+- `horizon-observability:grafana --down-for=<duration>`: how long Horizon must be down before "Horizon is down" fires
+  (default 5 minutes, as before).
 - Live columns of now in the Current Workload tables (poll and stream renders): Utilization, Processes, Pending,
   Delayed and Oldest wait read the new `workload` rows of the `/live` snapshot, so they agree with the Live Overview
   tiles instead of the last scrape; the totals of the period stay Prometheus queries.

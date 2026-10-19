@@ -38,6 +38,14 @@ final readonly class DashboardOptions
     public const MAX_SCRAPE_INTERVAL = 60;
 
     /**
+     * How long Horizon must be down before "Horizon is down" fires, in seconds: the pending period of that rule
+     * (`--down-for`). The other core rules keep {@see Thresholds::ALERT_FOR}.
+     */
+    public const DEFAULT_DOWN_FOR = 300;
+
+    public const MAX_DOWN_FOR = 3600;
+
+    /**
      * The dashboard refresh in poll mode and its range, seconds: Grafana's default `min_refresh_interval` is 5 s,
      * and provisioning raises a faster refresh to it.
      */
@@ -102,7 +110,12 @@ final readonly class DashboardOptions
         public int $livePollInterval = self::DEFAULT_LIVE_POLL_INTERVAL,
         public string $liveStreamId = Config::DEFAULT_LIVE_STREAM_ID,
         public bool $recordingRules = false,
+        public int $downFor = self::DEFAULT_DOWN_FOR,
     ) {
+        if ($downFor < 0 || $downFor > self::MAX_DOWN_FOR) {
+            throw new InvalidArgumentException(sprintf('The Horizon down period must be 0 to %d seconds, not %d.', self::MAX_DOWN_FOR, $downFor));
+        }
+
         if ($livePollInterval < self::MIN_LIVE_POLL_INTERVAL || $livePollInterval > self::MAX_LIVE_POLL_INTERVAL) {
             throw new InvalidArgumentException(sprintf(
                 'The live poll interval must be %d to %d seconds, not %d.',

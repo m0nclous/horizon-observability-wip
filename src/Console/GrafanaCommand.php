@@ -54,6 +54,7 @@ final class GrafanaCommand extends Command
         {--live= : Live Overview mode: poll (the live tiles read the live endpoint of the application at every dashboard refresh), stream (they read Grafana Live, pushed every second by horizon-observability:stream) or off (every tile reads Prometheus); default poll, or off while horizon-observability.live.enabled is false}
         {--live-poll-interval=5s : Poll mode: the dashboard refresh, 1s to 5m; Grafana raises it to its min_refresh_interval, 5s by default}
         {--live-stream-id= : Stream mode: the Grafana Live stream id, as horizon-observability.live.stream.id of the stream command (default: that config value, or the package default with --defaults)}
+        {--down-for=5m : How long Horizon must be paused or not running before "Horizon is down" fires, 0s to 60m (the rules are evaluated every minute)}
         {--health-rules : Add the opt-in health rules: a failing metrics collector, and more than one scraped target per job}
         {--recording-rules : Also render the opt-in Prometheus recording rules (attempts and durations per queue) into prometheus/horizon-observability.rules.yml; the dashboard does not read them}
         {--prometheus-datasource= : Name regex of the Prometheus datasource (default: Grafana\'s default datasource)}
@@ -203,7 +204,24 @@ final class GrafanaCommand extends Command
             livePollInterval: $this->livePollInterval(),
             liveStreamId: $streamId,
             recordingRules: $this->option('recording-rules') === true,
+            downFor: $this->downFor(),
         );
+    }
+
+    /**
+     * `--down-for` in seconds: `<n>s` or `<n>m`, up to an hour.
+     *
+     * @throws InvalidArgumentException
+     */
+    private function downFor(): int
+    {
+        $seconds = $this->seconds('down-for');
+
+        if ($seconds === null || $seconds > DashboardOptions::MAX_DOWN_FOR) {
+            throw new InvalidArgumentException('--down-for must be a duration from 0s to 60m such as 1m, 90s or 5m (how long Horizon must be down before the alert fires).');
+        }
+
+        return $seconds;
     }
 
     /**

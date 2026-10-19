@@ -91,6 +91,7 @@ final readonly class AlertRulesBuilder
                 noData: 'OK',
                 summary: 'Horizon is paused or not running'.$job,
                 panelId: PanelRegistry::idOf($dashboard, 'Horizon'),
+                for: $this->duration($this->options->downFor),
             ),
             // As the red Pending tile: the oldest pending job of a queue waits longer than twice its horizon.waits
             // limit (strictly, like Horizon's LongWaitDetected). One alert per queue.
@@ -263,6 +264,14 @@ final readonly class AlertRulesBuilder
     public static function coreRuleUids(string $uid, LiveMode $live = LiveMode::Off): string
     {
         return $uid.'-('.implode('|', self::coreRules($live)).')';
+    }
+
+    /**
+     * A pending period as Grafana writes it: whole minutes as `5m`, anything else in seconds.
+     */
+    private function duration(int $seconds): string
+    {
+        return $seconds > 0 && $seconds % 60 === 0 ? intdiv($seconds, 60).'m' : $seconds.'s';
     }
 
     /**
