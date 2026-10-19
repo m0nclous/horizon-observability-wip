@@ -60,14 +60,19 @@ final class Promtool
 
     /**
      * An expression as Prometheus receives it from the dashboard at eval time $to (seconds after the start of the
-     * input series) with a range of $range seconds and the scope $job: the textbox defaults, "All" for `${x:text}`
-     * and `.*` for every other variable (Grafana's All of the filters).
+     * input series, with milliseconds) with a range of $range seconds and the scope $job: the period edges as Grafana
+     * formats them (`${__to}` in milliseconds, `${__to:date:seconds}` as Math.round(ms / 1000)), the textbox defaults,
+     * "All" for `${x:text}` and `.*` for every other variable (Grafana's All of the filters).
      */
-    public static function interpolate(string $expr, string $job, int $to, int $range): string
+    public static function interpolate(string $expr, string $job, int|float $to, int $range): string
     {
+        $toMs = (int) round($to * 1000);
+        $fromMs = $toMs - $range * 1000;
         $expr = strtr($expr, [
-            '${__from:date:seconds}' => (string) ($to - $range),
-            '${__to:date:seconds}' => (string) $to,
+            '${__from:date:seconds}' => (string) self::roundHalfUp($fromMs / 1000),
+            '${__to:date:seconds}' => (string) self::roundHalfUp($toMs / 1000),
+            '${__from}' => (string) $fromMs,
+            '${__to}' => (string) $toMs,
             '$__interval_ms' => '60000',
             '${__interval_ms}' => '60000',
             '$__interval' => '1m',
@@ -80,5 +85,13 @@ final class Promtool
 
         // $1 in label_replace() replacements is not a variable
         return (string) preg_replace('/\$\{[A-Za-z_]\w*(?::\w+)?\}|\$[A-Za-z_]\w*/', '.*', $expr);
+    }
+
+    /**
+     * JavaScript's Math.round: halves round up.
+     */
+    private static function roundHalfUp(float $value): int
+    {
+        return (int) floor($value + 0.5);
     }
 }

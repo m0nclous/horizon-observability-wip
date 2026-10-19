@@ -33,9 +33,23 @@ final readonly class Promql
 
     public const INTERVAL_MS = '$__interval_ms';
 
+    /**
+     * The period edges rounded to whole seconds (Grafana formats them as Math.round(ms / 1000)).
+     */
     public const FROM_SECONDS = '${__from:date:seconds}';
 
     public const TO_SECONDS = '${__to:date:seconds}';
+
+    /**
+     * The exact period edges in seconds: Grafana's milliseconds as a number literal (`1760000000123e-3`). The
+     * instant queries run at the exact `to` in milliseconds, so a period count that must agree with them (the tiles'
+     * edge steps, the per-step graphs, the batch scope) takes these, not the rounded {@see FROM_SECONDS} and
+     * {@see TO_SECONDS}: a scrape between an edge and its rounded second counted in only one of the two forms, and
+     * a rounded end that reached the next graph point left the last step short.
+     */
+    public const FROM = '${__from}e-3';
+
+    public const TO = '${__to}e-3';
 
     /**
      * Families with a `queue` label: the Queue filter applies to them (legacy `QUEUE_METRICS`).
@@ -267,16 +281,20 @@ final readonly class Promql
      *
      * A job-filtered selector also gets the Batch scope: Job's "All" is `.+`, so the classes of the selected batch
      * kinds are no longer in `$job_class`; the selector, with its range function and the replica dedupe around it,
-     * becomes `(<selector> unless on (job_class) <classes outside the kinds>)`, see {@see batchScoped()}.
+     * becomes `(<selector> unless on (job_class) <classes outside the kinds>)`, see {@see batchScoped()}. The classes
+     * outside the kinds are those of the selector's own series (the same family, window, offset and `@`, read again
+     * under the Batch switch) without the classes of the selected kinds in the period: a class that stopped inside
+     * the period is still in the first set, so it no longer slips past the scope (#38), and the reread
+     * costs only while kinds are selected.
      */
     public function filtered(string $expr, bool $jobFilter): string
     {
         $labels = '\{(?:[^}"]|"(?:[^"\\\\]|\\\\.)*")*\}';
-        $time = '(?: offset -?[$\w{}:]+)?(?<at> @ (?:start\(\)|end\(\)|[$\w{}:]+))?';
+        $time = '(?: offset -?[$\w{}:]+)?(?: @ (?:start\(\)|end\(\)|[$\w{}:]+(?:e-3)?))?';
         // A string, or a package selector with the range function and the dedupe Promql::package() writes around it
         $pattern = '/"(?:[^"\\\\]|\\\\.)*"|\b(?<dedupe>max by \([^()]*\) \()?(?<fn>[a-z_]+\()?'
             .'(?<name>'.preg_quote($this->prefix, '/').'[a-z_]+)(?<labels>'.$labels.')?'
-            .'(?(<fn>)\[[^\]]+\])'.$time.'(?(<fn>)\))(?(<dedupe>)\))/';
+            .'(?<window>(?(<fn>)\[[^\]]+\]))(?<time>'.$time.')(?(<fn>)\))(?(<dedupe>)\))/';
 
         return (string) preg_replace_callback($pattern, function (array $match) use ($jobFilter): string {
             if (! isset($match['name']) || $match['name'] === '') {
@@ -318,11 +336,14 @@ final readonly class Promql
                 return $unit;
             }
 
-            // A vector at a fixed time (`@`) takes the Batch scope of that time, so the whole unit is step-invariant
-            // and Prometheus evaluates it once per range query instead of at every step
-            $at = isset($match['at']) && $match['at'] !== '' ? substr($match['at'], 3) : null;
+            // The classes of the unit's own series: the same family, window and time (offset, `@`) with the selector's
+            // own matchers (the job scope first) and the Batch switch, so a vector at a fixed time stays step-invariant.
+            // The filters stay out (a superset of the unit's classes, a shorter query); by `__name__` like anyOf(), as
+            // a group aggregation needs no replica dedupe
+            $classes = self::vector('', self::re('__name__', $name), ...[...($labels === '' ? [] : [substr($labels, 1, -1)]), self::nre(self::BATCH_SCOPE, self::BATCH_VARIABLE)]);
+            $classes = $match['fn'] === '' ? $classes.$match['time'] : 'last_over_time('.$classes.$match['window'].$match['time'].')';
 
-            return $this->batchScoped($unit, at: $at);
+            return $this->batchScoped($unit, classes: self::group($classes, 'job_class'));
         }, $expr);
     }
 
@@ -331,40 +352,68 @@ final readonly class Promql
      * class (or queue) of the package series outside the selected batch kinds. While Batch is "All" (`$batch_kind` is
      * `.*`) the set is empty and almost free; with kinds selected it holds what the legacy "All" list of the Job (or
      * Queue) filter left out. $vector must be one operand: a selector with its range function and dedupe, or a
-     * parenthesised expression.
+     * parenthesised expression. $classes, when given, are the classes of $vector's own series with the Batch switch
+     * ({@see filtered()}), else those of the period ({@see batchExcluded()}).
      *
      * @param  'job_class'|'queue'  $label
      */
-    public function batchScoped(string $vector, string $label = 'job_class', ?string $at = null): string
+    public function batchScoped(string $vector, string $label = 'job_class', ?string $classes = null): string
     {
-        return self::paren(self::unlessOn($vector, $this->batchExcluded($label, $at), $label));
+        return self::paren(self::unlessOn($vector, $this->batchExcluded($label, $classes), $label));
     }
 
     /**
-     * The classes (or queues) of the package series outside the selected batch kinds:
-     * `group by (job_class) ({__name__=~"<jobs_total|jobs_pending|jobs_reserved>", __batch_scope__!~"$batch_kind"})
-     * unless on (job_class) group by (job_class) ({__name__=~"<batch_job_classes>", batch=~"$batch_kind",
-     * __batch_scope__!~"$batch_kind"})`. No stored series has the label `__batch_scope__` (Prometheus drops
-     * `__`-prefixed labels after relabelling), and an absent label matches as "": with Batch "All" the matcher
-     * `!~".*"` selects nothing, so both operands are empty; with kinds selected it selects every series of the
-     * family. Group aggregations do not depend on the number of replicas, hence no dedupe. $at evaluates the set at
-     * a fixed time (`@ ${__to:date:seconds}`, `@ start()`), for a vector at that time.
+     * The classes (or queues) of the package series outside the selected batch kinds: $classes (the classes of the
+     * series to scope, under the Batch switch), by default every class of the period
+     * `group by (job_class) (last_over_time({__name__=~"<jobs_total|jobs_pending|jobs_reserved>",
+     * __batch_scope__!~"$batch_kind"}[$__range] @ ${__to}e-3))`, unless the classes of the selected kinds in the period
+     * `group by (job_class) (last_over_time({__name__=~"<batch_job_classes>", batch=~"$batch_kind",
+     * __batch_scope__!~"$batch_kind"}[$__range] @ ${__to}e-3))`.
+     *
+     * No stored series has the label `__batch_scope__` (Prometheus drops `__`-prefixed labels after relabelling), and
+     * an absent label matches as "": with Batch "All" the matcher `!~".*"` selects nothing, so both operands are empty;
+     * with kinds selected it selects every series of the family. Group aggregations do not depend on the number of
+     * replicas, hence no dedupe.
+     *
+     * Both sets are taken over the period, not at the instant: a class (or queue) that is no longer exported at the
+     * end of the period (its application stopped inside it, or the last scrape failed) still has attempts in the
+     * period; an instant set left it in neither operand, so it slipped past the scope and counted under the selected
+     * kind. Pinned to the period end (`@`), each set is evaluated once per range query.
      *
      * @param  'job_class'|'queue'  $label
      */
-    public function batchExcluded(string $label = 'job_class', ?string $at = null): string
+    public function batchExcluded(string $label = 'job_class', ?string $classes = null): string
     {
         $families = $label === 'job_class'
             ? [Metric::JobsTotal, Metric::QueueJobsPending, Metric::QueueJobsReserved]
             : [Metric::QueuePendingJobs];
-        $outside = self::nre(self::BATCH_SCOPE, self::BATCH_VARIABLE);
-        $timed = static fn (string $selector): string => $at === null ? $selector : self::at($selector, $at);
 
         return self::paren(self::unlessOn(
-            self::group($timed($this->anyOf($families, $outside)), $label),
-            self::group($timed($this->anyOf([Metric::BatchJobClasses], self::re('batch', self::BATCH_VARIABLE), $outside)), $label),
+            $classes ?? self::group($this->inPeriod($this->anyOf($families, self::nre(self::BATCH_SCOPE, self::BATCH_VARIABLE))), $label),
+            $this->batchKindClasses($label),
             $label,
         ));
+    }
+
+    /**
+     * The classes (or queues) of the selected batch kinds in the period, under the Batch switch (empty while Batch
+     * is "All"): the second operand of {@see batchExcluded()}.
+     *
+     * @param  'job_class'|'queue'  $label
+     */
+    public function batchKindClasses(string $label = 'job_class'): string
+    {
+        $kinds = $this->anyOf([Metric::BatchJobClasses], self::re('batch', self::BATCH_VARIABLE), self::nre(self::BATCH_SCOPE, self::BATCH_VARIABLE));
+
+        return self::group($this->inPeriod($kinds), $label);
+    }
+
+    /**
+     * The last value of every series of a selector in the period, pinned to the period end.
+     */
+    private function inPeriod(string $selector): string
+    {
+        return self::range('last_over_time', $selector, self::RANGE, at: self::TO);
     }
 
     /**

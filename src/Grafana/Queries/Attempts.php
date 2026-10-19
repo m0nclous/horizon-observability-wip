@@ -93,7 +93,11 @@ final readonly class Attempts
      * else the current one, so a staleness marker after a missed scrape does not zero the step. A series with no value
      * at the start of a step (new, or back after a gap) starts at its first value inside the step: attempts during the
      * gap are lost but not recounted. A counter reset counts 0 for its step on that series, as on the tiles
-     * ({@see perStepTotal()}).
+     * ({@see perStepTotal()}). A point whose step ends at or before the period start counts nothing.
+     *
+     * The period edges are the exact ones in milliseconds ({@see Promql::FROM}, {@see Promql::TO}), as the tables'
+     * instant queries see them; with the edges rounded to whole seconds, a scrape between an edge and its rounded
+     * second counted in only one of the two forms, and a point whose step ended before the exact start counted it.
      *
      * The legacy form clipped with the values instead of the times (max with the value at the period start, min with
      * the one at the end), so after a reset every later step of the series counted its whole value; and it chose the
@@ -114,15 +118,16 @@ final readonly class Attempts
             $this->promql->selector(Metric::JobsTotal, ...$status),
         ));
         $stepFirst = $this->promql->over('min_over_time', Metric::JobsTotal, Promql::INTERVAL, $status, offset: $nextStep);
-        $periodEnd = $this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status, at: Promql::TO_SECONDS);
-        $periodStart = $this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status, at: Promql::FROM_SECONDS);
-        $firstStep = Promql::paren(Promql::paren('vector(time()) <= '.Promql::FROM_SECONDS).' + '.$step.' > '.Promql::FROM_SECONDS);
-        $lastStep = Promql::paren('vector(time()) + '.$step.' > '.Promql::TO_SECONDS);
+        $periodEnd = $this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status, at: Promql::TO);
+        $periodStart = $this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status, at: Promql::FROM);
+        $firstStep = Promql::paren(Promql::paren('vector(time()) <= '.Promql::FROM).' + '.$step.' > '.Promql::FROM);
+        $lastStep = Promql::paren('vector(time()) + '.$step.' > '.Promql::TO);
+        $beforePeriod = Promql::paren('vector(time()) + '.$step.' <= '.Promql::FROM);
 
         $later = Promql::either(Promql::andOn($periodEnd, $lastStep), Promql::unlessOn($stepEnd, $lastStep));
         $since = Promql::either(Promql::andOn($periodStart, $firstStep), $stepStart, $stepFirst);
 
-        return $this->sum(Promql::call('clamp_min', Promql::paren($later).' - '.Promql::paren($since), '0'));
+        return Promql::unlessOn($this->sum(Promql::call('clamp_min', Promql::paren($later).' - '.Promql::paren($since), '0')), $beforePeriod);
     }
 
     /**
@@ -151,6 +156,13 @@ final readonly class Attempts
      * point; a series without a value at `${__to}` appeared after the period. The points whose step ends before the
      * period are dropped.
      *
+     * The period edges are the exact ones in milliseconds ({@see Promql::FROM}, {@see Promql::TO}), as the tables'
+     * instant queries see them. With the edges rounded to whole seconds (`${__to:date:seconds}`, Math.round), a scrape
+     * between an edge and its rounded second counted on the tables only, and where the browser's UTC offset is not a
+     * multiple of the step (Asia/Kathmandu, UTC+5:45, at a 2-minute step) and the period ended less than half a second
+     * before one of Grafana's points, no point passed the last-point test: the last step ended at the next subquery
+     * point instead of the period end (13,196 failed on the tile, 13,283 on the tables over 6 hours).
+     *
      * An earlier aggregate-first form (the difference of the sums) counted the whole value of a series that appears
      * inside the period; the form after it, `idelta()` alone, gave a series without a value at the earlier point no
      * step, so a series that appears between two subquery points lost its attempts up to the next one whenever the
@@ -167,9 +179,9 @@ final readonly class Attempts
         $previous = 'floor(vector(time()) / '.$step.') * '.$step;
 
         // The step that holds the period start, the last point, and the points whose step ends before the period
-        $startStep = Promql::paren(Promql::paren($previous.' <= '.Promql::FROM_SECONDS).' + '.$step.' > '.Promql::FROM_SECONDS);
-        $lastStep = Promql::paren('vector(time()) + '.$step.' > '.Promql::TO_SECONDS);
-        $beforePeriod = Promql::paren($previous.' + '.$step.' <= '.Promql::FROM_SECONDS);
+        $startStep = Promql::paren(Promql::paren($previous.' <= '.Promql::FROM).' + '.$step.' > '.Promql::FROM);
+        $lastStep = Promql::paren('vector(time()) + '.$step.' > '.Promql::TO);
+        $beforePeriod = Promql::paren($previous.' + '.$step.' <= '.Promql::FROM);
         $clamped = static fn (string $end, string $start): string => Promql::paren(Promql::sum(Promql::call('clamp_min', $end.' - '.Promql::paren($start), '0')));
 
         // Inside the period: the increase between the two subquery points around t, a series without a value at a
@@ -187,10 +199,10 @@ final readonly class Attempts
         // point below costs one sample per step): the step that holds the period start, from the values at ${__from}
         // to those at the next subquery point; the last point, from the values at its subquery point to those at
         // ${__to}; and a point that is both (a range shorter than two steps), from ${__from} to ${__to}
-        $fromStart = Promql::either($at(Promql::FROM_SECONDS), $firstAround(Promql::FROM_SECONDS));
-        $first = $clamped(Promql::range('last_over_time', $values, $subquery, '-'.Promql::INTERVAL, Promql::FROM_SECONDS), $fromStart);
-        $last = $clamped($at(Promql::TO_SECONDS), Promql::either(Promql::range('last_over_time', $values, $subquery, at: 'end()'), $firstAround('end()')));
-        $only = $clamped($at(Promql::TO_SECONDS), $fromStart);
+        $fromStart = Promql::either($at(Promql::FROM), $firstAround(Promql::FROM));
+        $first = $clamped(Promql::range('last_over_time', $values, $subquery, '-'.Promql::INTERVAL, Promql::FROM), $fromStart);
+        $last = $clamped($at(Promql::TO), Promql::either(Promql::range('last_over_time', $values, $subquery, at: 'end()'), $firstAround('end()')));
+        $only = $clamped($at(Promql::TO), $fromStart);
 
         return Promql::unlessOn(
             Promql::paren(Promql::either(

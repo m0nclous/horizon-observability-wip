@@ -293,7 +293,7 @@ final readonly class StaticBudget
 
     /**
      * The legacy `batch_filtered()` pattern: an operand switched on by the Batch-is-All test (`(X) and on ()
-     * (label_replace(vector(1), "filter", "${batch_kind:text}", ...))`) that the same expression evaluates in another
+     * (label_replace(vector(1), "filter", `${batch_kind:text}`, ...))`) that the same expression evaluates in another
      * branch too. Prometheus evaluates both branches of an `or`, so X costs twice; the batch scope belongs in the
      * selectors (`unless on (job_class) <excluded classes>`, which is empty while Batch is All).
      *
@@ -302,13 +302,13 @@ final readonly class StaticBudget
     public function duplicateBranches(): array
     {
         $test = ' and on () ';
-        $switch = '(label_replace(vector(1), "filter", "${';
+        $switch = '(label_replace(vector(1), "filter", `${';
         $violations = [];
 
         foreach ($this->expressions() as $where => $expr) {
             $offset = 0;
 
-            while (($at = strpos($expr, $test.$switch.'batch_kind:text}"', $offset)) !== false) {
+            while (($at = strpos($expr, $test.$switch.'batch_kind:text}`', $offset)) !== false) {
                 $offset = $at + 1;
                 $operand = $this->operandBefore($expr, $at);
 

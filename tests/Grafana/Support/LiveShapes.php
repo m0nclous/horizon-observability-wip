@@ -244,8 +244,8 @@ final class LiveShapes
                 if ($offTarget['refId'] === $refId) {
                     if ($refId === 'B') {
                         // Only with a Job or Batch filter: empty while Job and Batch are both "All"
-                        $offTarget['expr'] = '('.$offTarget['expr'].') unless on () ((label_replace(vector(1), "filter", "${job_class:text}", "", "") and on (filter) label_replace(vector(1), "filter", "All", "", ""))'
-                            .' and on () (label_replace(vector(1), "filter", "${batch_kind:text}", "", "") and on (filter) label_replace(vector(1), "filter", "All", "", "")))';
+                        $offTarget['expr'] = '('.$offTarget['expr'].') unless on () ((label_replace(vector(1), "filter", `${job_class:text}`, "", "") and on (filter) label_replace(vector(1), "filter", "All", "", ""))'
+                            .' and on () (label_replace(vector(1), "filter", `${batch_kind:text}`, "", "") and on (filter) label_replace(vector(1), "filter", "All", "", "")))';
                     }
 
                     return $offTarget;

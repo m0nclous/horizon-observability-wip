@@ -82,7 +82,10 @@ it('matches the selectors by name only on labels of their families, job and the 
             $allowed = ['job', Promql::BATCH_SCOPE];
 
             foreach (explode('|', $names) as $name) {
-                array_push($allowed, ...Metric::from(substr($name, strlen('ho_')))->labels());
+                // A histogram series (the batch scope reads the classes of a scoped bucket, sum or count selector)
+                $family = substr($name, strlen('ho_'));
+                $series = preg_match('/_(bucket|sum|count)$/', $family, $suffix) === 1 && Metric::tryFrom($family) === null ? $suffix[1] : '';
+                array_push($allowed, ...Metric::from($series === '' ? $family : substr($family, 0, -strlen($series) - 1))->labels(), ...($series === 'bucket' ? ['le'] : []));
             }
 
             preg_match_all('/(\w+)\s*(=~|!~|!=|=)\s*"((?:[^"\\\\]|\\\\.)*)"/', $matchers, $labels, PREG_SET_ORDER);

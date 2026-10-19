@@ -20,16 +20,18 @@ final readonly class Selection
      * Non-empty while the filter shows "All": its text (`${var:text}`) is compared with "All" through labels
      * (legacy `filter_is_all`).
      *
-     * The text sits in a PromQL string literal unescaped (Grafana's `text` format is raw). The Job option texts are the
-     * classes without their namespace (Variables::jobQuery()), so a real option holds no backslash. Known limit, as in
-     * the pilot: a value that matches no option (a shared link with a class that is no longer exported) has the value
-     * as its text, and a batch kind, queue or supervisor is its own text; a backslash or a double quote in such a text
-     * makes the expression unparseable, and the panels that test the filter show the query error, never a number.
+     * Grafana's `text` format is raw, so the text sits in a raw PromQL string (backticks), where no escape sequence
+     * is processed: a value that matches no option (a shared link with a class that is no longer exported,
+     * `?var-job_class=App%5CJobs%5CRemovedJob`) has the value as its text, and a batch kind, queue or supervisor is
+     * its own text; a backslash or a double quote in such a text made the double-quoted string unparseable
+     * (`unknown escape sequence`), and every panel that tests the filter showed the query error. Only a backtick in
+     * the text still breaks the test (job classes cannot hold one). A value test (`$var` against the allValue) would
+     * not work for Queue, whose All is the list of its options.
      */
     public static function isAll(string $variable): string
     {
         return Promql::paren(Promql::andOn(
-            Promql::withLabel('vector(1)', 'filter', '${'.$variable.':text}'),
+            Promql::call('label_replace', 'vector(1)', Promql::quote('filter'), '`${'.$variable.':text}`', Promql::quote(''), Promql::quote('')),
             Promql::withLabel('vector(1)', 'filter', 'All'),
             'filter',
         ));

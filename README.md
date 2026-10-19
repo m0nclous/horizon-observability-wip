@@ -730,6 +730,10 @@ Known issue, to be fixed:
 - Some other `check` messages are imprecise in edge cases: the fix line for a `url` query with a non-positive timeout
   has no effect, an ACL refusal of the job-class or last-push read is reported as a storage problem, `cache_ttl` 0
   reads "shared for 0 s", and the last push can read 1 s low ([#30]).
+- **A double quote in a filter value** (a batch kind, or a value in a shared link) breaks the queries of that filter:
+  Grafana's Prometheus datasource does not escape double quotes in variable values unless its feature toggle
+  `prometheusSpecialCharsInLabelValues` is on. Backslashes are fine, also in a link to a job class that is no longer
+  exported.
 - **Batches.** The Batch filter and the batch families read at most the 10 000 most recently seen links between batch
   kinds and job classes, from the last 7 days. Beyond 100 batch kinds, the rest are folded into `(other)` in the
   per-kind families; `(other)` matches no job class, so it does not work as a filter.
