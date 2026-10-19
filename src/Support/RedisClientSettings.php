@@ -221,11 +221,11 @@ final readonly class RedisClientSettings
      * - a key in the query of the connection's `url` (one server): the url query, which wins over the connection's keys.
      *
      * @param  list<string>  $missing
-     * @param  array<string, float>  $values  the value to suggest per key (default 2.0)
+     * @param  array<string, float>  $suggested  the value to suggest per key (default 2.0)
      */
-    public function timeoutFix(array $missing, array $values = []): string
+    public function timeoutFix(array $missing, array $suggested = []): string
     {
-        $value = static fn (string $key): string => self::decimal($values[$key] ?? 2.0);
+        $value = static fn (string $key): string => self::decimal($suggested[$key] ?? 2.0);
         $entries = implode(' and ', array_map(static fn (string $key): string => "'".$key."' => ".$value($key), $missing));
 
         if ($this->client === 'predis' && $this->cluster && $this->parameters !== null) {
