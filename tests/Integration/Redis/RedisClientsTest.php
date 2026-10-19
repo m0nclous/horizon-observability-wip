@@ -8,6 +8,8 @@ use DF\HorizonObservability\Tests\Support\RedisKeys;
 use DF\HorizonObservability\Tests\TestCase;
 use Illuminate\Redis\Events\CommandExecuted;
 use Illuminate\Support\Facades\Event;
+use Predis\Client;
+use Predis\Connection\Cluster\RedisCluster;
 
 pest()->group('redis');
 
@@ -53,6 +55,33 @@ it('applies the private timeouts and never a persistent socket', function (): vo
             ->and((bool) $parameters->persistent)->toBeFalse();
     }
 });
+
+it('caps the timeouts of every node a predis cluster reader connects to, also those it learns from the slot map', function (string $cluster): void {
+    // predis reads connection parameters only: each listed node's, and for a node of a Redis Cluster's slot map that
+    // is not listed (e.g. seeds by host name, a cluster announcing IPs) the `parameters` option (T14 QA round 3).
+    config()->set('database.redis.client', 'predis');
+    config()->set('database.redis.options.cluster', $cluster);
+    config()->set('database.redis.options.parameters', ['password' => 'from-the-options', 'read_write_timeout' => 30]);
+    config()->set('database.redis.clusters.probe', [['host' => '127.0.0.1', 'port' => 1, 'persistent' => true], ['host' => '127.0.0.2', 'port' => 1]]);
+    $this->app->forgetInstance(RedisClients::class);
+
+    $connection = app(RedisClients::class)->reader('probe')->client()->getConnection();
+    $parameters = [$connection->getConnectionById('127.0.0.1:1')->getParameters(), $connection->getConnectionById('127.0.0.2:1')->getParameters()];
+
+    if ($connection instanceof RedisCluster) {
+        $parameters[] = (new ReflectionMethod($connection, 'createConnection'))->invoke($connection, '203.0.113.9:7001')->getParameters();
+    }
+
+    expect($parameters)->toHaveCount($cluster === 'redis' ? 3 : 2);
+
+    foreach ($parameters as $node) {
+        expect((float) $node->timeout)->toBe(2.0)
+            ->and((float) $node->read_write_timeout)->toBe(2.0)
+            ->and((bool) filter_var($node->persistent, FILTER_VALIDATE_BOOLEAN))->toBeFalse()
+            // The app's own parameters stay.
+            ->and($node->password)->toBe('from-the-options');
+    }
+})->with(['redis', 'predis'])->skip(fn (): bool => ! class_exists(Client::class), 'predis is not installed');
 
 it('bypasses the app Redis events unless the private manager enables them', function (): void {
     $seen = [];
