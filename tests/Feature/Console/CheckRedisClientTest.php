@@ -559,8 +559,12 @@ it('warns about a persistent client exactly when the client Laravel builds is pe
 })->with([
     'phpredis, database.redis.options (REDIS_PERSISTENT=true)' => ['phpredis', static fn () => config()->set('database.redis.options.persistent', true), true],
     "phpredis, the connection's options" => ['phpredis', static fn () => config()->set('database.redis.probe.options', ['persistent' => true]), true],
-    // The skeleton's database.redis.options has 'persistent' => env('REDIS_PERSISTENT', false), which wins.
-    'phpredis, the connection, false in database.redis.options' => ['phpredis', static fn () => config()->set('database.redis.probe.persistent', true), false],
+    // The skeleton's database.redis.options has 'persistent' => env('REDIS_PERSISTENT', false) since Laravel 11.x (not
+    // in the testbench skeleton of 11.23), which wins.
+    'phpredis, the connection, false in database.redis.options' => ['phpredis', static function (): void {
+        config()->set('database.redis.options.persistent', false);
+        config()->set('database.redis.probe.persistent', true);
+    }, false],
     'phpredis, the connection' => ['phpredis', static function (): void {
         config()->set('database.redis.options', Arr::except(config('database.redis.options'), 'persistent'));
         config()->set('database.redis.probe.persistent', true);
