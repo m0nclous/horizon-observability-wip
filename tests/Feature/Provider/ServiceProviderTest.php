@@ -57,7 +57,7 @@ it('logs the config problems once when the snapshot is first built', function ()
         ->and($log->records[0]['context']['problems'])->toHaveCount(2);
 });
 
-it('registers the seven commands, grafana once its class exists (T13)', function (): void {
+it('registers the seven commands and demo, grafana once its class exists (T13)', function (): void {
     $grafana = class_exists('DF\\HorizonObservability\\Console\\GrafanaCommand');
     $commands = array_values(array_filter(array_keys(Artisan::all()), static fn (string $name): bool => str_starts_with($name, 'horizon-observability:')));
     sort($commands);
@@ -66,20 +66,17 @@ it('registers the seven commands, grafana once its class exists (T13)', function
         'horizon-observability:cache',
         'horizon-observability:check',
         'horizon-observability:clear',
+        'horizon-observability:demo',
         'horizon-observability:flush',
         $grafana ? 'horizon-observability:grafana' : null,
         'horizon-observability:install',
         'horizon-observability:stream',
-    ])))->and(HorizonObservabilityServiceProvider::packageCommands())->toHaveCount($grafana ? 7 : 6);
+    ])))->and(HorizonObservabilityServiceProvider::packageCommands())->toHaveCount($grafana ? 8 : 7);
 });
 
-it('exits 1 from the stream command stub', function (): void {
+it('exits 1 from the stream command without its settings', function (): void {
     $this->artisan('horizon-observability:stream')->assertExitCode(1);
 });
-
-it('runs the other command stubs successfully', function (string $command): void {
-    $this->artisan($command)->assertExitCode(0);
-})->with(['horizon-observability:install', 'horizon-observability:check', 'horizon-observability:flush']);
 
 it('offers the config and the Grafana assets for publishing', function (): void {
     $config = ServiceProvider::pathsToPublish(HorizonObservabilityServiceProvider::class, 'horizon-observability-config');

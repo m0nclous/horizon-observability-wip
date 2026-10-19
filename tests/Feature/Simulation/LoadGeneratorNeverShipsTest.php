@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
+use DF\HorizonObservability\Console\DemoCommand;
 use DF\HorizonObservability\HorizonObservabilityServiceProvider;
 use DF\HorizonObservability\Tests\Support\Apps;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Artisan;
 use Laravel\Horizon\HorizonServiceProvider;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Finder\Finder;
@@ -92,19 +94,29 @@ it('registers no load generator from the package (C25)', function (): void {
         ),
     );
 
+    // The onboarding demo (owner decision 12, T14) is the one exception: a bounded burst that refuses in production.
     expect($package)->not->toBeEmpty()
         ->and(array_keys($package))->each->toStartWith('horizon-observability:')
-        ->and(array_filter(array_keys($package), static fn (string $name): bool => preg_match('/load|simulat|demo/i', $name) === 1))->toBe([]);
+        ->and(array_filter(array_keys($package), static fn (string $name): bool => preg_match('/load|simulat/i', $name) === 1))->toBe([])
+        ->and(array_values(array_filter(array_keys($package), static fn (string $name): bool => str_contains($name, 'demo'))))->toBe(['horizon-observability:demo']);
 });
 
 it('keeps the load generator in the workbench only (C25)', function (): void {
     $sources = array_map(
         static fn (SplFileInfo $file): string => $file->getRelativePathname(),
-        iterator_to_array(Finder::create()->files()->in(dirname(__DIR__, 3).'/src')->name('/(LoadTest|Simulat|Demo)/'), false),
+        iterator_to_array(Finder::create()->files()->in(dirname(__DIR__, 3).'/src')->name('/(LoadTest|Simulat|Demo)/')->sortByName(), false),
     );
 
     expect($this->app->make(Kernel::class)->all())->toHaveKey('workbench:simulate-load')
-        ->and($sources)->toBe([]);
+        ->and($sources)->toBe(['Console/DemoCommand.php', 'Demo/DemoJob.php']);
+});
+
+it('ships only a demo that refuses to run in production (C25, owner decision 12)', function (): void {
+    $this->app['env'] = 'production';
+
+    expect(Artisan::call('horizon-observability:demo'))->toBe(1)
+        ->and(Artisan::output())->toContain('refuses to run in production')
+        ->and(DemoCommand::MAX_JOBS)->toBe(1000);
 });
 
 it('exports only the package files in the dist archive (C25)', function (): void {

@@ -16,7 +16,8 @@ use Illuminate\Redis\RedisManager;
  * A private {@see RedisManager} is built lazily on first use from a filtered copy of `database.redis`; the global
  * config is never mutated, so provider order does not matter. Every private connection:
  * - has `timeout`, `read_timeout` and `read_write_timeout` capped at the package timeout (an unset or infinite value
- *   becomes the cap);
+ *   becomes the cap), on the connection and in its options; a cluster in its options, on every node and in the predis
+ *   `parameters` its options inherit, which predis gives the nodes it learns from the cluster's slot map;
  * - is never persistent, so the app's persistent socket is never shared;
  * - has no `serializer` or `compression`, so stored values are raw and deterministic.
  *
@@ -133,9 +134,13 @@ final class RedisClients
             }
         }
 
+        // The predis parameters a cluster's own options inherit (Laravel merges the options shallowly).
+        $inherited = $privateClusters['options']['parameters'] ?? $config['options']['parameters'] ?? [];
+        $inherited = is_array($inherited) ? $inherited : [];
+
         foreach ($clusters as $name => $nodes) {
             if ($name !== 'options' && is_array($nodes) && ! isset($config[self::READER.$name])) {
-                $privateClusters[self::READER.$name] = $this->cluster($nodes, $settings->scrapeTimeout);
+                $privateClusters[self::READER.$name] = $this->cluster($nodes, $settings->scrapeTimeout, $inherited);
             }
         }
 
@@ -144,7 +149,7 @@ final class RedisClients
         if ($this->isStandalone($storage) && is_array($source[$storage] ?? null)) {
             $config[self::STORAGE] = $this->standalone($source[$storage], $settings->workerTimeout);
         } elseif (is_array($clusters[$storage] ?? null) && $storage !== 'options') {
-            $privateClusters[self::STORAGE] = $this->cluster($clusters[$storage], $settings->workerTimeout);
+            $privateClusters[self::STORAGE] = $this->cluster($clusters[$storage], $settings->workerTimeout, $inherited);
         }
 
         $config['clusters'] = $privateClusters;
@@ -191,18 +196,28 @@ final class RedisClients
     }
 
     /**
+     * phpredis reads the timeouts and the persistent flag from the merged options, predis from each node and, for a
+     * node it learns from the slot map of a Redis Cluster, from the `parameters` option only: all of them are capped.
+     *
      * @param  array<array-key, mixed>  $nodes
+     * @param  array<array-key, mixed>  $inherited  the `parameters` of `clusters.options`, else of `options`
      * @return array<array-key, mixed>
      */
-    private function cluster(array $nodes, float $timeout): array
+    private function cluster(array $nodes, float $timeout, array $inherited = []): array
     {
         $options = $this->safeOptions(is_array($nodes['options'] ?? null) ? $nodes['options'] : []);
         unset($nodes['options']);
         $options['persistent'] = false;
+        $parameters = array_key_exists('parameters', $options) ? $options['parameters'] : $inherited;
+        $parameters = $this->safeOptions(is_array($parameters) ? $parameters : []);
+        $parameters['persistent'] = false;
 
         foreach (self::TIMEOUTS as $key) {
             $options[$key] = $this->cap($options[$key] ?? null, $timeout);
+            $parameters[$key] = $this->cap($parameters[$key] ?? null, $timeout);
         }
+
+        $options['parameters'] = $parameters;
 
         foreach ($nodes as $index => $node) {
             if (! is_array($node)) {

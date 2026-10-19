@@ -1,6 +1,7 @@
 # CI (Arch 8.5, ADDENDUM Q9' WP9). Jobs: tests (PHP x Laravel x lowest/stable x phpredis/predis x Redis/Valkey),
-# cluster, static, coverage, grafana (Grafana 12.4.13 and 13.2.4), dist, and the weekly e2e (screenshots, the replica
-# dedupe gate and the performance report on both Grafana versions; non-blocking until T15).
+# cluster, static, coverage, grafana (Grafana 12.4.13 and 13.2.4), dist, and weekly: first-dashboard (the README quick
+# start on a fresh Laravel app, T14) and e2e (screenshots, the replica dedupe gate and the performance report on both
+# Grafana versions; non-blocking until T15).
 name: tests
 
 on:
@@ -266,6 +267,41 @@ jobs:
           for required in src/ config/ routes/ composer.json LICENSE README.md CHANGELOG.md; do
             grep -qx "$required" archive.txt || { echo "::error::git archive misses $required"; exit 1; }
           done
+
+  # Owner decision 12 (T14): from a fresh Laravel app with Horizon, the README quick start reaches a dashboard with
+  # Overview tiles in at most 5 minutes; a second install changes nothing.
+  first-dashboard:
+    name: First dashboard / Grafana ${{ matrix.grafana }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        grafana: ['12', '13']
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports: ['6379:6379']
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: redis, pcntl, posix, pdo_sqlite, mbstring
+          coverage: none
+      - run: npm i --no-save --no-package-lock playwright@1.56.1 && npx playwright install --with-deps chromium
+      - name: Time to first dashboard (tests/e2e/first-dashboard.sh)
+        env:
+          WORK_DIR: ${{ runner.temp }}/first-dashboard
+        run: tests/e2e/first-dashboard.sh --grafana ${{ matrix.grafana }}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: first-dashboard-${{ matrix.grafana }}
+          path: ${{ runner.temp }}/first-dashboard/logs
+          if-no-files-found: ignore
 
   e2e:
     name: End to end / ${{ matrix.grafana }}
