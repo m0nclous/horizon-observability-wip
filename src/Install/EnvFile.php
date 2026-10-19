@@ -11,7 +11,7 @@ use SensitiveParameter;
  * Minimal reader and writer of one `KEY=value` line of a dotenv file, for `horizon-observability:install`.
  *
  * It never rewrites the rest of the file: a missing key is appended, a key without a value gets its value in place,
- * and a key with a value is never changed. "Without a value" is what Laravel's `env()` reads as no value
+ * and a key with a value is never changed. "Without a value" is what Laravel's env helper reads as no value
  * ({@see self::resolve()}): `KEY=`, `KEY=""`, and `null`, `(null)`, `empty` or `(empty)` in any case, bare or quoted
  * (the skeleton's `.env.example` writes `KEY=null` for a value not set yet).
  *
@@ -20,7 +20,7 @@ use SensitiveParameter;
 final class EnvFile
 {
     /**
-     * A literal value `env()` reads as null or as an empty string (Illuminate\Support\Env, case-insensitive).
+     * A literal value the env helper reads as null or as an empty string (Illuminate\Support\Env, case-insensitive).
      */
     private const NO_VALUE = '(?i:null|\\(null\\)|empty|\\(empty\\))';
 
@@ -54,7 +54,7 @@ final class EnvFile
     }
 
     /**
-     * What Laravel's `env()` returns for a value read by {@see self::value()} (Illuminate\Support\Env::get(), all
+     * What Laravel's env helper returns for a value read by {@see self::value()} (Illuminate\Support\Env::get(), all
      * supported versions): `null` and `(null)` are null, `empty` and `(empty)` are `''`, `true`, `(true)`, `false` and
      * `(false)` are booleans, case-insensitively; a value still in matching quotes loses them. Null stays null (no
      * such line).

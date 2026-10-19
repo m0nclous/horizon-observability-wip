@@ -188,8 +188,8 @@ final class InstallCommand extends Command
      * The token the endpoints accept after the install (for the Docker stack and the checks): the existing one, or
      * a new one written to `.env`. Applied to the running process as well, so the checks see it.
      *
-     * The `.env` line is read as Laravel's `env()` reads it ({@see EnvFile::resolve()}): `null`, `(null)`, `empty` and
-     * `(empty)` (any case, bare or quoted) are no value, so the token is written in place of that line; any other
+     * The `.env` line is read as Laravel's env helper reads it ({@see EnvFile::resolve()}): `null`, `(null)`, `empty`
+     * and `(empty)` (any case, bare or quoted) are no value, so the token is written in place of that line; any other
      * value, `true` and `false` included, is never overwritten.
      */
     private function token(#[SensitiveParameter] ?string $option, Repository $config): ?string
@@ -273,7 +273,7 @@ final class InstallCommand extends Command
 
     /**
      * Use the token in this process too, so the checks see what the application sees after its next start (a
-     * boolean is what `env()` returns for `true` or `false`).
+     * boolean is what the env helper returns for `true` or `false`).
      */
     private function apply(Repository $config, #[SensitiveParameter] string|bool $token): void
     {
