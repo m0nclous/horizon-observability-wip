@@ -88,7 +88,7 @@ return [
 
     /*
     | Upper bound of distinct job_class values in attempt metrics; further classes become "(other)".
-    | Classes idle for 30 days are pruned automatically.
+    | When the cap is reached, classes idle for 30 days are pruned to make room for a new class.
     */
     'max_job_classes' => 500,
 
