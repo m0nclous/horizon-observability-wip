@@ -472,7 +472,7 @@ SupervisorRepository/MasterSupervisorRepository; scrape-interval invariance of i
 Redis restart reset; sync/deferred/background exclusion. Coverage gate: a test fails if a catalog family has no truth test.
 Acceptance: green on phpredis and predis; each family listed in a coverage table in the test README.
 
-### T17 Dashboard truth tests — `todo` (depends on T13, T16, T11)
+### T17 Dashboard truth tests — `in progress` (depends on T13, T16, T11)
 Pipeline: T16 scenarios → workbench app → real Prometheus (dev stack, 10 s scrape, or promtool backfill of recorded
 expositions for determinism) → Grafana 12.4.13 and 13.2.4 → for every panel/target of the rendered dashboard (off, poll,
 stream) evaluate through `/api/ds/query` with interpolated variables and compare with the expected values from the
