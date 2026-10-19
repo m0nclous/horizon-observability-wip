@@ -28,6 +28,9 @@
         <testsuite name="Architecture">
             <directory>tests/Architecture</directory>
         </testsuite>
+        <testsuite name="DashboardTruth">
+            <directory>tests/DashboardTruth</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
