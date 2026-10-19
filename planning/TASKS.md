@@ -524,8 +524,12 @@ skip reason names the item, so a fix turns them into regression tests.
    cache_ttl 0; lastPush can read 1 s low; EndpointUrl ignores a parameterised domain; --live-push-test with live disabled
    prints nothing; the Docker URL question comes before the install banner; on predis a connection url query overrides
    the private clients' timeout caps (pre-existing, RedisClients::standalone()).
-5. Dashboard: the tiles' last step stops short of the period end when the browser's UTC offset is not a multiple of the
-   step (Asia/Kathmandu, Failed tile at 2 min over 6 h: 13,196 vs 13,283) (T13 round 4 finding 2; probe in c39942c).
+5. Dashboard: tiles and tables differ at the period edges. Grafana formats \${__from/__to:date:seconds} with Math.round
+   while the tables use the exact millisecond edges, so a scrape between an edge and its rounded second counts in one of
+   them only; with a browser UTC offset that is not a multiple of the step the tiles' last step stops short of the period
+   end (Asia/Kathmandu, Failed tile at 2 min over 6 h: 13,196 vs 13,283); #14 has no beforePeriod guard, so its points can
+   sum above delta() when from rounds onto a boundary. Suggested fix: `@ ${__from}e-3` / `@ ${__to}e-3` (Prometheus 3.15.0
+   accepts the millisecond literal). T13 round 4 finding 2 (both testers); probes in c39942c and 982293a, parked with skip.
 6. Dashboard: a pooled balance=false supervisor is left out of the off-mode #3 Supervisor Processes tile and the #5 tables
    under Queue=All; the dashboard should use T16's horizon_supervisor_queues (T13 round 3 note, T17 design 14).
 7. Dashboard: a custom Job/Batch variable value that matches no option and contains a backslash (stale shared link) breaks
