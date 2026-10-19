@@ -27,7 +27,10 @@ declare(strict_types=1);
 | (+500), GRAFANA_PORT (13000 + N, Grafana 13.2.4), GRAFANA12_PORT (+500), APP_PORT (18000 + N), REPLAY_PORT (+500),
 | COMPOSE_PROJECT_NAME (ho-s<N>); N from --slot or DASHBOARD_TRUTH_SLOT (default 0). Redis is REDIS_HOST:REDIS_PORT
 | (127.0.0.1:6379). Without --keep the run stops its stack and router and deletes its worlds at the end, on failure
-| and on SIGINT/SIGTERM; only its own compose project and prefixes are touched.
+| and on SIGINT/SIGTERM; only its own compose project and prefixes are touched. One run holds a slot at a time
+| (build/dashboard-truth/slot-<N>.lock, until its cleanup): another run on the slot exits 3 naming the holder and its
+| cleanup command, and the ingest stage refuses a Prometheus that already holds samples, leaving a stack it did not
+| start as it is.
 */
 
 use DF\HorizonObservability\Tests\DashboardTruth\Cases\Cases;
@@ -88,6 +91,11 @@ final class Runner
     private bool $cleaned = false;
 
     /**
+     * Whether the stack on the slot belongs to another run (found up with samples): cleanup then leaves it alone.
+     */
+    private bool $foreignStack = false;
+
+    /**
      * @param  list<string>  $argv
      */
     public function __construct(private readonly string $root, array $argv)
@@ -143,6 +151,14 @@ final class Runner
         $this->info(sprintf('run %s in %s, slot %d (Prometheus %s, Grafana 13 %s, Grafana 12 %s, app %s), cases %s, Grafana %s%s',
             $this->run, $this->runDir, $this->slot, $this->env['PROMETHEUS_PORT'], $this->env['GRAFANA_PORT'], $this->env['GRAFANA12_PORT'],
             $this->env['APP_PORT'], implode(',', array_keys($cases)), implode(',', $versions), $mutant === null ? '' : ', mutant '.$mutant));
+
+        $held = $this->claimSlot();
+
+        if ($held !== null) {
+            $this->info($held);
+
+            return 3;
+        }
 
         $this->traps();
         $start = array_search($from, self::STAGES, true);
@@ -204,8 +220,19 @@ final class Runner
      */
     private function ingest(array $datasets, array $versions): int
     {
+        // Remote write appends at the recorded times: a Prometheus that already holds samples (a stack another run
+        // kept or left behind) rejects them as out of bounds. A running one is checked before compose touches it.
+        if ($this->stackRunning() && ($series = $this->prometheusSeries()) !== 0) {
+            return $this->refuseIngest($series, foreign: true);
+        }
+
         $this->startStack($versions);
         $this->waitFor('Prometheus', 'http://127.0.0.1:'.$this->env['PROMETHEUS_PORT'].'/-/ready', 120);
+
+        if (($series = $this->prometheusSeries()) !== 0) {
+            return $this->refuseIngest($series, foreign: false);
+        }
+
         $manifests = [];
 
         foreach ($datasets as $dataset) {
@@ -223,6 +250,22 @@ final class Runner
         }
 
         return 0;
+    }
+
+    /**
+     * The slot's Prometheus already holds samples: a stack of another run that is up (left as it is, `$foreign`) or
+     * one whose volume this run's start brought back (stopped with the run's cleanup).
+     */
+    private function refuseIngest(?int $series, bool $foreign): int
+    {
+        $this->foreignStack = $foreign;
+        $this->info(sprintf(
+            'the Prometheus of slot %d (port %s) already holds %s series: %s. Clean it up with `tests/DashboardTruth/bin/run cleanup --run=<that run> --slot=%d` (or stack/down.sh with COMPOSE_PROJECT_NAME=%s), or use another --slot.',
+            $this->slot, $this->env['PROMETHEUS_PORT'], $series === null ? 'an unknown number of' : (string) $series,
+            $foreign ? 'a stack of another run is up and is left as it is' : 'the stack came back with the samples of an earlier run', $this->slot, $this->env['COMPOSE_PROJECT_NAME'],
+        ));
+
+        return 3;
     }
 
     /**
@@ -505,14 +548,82 @@ final class Runner
             proc_close($this->stack);
         }
 
-        $this->exec(['bash', 'tests/DashboardTruth/stack/down.sh'], quiet: true);
+        if (! $this->foreignStack) {
+            $this->exec(['bash', 'tests/DashboardTruth/stack/down.sh'], quiet: true);
+        }
+
         $deleted = WorldKeeper::deleteRun($this->run);
 
         foreach (glob($this->runDir.'/datasets/*/*.sqlite') ?: [] as $sqlite) {
             unlink($sqlite);
         }
 
-        $this->info(sprintf('cleaned up: stack %s down, %d keys of ho_t17_%s_* deleted', $this->env['COMPOSE_PROJECT_NAME'], $deleted, $this->run));
+        $this->releaseSlot();
+        $this->info(sprintf('cleaned up: %s, %d keys of ho_t17_%s_* deleted', $this->foreignStack ? 'the stack of the other run left up' : 'stack '.$this->env['COMPOSE_PROJECT_NAME'].' down', $deleted, $this->run));
+    }
+
+    private function slotLock(): string
+    {
+        return $this->root.'/build/dashboard-truth/slot-'.$this->slot.'.lock';
+    }
+
+    /**
+     * One run per slot: a run holds the slot's lock (its run id, process and whether it keeps its stack) from its
+     * start until its cleanup. Another run's lock refuses the slot while that run's process lives or its stack was
+     * kept; a stale lock (a dead process without --keep) is taken over. Null when the slot is this run's now, else
+     * why not.
+     */
+    private function claimSlot(): ?string
+    {
+        $file = $this->slotLock();
+        $held = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
+
+        if (is_array($held) && is_string($held['run'] ?? null) && $held['run'] !== $this->run) {
+            $pid = (int) ($held['pid'] ?? 0);
+            $alive = $pid > 0 && (function_exists('posix_kill') ? posix_kill($pid, 0) : is_dir('/proc/'.$pid));
+            $kept = ($held['kept'] ?? false) === true;
+
+            if ($alive || $kept) {
+                return sprintf(
+                    'slot %d is held by run %s (%s since %s): finish it, or clean it up with `tests/DashboardTruth/bin/run cleanup --run=%s --slot=%d`, or use another --slot',
+                    $this->slot, $held['run'], $alive ? 'running as process '.$pid : 'its stack, router and worlds kept', (string) ($held['since'] ?? '?'), $held['run'], $this->slot,
+                );
+            }
+        }
+
+        if (! is_dir(dirname($file))) {
+            mkdir(dirname($file), 0777, true);
+        }
+
+        file_put_contents($file, json_encode([
+            'run' => $this->run,
+            'pid' => getmypid(),
+            'kept' => ($this->options['keep'] ?? false) === true || (is_array($held) && ($held['run'] ?? null) === $this->run && ($held['kept'] ?? false) === true),
+            'since' => gmdate('Y-m-d\TH:i:s\Z'),
+        ])."\n");
+
+        return null;
+    }
+
+    private function releaseSlot(): void
+    {
+        $file = $this->slotLock();
+        $held = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
+
+        if (is_array($held) && ($held['run'] ?? null) === $this->run) {
+            unlink($file);
+        }
+    }
+
+    /**
+     * The series in the slot Prometheus' head, or null when it does not say.
+     */
+    private function prometheusSeries(): ?int
+    {
+        $status = json_decode((string) @file_get_contents('http://127.0.0.1:'.$this->env['PROMETHEUS_PORT'].'/api/v1/status/tsdb'), true);
+        $series = is_array($status) ? ($status['data']['headStats']['numSeries'] ?? null) : null;
+
+        return is_int($series) ? $series : null;
     }
 
     /**
