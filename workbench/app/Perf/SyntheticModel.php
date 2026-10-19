@@ -20,7 +20,7 @@ use InvalidArgumentException;
  * - large: 10 supervisors, 40 queues, 500 job classes, same rules.
  *
  * Schemas:
- * - legacy: the pilot's family names (what tests/Fixtures/grafana/legacy/queues.json reads), namespace "office";
+ * - legacy: the pilot's family names (what the pilot dashboard read; docker/perf/README.md restores it), namespace "office";
  * - catalog: the package's `Metric` catalog (`queue_oldest_pending_job_age_seconds`, `horizon_info{api_path}`, the
  *   `exporter_*` self-metrics, no `horizon_current_processes`), namespace "ho".
  *

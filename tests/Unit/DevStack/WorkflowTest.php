@@ -162,13 +162,10 @@ it('runs the e2e job weekly and by hand only, with the dedupe gate, screenshots 
 
 it('backfills the perf data with the metric names of the mounted dashboard', function (): void {
     $runs = implode("\n", array_column(workflow('tests.yml')['jobs']['e2e']['steps'], 'run'));
-    $mounted = (string) file_get_contents(dirname(__DIR__, 3).'/tests/Fixtures/grafana/legacy/queues.json');
-
-    // Until T13 the pilot dashboard (office_*) is mounted, so the weekly report must measure the legacy schema.
+    // The schema follows the mounted dashboard: the package render (T13) reads the catalog names
     expect($runs)->toContain("grep -q 'office_queue_jobs_total' build/dashboard.json")
         ->toContain('backfill.sh --profile=medium --hours=26 --schema="$PERF_SCHEMA"')
-        ->toContain('workbench:perf-exporter --profile=medium --schema="$PERF_SCHEMA"')
-        ->and($mounted)->toContain('office_queue_jobs_total');
+        ->toContain('workbench:perf-exporter --profile=medium --schema="$PERF_SCHEMA"');
 });
 
 it('lints the golden exposition with promtool in the coverage job', function (): void {

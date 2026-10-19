@@ -1,0 +1,46 @@
+
+== r3-g13-1h.json (range 1h, 7 cycles)
+requests per panel (refresh cycles 2-4):
+   panel  requestsPerRefresh  medianMs
+      24                   1       486
+       4                   1       385
+       8                   1       327
+      17                   1       297
+       3                   1       238
+       2                   1       217
+      21                   1       201
+       1                   1       188
+      23                   1       184
+variable                   2     159.5
+       9                   1       140
+PromQL replay per panel:
+   panel  targets  wallMs   samples    kb
+       4        3     219  11290201  10.2
+      17        9     176    861537  14.2
+      24        9     168    787389  16.7
+       8        2      83   8074442   5.6
+       3        2      33     36526   7.3
+variable        2      30    108880   1.4
+       2        3      19      6566   4.3
+       1        2      13      1983   2.1
+      21        3       9         0   1.8
+      23        1       5         0   0.1
+       9        1       4      1008   0.6
+                    metric     value
+               firstLoadMs      2647
+              refreshP50Ms      1052
+              refreshP95Ms      1081
+             overviewP50Ms      1052
+        requestsPerRefresh        12
+variableRequestsPerRefresh         2
+infinityRequestsPerRefresh         0
+            failedRequests         0
+                  promqlMs       759
+                   samples  21168532
+            interpolatedKb      64.3
+                maxPanelKb      16.7
+                    errors         0
+
+2 violation(s):
+r3-g13-1h.json: refreshP50Ms 1052 > budget 1000
+r3-g13-1h.json: overviewP50Ms 1052 > budget 1000

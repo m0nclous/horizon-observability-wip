@@ -1,0 +1,59 @@
+
+== before-g13-1h.json (range 1h, 5 cycles)
+requests per panel (refresh cycles 2-4):
+     panel  requestsPerRefresh  medianMs
+         4                   1      5445
+         8                   1      4577
+         5                   1      2172
+4064653180                   1      2119
+        17                   1      1491
+3001830101                   1      1444
+1221550389                   1       790
+         3                   1       560
+         2                   1       239
+         9                   1       163
+         1                   1       118
+        23                   1       118
+  variable                   6     112.5
+        21                   1       111
+PromQL replay per panel:
+     panel  targets  wallMs   samples     kb
+         4        3    2628  35756514  441.6
+         8        2    1443  25613992  353.0
+         5       12     890   1922169  297.3
+4064653180       12     856   1818945  297.3
+3001830101       12     845   1922169  297.3
+1221550389       12     782   2025393  297.3
+        17        9     428   1534930  150.7
+  variable        6     219    904234    7.1
+         3        2      62     50812   20.8
+         2        3      33      6447   11.7
+         1        2      17      1939    2.1
+        21        3      14         0    1.8
+         9        1       6       840    0.6
+        23        1       6         0    0.1
+                    metric     value
+               firstLoadMs     27007
+              refreshP50Ms      6022
+              refreshP95Ms      7810
+             overviewP50Ms      6022
+        requestsPerRefresh        19
+variableRequestsPerRefresh         6
+infinityRequestsPerRefresh         0
+            failedRequests         1
+                  promqlMs      8229
+                   samples  71558384
+            interpolatedKb    2178.6
+                maxPanelKb     441.6
+                    errors         0
+
+9 violation(s):
+before-g13-1h.json: refreshP50Ms 6022 > budget 1000
+before-g13-1h.json: refreshP95Ms 7810 > budget 1500
+before-g13-1h.json: overviewP50Ms 6022 > budget 1000
+before-g13-1h.json: firstLoadMs 27007 > budget 3000
+before-g13-1h.json: requestsPerRefresh 19 > budget 12
+before-g13-1h.json: variableRequestsPerRefresh 6 > budget 2
+before-g13-1h.json: promqlMs 8229 > budget 1500
+before-g13-1h.json: interpolatedKb 2178.6 > budget 100
+before-g13-1h.json: maxPanelKb 441.6 > budget 25

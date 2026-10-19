@@ -11,7 +11,7 @@ use Workbench\App\Discovery\Jobs\NamedJob;
 use Workbench\App\Discovery\Jobs\QueuedJob;
 
 /*
-| Architecture rules (Arch 8.4). After WP8B (T13) a rule "no office in src/ or resources/" joins them.
+| Architecture rules (Arch 8.4), and since WP8B (T13) "no office in src/ or resources/".
 */
 
 /**
@@ -94,6 +94,15 @@ arch('the Redis facade is never used in src')
 arch('collectors do not depend on Http')
     ->expect('DF\HorizonObservability\Collectors')
     ->not->toUse('DF\HorizonObservability\Http');
+
+it('names no pilot installation in src or resources', function (): void {
+    // Arch Q5.6: the package render replaced the pilot's office_ prefix, uid, tag and paths (T13)
+    $files = repositoryFiles(['src', 'resources'], '*');
+    $office = array_keys(array_filter($files, static fn (string $contents): bool => stripos($contents, 'office') !== false));
+
+    expect($files)->toHaveKey('resources/grafana/dashboards/horizon-observability.json')
+        ->and($office)->toBe([]);
+});
 
 it('ascii only', function (): void {
     $files = repositoryFiles(['src', 'config', 'routes', 'resources/lua', 'resources/views'], '/\.(php|lua)$/');

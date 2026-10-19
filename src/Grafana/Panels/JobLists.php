@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace DF\HorizonObservability\Grafana\Panels;
 
-use DF\HorizonObservability\Grafana\DashboardOptions;
 use DF\HorizonObservability\Grafana\Glyph;
 use DF\HorizonObservability\Grafana\PanelRegistry;
 
@@ -28,11 +27,15 @@ final readonly class JobLists
     private const FILTERS = ['supervisor', 'batch_kind', 'queue', 'job_class'];
 
     /**
+     * The job list URL, relative to the Infinity datasource URL: the API path the application exports
+     * (`horizon_info{api_path}`, the hidden `api_path` variable) and the list (Arch Q5.2, Q5.6 step 5).
+     */
+    public const URL = '${api_path}/jobs/{list}';
+
+    /**
      * The JSONata short class name of a row.
      */
     private const SHORT_NAME = '$split(name, "\\\\")[-1]';
-
-    public function __construct(private DashboardOptions $options) {}
 
     /**
      * Failed jobs across the full width at $y, below them completed jobs on the left at full height, pending
@@ -181,7 +184,7 @@ final readonly class JobLists
                 'source' => 'url',
                 'format' => 'table',
                 'parser' => 'backend',
-                'url' => $this->options->jobListUrl($list).'?limit=500&from=${__from}&to=${__to}&'.$filters,
+                'url' => str_replace('{list}', $list, self::URL).'?limit=500&from=${__from}&to=${__to}&'.$filters,
                 'url_options' => ['method' => 'GET', 'data' => ''],
                 'root_selector' => $rows,
                 'columns' => [

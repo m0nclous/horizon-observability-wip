@@ -45,6 +45,16 @@ final readonly class Common
     }
 
     /**
+     * Grafana's `-- Dashboard --` datasource: a panel reads the results of another panel.
+     *
+     * @return array<string, string>
+     */
+    public static function dashboard(): array
+    {
+        return ['type' => 'datasource', 'uid' => '-- Dashboard --'];
+    }
+
+    /**
      * The Infinity datasource of the hidden `app_api` variable.
      *
      * @return array<string, string>
@@ -431,6 +441,24 @@ final readonly class Common
                 'left' => ['matcher' => ['id' => 'byName', 'options' => $field]],
                 'operator' => $operator,
                 'right' => ['fixed' => $fixed],
+            ],
+        ]];
+    }
+
+    /**
+     * A binary "Add field from calculation" of two fields: `$left $operator $right` as $alias.
+     *
+     * @return array<string, mixed>
+     */
+    public static function calculateFields(string $alias, string $left, string $operator, string $right): array
+    {
+        return ['id' => 'calculateField', 'options' => [
+            'mode' => 'binary',
+            'alias' => $alias,
+            'binary' => [
+                'left' => ['matcher' => ['id' => 'byName', 'options' => $left]],
+                'operator' => $operator,
+                'right' => ['matcher' => ['id' => 'byName', 'options' => $right]],
             ],
         ]];
     }

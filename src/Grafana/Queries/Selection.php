@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Grafana\Queries;
 
 use DF\HorizonObservability\Grafana\Promql;
+use DF\HorizonObservability\Metrics\Metric;
 
 /**
  * What the dashboard filters (Supervisor, Batch, Queue, Job) select, and the row sets most panels join on.
@@ -18,6 +19,13 @@ final readonly class Selection
     /**
      * Non-empty while the filter shows "All": its text (`${var:text}`) is compared with "All" through labels
      * (legacy `filter_is_all`).
+     *
+     * The text sits in a PromQL string literal unescaped (Grafana's `text` format is raw). The Job option texts are the
+     * classes without their namespace (Variables::jobQuery()), so a real option holds no backslash. Known limit, as in
+     * the pilot: a value that matches no option (a shared link with a class that is no longer exported) has the value
+     * as its text, and a batch kind, queue or supervisor is its own text; a backslash or a double quote in such a text
+     * makes the expression unparseable, and the panels that test the filter show the query error, never a number
+     * (T13 QA round 3).
      */
     public static function isAll(string $variable): string
     {
@@ -34,7 +42,7 @@ final readonly class Selection
      */
     public function queues(): string
     {
-        return Promql::group($this->promql->selector('queue_pending_jobs'), 'queue');
+        return Promql::group($this->promql->selector(Metric::QueuePendingJobs), 'queue');
     }
 
     /**
@@ -42,28 +50,14 @@ final readonly class Selection
      */
     public function zeroIfMetrics(): string
     {
-        return 'on () 0 * '.Promql::group($this->promql->selector('horizon_status'));
-    }
-
-    /**
-     * Narrows the rows of $expr to the queues or classes ($label) of the selected batch kinds; no narrowing while
-     * Batch is "All" (legacy `batch_filtered`).
-     */
-    public function batchFiltered(string $expr, string $label): string
-    {
-        $classes = $this->promql->selector('queue_batch_job_classes', Promql::re('batch', '$batch_kind'));
-
-        return Promql::paren(Promql::either(
-            Promql::andOn(Promql::paren($expr), Promql::group($classes, $label), $label),
-            Promql::andOn(Promql::paren($expr), self::isAll('batch_kind')),
-        ));
+        return 'on () 0 * '.Promql::group($this->promql->selector(Metric::HorizonStatus));
     }
 
     /**
      * Non-empty while Batch and Job are both "All": queue figures are then taken for the whole queue
      * (legacy `ALL_JOBS_SELECTED`).
      */
-    public function allJobsSelected(): string
+    public static function allJobsSelected(): string
     {
         return Promql::paren(Promql::andOn(self::isAll('job_class'), self::isAll('batch_kind')));
     }
@@ -74,13 +68,13 @@ final readonly class Selection
      */
     public function byJobSelection(string $wholeQueue, ?string $selectedJobs = null): string
     {
-        $whole = Promql::paren(Promql::andOn(Promql::paren($wholeQueue), $this->allJobsSelected()));
+        $whole = Promql::paren(Promql::andOn(Promql::paren($wholeQueue), self::allJobsSelected()));
 
         if ($selectedJobs === null) {
             return $whole;
         }
 
-        return Promql::either($whole, Promql::paren(Promql::unlessOn(Promql::paren($selectedJobs), $this->allJobsSelected())));
+        return Promql::either($whole, Promql::paren(Promql::unlessOn(Promql::paren($selectedJobs), self::allJobsSelected())));
     }
 
     /**
