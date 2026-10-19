@@ -202,8 +202,10 @@ it('streams with the bootstrapped token, which git ignores', function (): void {
     $stream = devStackService('stream');
     $check = new Process(['git', 'check-ignore', '-q', 'docker/grafana/live-token'], devStackRoot());
 
-    expect($stream['profiles'])->toBe(['app'])
-        ->and($stream['command'])->toContain('$$(cat docker/grafana/live-token)')
+    // Its own profile, and it waits for the token: --profile app never restart-loops it before the bootstrap.
+    expect($stream['profiles'])->toBe(['stream'])
+        ->and($stream['command'])->toContain('until [ -s docker/grafana/live-token ]; do sleep 2; done;')
+        ->toContain('$$(cat docker/grafana/live-token)')
         ->toContain('horizon-observability:stream')
         ->and($stream['environment']['HORIZON_OBSERVABILITY_LIVE_GRAFANA_URL'])->toBe('http://grafana:3000');
 

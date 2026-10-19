@@ -5,7 +5,8 @@
 #   composer require sushi-market/horizon-observability
 #   php artisan horizon-observability:install --docker --demo
 #   then the next steps install prints: php artisan serve --host=0.0.0.0 --port=8000, php artisan horizon,
-#   docker compose -f docker-compose.observability.yml up -d, and open http://localhost:3000/d/horizon-observability
+#   docker compose -f docker-compose.observability.yml up -d, and open the URL it prints,
+#   http://localhost:${GRAFANA_PORT:-3000}/d/horizon-observability
 #
 # The budget counts from `composer require` to the tiles (creating the Laravel app is not part of the quick start;
 # the total is printed too). The package is this checkout's dist archive (`git archive`, export-ignore applied), so
@@ -133,7 +134,7 @@ php artisan horizon-observability:install --docker --demo --grafana="$grafana" -
 log "Next steps printed by install: serve, horizon, docker compose up"
 grep -q 'php artisan serve --host=0.0.0.0' "$logs/install.log"
 grep -q 'docker compose -f docker-compose.observability.yml up -d' "$logs/install.log"
-grep -q 'Open http://localhost:3000/d/horizon-observability' "$logs/install.log"
+grep -q "Open http://localhost:$GRAFANA_PORT/d/horizon-observability" "$logs/install.log"
 php artisan serve --host=0.0.0.0 --port="$app_port" > "$logs/serve.log" 2>&1 &
 pids+=($!)
 php artisan horizon > "$logs/horizon.log" 2>&1 &

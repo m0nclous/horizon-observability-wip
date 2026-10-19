@@ -57,9 +57,9 @@ What the installer did:
 
 Expected on a new app:
 
-- The installer's checks report two warnings. "Timeouts, Horizon connection": its fix line is safe while the `redis`
-  queue connection's `block_for` is null, as in a new app (see [Setup and operations](#setup-and-operations)).
-  "Horizon, Status: not running": until you start `php artisan horizon`.
+- The installer's checks report one warning, "Horizon, Status: not running", until you start `php artisan horizon`.
+  In the `local` environment, missing Redis timeouts are info, so `horizon-observability:check` lists them without a
+  warning.
 - The Horizon tile is yellow at first: its Uptime is the share of the dashboard range (the last hour) in which Horizon
   ran, and a running Horizon below 99 % is yellow.
 - The alert "High failure rate" is pending, and fires 5 minutes later, because the demo fails 10 % of its jobs on
@@ -75,11 +75,11 @@ Notes:
 - Running the installer again (without `--demo`) changes nothing.
 - Port 8000 taken? Set `APP_URL=http://localhost:8080` in `.env` before you run the installer. The stack then scrapes
   port 8080, the installer prints `php artisan serve --host=0.0.0.0 --port=8080`, and the Endpoints and Horizon lines
-  and the dashboard's Horizon link use that port too. The comment at the top of `docker-compose.observability.yml`
-  says port 8000 whatever the port. `--app-url=<url>` changes only the URL at which the containers reach the app.
-- Port 3000 or 9090 taken? Add `GRAFANA_PORT=3001` and `PROMETHEUS_PORT=9091` to `.env` (Docker Compose reads the
-  `.env` next to the compose file), or put them before the `up` command. Then open
-  <http://localhost:3001/d/horizon-observability>: the installer always prints port 3000.
+  and the dashboard's Horizon link use that port too. `--app-url=<url>` changes only the URL at which the containers
+  reach the app.
+- Port 3000 or 9090 taken? Add `GRAFANA_PORT=3001` and `PROMETHEUS_PORT=9091` to `.env` before you run the installer
+  (Docker Compose reads the `.env` next to the compose file). The installer then prints
+  <http://localhost:3001/d/horizon-observability>.
 - `--grafana=12` uses Grafana 12.4.13 instead of 13.2.4.
 - To change an option or `APP_URL` after a first run, run the installer again with `--force`, or answer yes when it
   asks to overwrite a file.
@@ -476,7 +476,9 @@ also on a warning); `--json` prints a machine-readable report. It verifies:
 - the storage and reader Redis connections: reachable, latency, client, cluster, persistent connections, braces in the
   prefix. A Redis error reply gets the fix for that reply (read-only replica, ACL refusal, out of memory, auth);
 - the connect and read timeouts of Horizon's Redis connection, of the default cache store and of the batching
-  database. A store without timeouts can hold a scrape until PHP's `default_socket_timeout`;
+  database. A store without timeouts can hold a scrape until PHP's `default_socket_timeout`. The read timeout it
+  suggests stays above the `block_for` of a `redis` queue connection on the same Redis connection, and a read timeout
+  at or below that `block_for` is a warning: every idle blocking pop of a worker would fail;
 - the Horizon supervisors and their queue connections, Horizon's version and status, and the sidebar link;
 - capabilities that depend on the Laravel and Horizon versions, batching, and the job-class cache and cap;
 - a dry run of every collector: a real scrape without the HTTP request;
@@ -713,23 +715,10 @@ Known issue, to be fixed:
 
 ### Setup and operations
 
-- **Keep the Redis read timeout above your queue's `block_for`.** When `check` warns about the timeouts of Horizon's
-  Redis connection, its fix line suggests `'read_timeout' => 2.0` (predis: `'read_write_timeout'`). That suggestion
-  ignores the `block_for` of a `redis` queue connection on the same Redis connection. With `block_for` 5 and a 2 s read
-  timeout, every idle blocking pop fails. Set the read timeout above `block_for`, for example 7 s for `block_for` 5.
-  With `block_for` null, as in a new Laravel app, the suggestion is safe ([#28]).
-- `check` answers some Redis error replies with "Check that Redis is reachable", although its Storage line reports Redis
-  as reachable. This happens for `NOREPLICAS` (min-replicas-to-write), "max number of clients reached",
-  `CLUSTERDOWN`/`TRYAGAIN`, and a server without `TIME` ("Unknown (Redis) command called from (Lua) script"). Act on
-  the error text instead ([#27]).
-- `install` writes the token in place of one `HORIZON_OBSERVABILITY_TOKEN=null` line. When a later line sets the key
-  again, such as a commented `HORIZON_OBSERVABILITY_TOKEN=null # ...`, the app reads that later line, and `install`
-  exits 1. Keep one line per key ([#29]).
 - With predis, a `timeout` in the query string of a Redis connection `url` overrides the timeouts of the package's own
   clients (`redis.worker_timeout`, `redis.scrape_timeout`) ([#30]).
-- Some other `check` messages are imprecise in edge cases: the fix line for a `url` query with a non-positive timeout
-  has no effect, an ACL refusal of the job-class or last-push read is reported as a storage problem, `cache_ttl` 0
-  reads "shared for 0 s", and the last push can read 1 s low ([#30]).
+- With phpredis, an ACL refusal (or a `WRONGTYPE`) of the job-class index reads as an empty class list in the exporter,
+  as phpredis answers it with false. `check` reports the refusal ([#30]).
 - **Batches.** The Batch filter and the batch families read at most the 10 000 most recently seen links between batch
   kinds and job classes, from the last 7 days. Beyond 100 batch kinds, the rest are folded into `(other)` in the
   per-kind families; `(other)` matches no job class, so it does not work as a filter.
@@ -771,8 +760,5 @@ history breaks once, because the `job` label and the counter keys change. [UPGRA
 
 <!-- The issue links of this file, in one place: change the repository here when it moves. -->
 [backlog]: https://github.com/m0nclous/horizon-observability-wip/issues?q=label%3Abacklog
-[#27]: https://github.com/m0nclous/horizon-observability-wip/issues/27
-[#28]: https://github.com/m0nclous/horizon-observability-wip/issues/28
-[#29]: https://github.com/m0nclous/horizon-observability-wip/issues/29
 [#30]: https://github.com/m0nclous/horizon-observability-wip/issues/30
 [#32]: https://github.com/m0nclous/horizon-observability-wip/issues/32

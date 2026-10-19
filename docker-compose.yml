@@ -9,7 +9,8 @@
 # Fully containerised:
 #   PROMETHEUS_CONFIG=prometheus.app.yml APP_URL_FROM_GRAFANA=http://app:8000 docker compose --profile app up -d
 # Grafana 12: GRAFANA_IMAGE=grafana/grafana:12.4.13 docker compose up -d (both 12.4.13 and 13.2.4 are supported).
-# Stream mode: docker/grafana/bootstrap-live.sh, then docker compose --profile app up -d stream.
+# Stream mode: docker/grafana/bootstrap-live.sh, then docker compose --profile app up -d stream (its own profile, so
+# --profile app alone does not start it; it waits for the token file).
 # Performance profile: docker/perf/README.md.
 #
 # Host ports are configurable (REDIS_PORT, PROMETHEUS_PORT, GRAFANA_PORT, APP_PORT, PERF_PROMETHEUS_PORT), so
@@ -122,14 +123,16 @@ services:
 
   stream:
     <<: *app
+    profiles: [stream]
     depends_on:
       app: {condition: service_healthy}
-    # The token comes from docker/grafana/bootstrap-live.sh (gitignored file).
+    # The token comes from docker/grafana/bootstrap-live.sh (gitignored file): wait for it instead of exiting, so the
+    # service never restart-loops before the bootstrap ran.
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       HORIZON_OBSERVABILITY_LIVE_GRAFANA_URL: http://grafana:3000
-    command: sh -c 'HORIZON_OBSERVABILITY_LIVE_GRAFANA_TOKEN="$$(cat docker/grafana/live-token)" exec vendor/bin/testbench horizon-observability:stream'
+    command: sh -c 'until [ -s docker/grafana/live-token ]; do sleep 2; done; HORIZON_OBSERVABILITY_LIVE_GRAFANA_TOKEN="$$(cat docker/grafana/live-token)" exec vendor/bin/testbench horizon-observability:stream'
     restart: unless-stopped
 
   renderer:
