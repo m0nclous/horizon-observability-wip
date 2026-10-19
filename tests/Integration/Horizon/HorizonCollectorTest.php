@@ -6,6 +6,7 @@ use Carbon\CarbonImmutable;
 use DF\HorizonObservability\Collectors\HorizonCollector;
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Horizon\Supervisors;
+use DF\HorizonObservability\Metrics\Labels;
 use DF\HorizonObservability\Metrics\Metric;
 use DF\HorizonObservability\Metrics\ScrapeContext;
 use DF\HorizonObservability\Redis\RedisClients;
@@ -122,6 +123,32 @@ it('sums a supervisor that runs under several masters', function (): void {
         // One info series per supervisor, from the first master by name.
         ->and($samples->series('horizon_supervisor_info'))->toHaveCount(3)
         ->and($samples->value('horizon_supervisor_info', ['supervisor' => 'supervisor-default', 'balance' => 'auto', 'connection' => 'redis']))->toBe(1);
+});
+
+it('keeps two long pool labels with the same start apart during a deploy that adds a queue', function (): void {
+    // A balance=false pool of 15 queues (over 200 bytes) gains one at the end: the old and the new master run one
+    // pool label each, equal in their first 200 bytes. Cut to the same value they would be one label set twice, and
+    // the exporter would drop the supervisor families; the hash of the whole value in the cut keeps them apart.
+    $old = implode(',', array_map(static fn (int $index): string => 'notifications-'.$index, range(1, 15)));
+    $new = $old.',push';
+    HorizonState::using(app())
+        ->master('host-a', 'running', ['host-a:supervisor-pool'])
+        ->supervisor('host-a:supervisor-pool', HorizonState::options('host-a:supervisor-pool', queue: $old, balance: false, maxProcesses: 2), ['redis:'.$old => 2])
+        ->master('host-b', 'running', ['host-b:supervisor-pool'], pid: 2000)
+        ->supervisor('host-b:supervisor-pool', HorizonState::options('host-b:supervisor-pool', queue: $new, balance: false, maxProcesses: 3), ['redis:'.$new => 3], pid: 2001);
+
+    $samples = horizonCollectorRun();
+    $cut = static fn (string $value): string => Labels::sanitize($value);
+
+    expect(strlen($old))->toBeGreaterThan(Labels::MAX_BYTES)
+        ->and(substr($old, 0, Labels::MAX_BYTES))->toBe(substr($new, 0, Labels::MAX_BYTES))
+        ->and($samples->failures)->toBe([])
+        ->and($samples->families)->toBe(array_map(static fn (Metric $metric): string => $metric->value, Metric::ofCollector('horizon')))
+        ->and($samples->value('horizon_supervisor_processes', ['supervisor' => 'supervisor-pool', 'queue' => $cut($old)]))->toBe(2)
+        ->and($samples->value('horizon_supervisor_processes', ['supervisor' => 'supervisor-pool', 'queue' => $cut($new)]))->toBe(3)
+        ->and($samples->value('horizon_supervisor_queues', ['supervisor' => 'supervisor-pool', 'queue' => 'notifications-1', 'pool' => $cut($old)]))->toBe(1)
+        ->and($samples->value('horizon_supervisor_queues', ['supervisor' => 'supervisor-pool', 'queue' => 'notifications-1', 'pool' => $cut($new)]))->toBe(1)
+        ->and($samples->value('horizon_supervisor_queues', ['supervisor' => 'supervisor-pool', 'queue' => 'push', 'pool' => $cut($new)]))->toBe(1);
 });
 
 it('omits the wait threshold of a queue whose check is disabled', function (): void {

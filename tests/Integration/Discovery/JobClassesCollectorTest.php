@@ -76,7 +76,7 @@ it('normalises the labels like every job_class label and exports each once', fun
 
     $samples = collectJobClasses()['samples'];
 
-    expect(array_keys($samples))->toBe(['App\\Jobs\\Same', 'App\\Jobs\\ControlChar', substr($long, 0, 197).'...'])
+    expect(array_keys($samples))->toBe(['App\\Jobs\\Same', 'App\\Jobs\\ControlChar', substr($long, 0, 189).'...'.hash('crc32b', $long)])
         ->and(array_values($samples))->toBe([1, 1, 1]);
 });
 

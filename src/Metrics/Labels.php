@@ -32,7 +32,8 @@ final class Labels
     public const UNNAMED = 'unnamed';
 
     /**
-     * Maximum length of a label value in bytes, including the {@see self::ELLIPSIS} of a cut value.
+     * Maximum length of a label value in bytes, including the suffix of a cut value ({@see self::ELLIPSIS} and the
+     * hash).
      */
     public const MAX_BYTES = 200;
 
@@ -40,8 +41,11 @@ final class Labels
 
     /**
      * Valid UTF-8 (invalid bytes become `?`), without control characters (this includes the `\x1f` field separator
-     * of the storage hashes and newlines) and at most {@see self::MAX_BYTES} bytes, cut on a character boundary with a
-     * `...` suffix.
+     * of the storage hashes and newlines) and at most {@see self::MAX_BYTES} bytes. A longer value is cut on a
+     * character boundary and ends with `...` and the CRC32 of the whole value (8 hex digits), so two long values
+     * that share their first bytes stay apart: the queue lists of a balance=false pool before and after a deploy
+     * that adds a queue at the end would otherwise be one label set twice, and the exporter drops a family with a
+     * duplicate label set.
      */
     public static function sanitize(string $value): string
     {
@@ -52,7 +56,9 @@ final class Labels
         $value = (string) preg_replace('/\p{Cc}+/u', '', $value);
 
         if (strlen($value) > self::MAX_BYTES) {
-            return mb_strcut($value, 0, self::MAX_BYTES - strlen(self::ELLIPSIS), 'UTF-8').self::ELLIPSIS;
+            $suffix = self::ELLIPSIS.hash('crc32b', $value);
+
+            return mb_strcut($value, 0, self::MAX_BYTES - strlen($suffix), 'UTF-8').$suffix;
         }
 
         return $value;

@@ -102,6 +102,9 @@ The first public release: a rewrite of the internal pilot `sushi-market/horizon-
   90 seconds, on the storage Redis' clock, so that Prometheus and the dashboard count their first attempts.
 - English sentinel label values: `(unscanned)`, `(unknown)` and the overflow value `(other)`; a closure's job class
   drops its line number (`Closure (routes/web.php)`).
+- Label values longer than 200 bytes are cut and end with `...` and the CRC32 of the whole value, so two long values
+  with the same start (a long `balance => false` queue list before and after a deploy that adds a queue) stay apart
+  instead of dropping the supervisor families as a duplicate label set.
 - The package's keys live on Horizon's `horizon` connection under `{horizon-observability}:v1:`; the pilot's
   `prometheus:queue:*` keys on the `default` connection are never read.
 - Recommended scrape: a separate Prometheus job for the package endpoint every 10 s (the pilot: 15 s on the
