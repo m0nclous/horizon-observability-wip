@@ -455,8 +455,8 @@ final readonly class Tiles
     }
 
     /**
-     * The attempts per step of the Completed and Failed sparklines, whose sum is the tile number (O4: aggregate
-     * first); 0 while the application exports metrics without attempts.
+     * The attempts per step of the Completed and Failed sparklines, whose sum is the tile number (O4: one subquery,
+     * per series); 0 while the application exports metrics without attempts.
      */
     private function attemptsPerStep(string $statuses): string
     {
