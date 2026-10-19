@@ -8,6 +8,7 @@ use DF\HorizonObservability\Attempts\AttemptStore;
 use DF\HorizonObservability\Attempts\LegacyReadyAt;
 use DF\HorizonObservability\Collectors\AttemptsCollector;
 use DF\HorizonObservability\Config\Config;
+use DF\HorizonObservability\Metrics\ScrapeContext;
 use DF\HorizonObservability\Redis\Keys;
 use DF\HorizonObservability\Redis\RedisClients;
 use DF\HorizonObservability\Tests\Fixtures\Attempts\Events;
@@ -106,6 +107,31 @@ it('collects from a cluster connection, reset guard included (C10)', function ()
         ->and($scrape['samples']['queue_jobs_total']['connection=redis,queue=default,job_class=App\\Jobs\\SendInvoice,status=completed'])->toBe(1)
         ->and($scrape['samples']['queue_job_duration_max_seconds'])->toBe(['connection=redis,queue=default,job_class=App\\Jobs\\SendInvoice' => 0.3])
         ->and(Storage::hash($this->keys->meta()))->toHaveKey('run_id');
+});
+
+it('runs the new-series hold on the clock of the slot\'s node: TIME inside both scripts (T16)', function (): void {
+    // The production path, nothing pinned: record_attempt.lua stamps the creation time with the node's TIME (the
+    // worker's clock, years back, never enters) and new_series.lua measures the age with it, then releases the series.
+    $time = function (): float {
+        $reply = $this->node->executeRaw(['TIME']);
+
+        return is_array($reply) ? (float) $reply[0] + (float) $reply[1] / 1e6 : throw new LogicException('TIME failed.');
+    };
+    $scrape = static fn (): int|float => Storage::samples(app(AttemptsCollector::class)->collect(new ScrapeContext(CarbonImmutable::createFromTimestamp(1_700_000_200), 8.0)))['queue_jobs_total']['connection=redis,queue=default,job_class=App\\Jobs\\SendInvoice,status=completed'];
+    $before = $time();
+
+    expect(Storage::clock()->pinned())->toBeNull()
+        ->and(Storage::store()->record('redis', 'default', 'App\\Jobs\\SendInvoice', AttemptStatus::Completed, 0.2, null, null, null, $this->now))->toBeTrue();
+
+    $created = (float) (Storage::hash($this->keys->created())['redis|default|App\\Jobs\\SendInvoice'] ?? 0);
+
+    expect($created)->toBeGreaterThanOrEqual($before)->toBeLessThanOrEqual($time())
+        ->and($scrape())->toBe(0);
+
+    Storage::store()->reader()->hset($this->keys->created(), Keys::field('redis', 'default', 'App\\Jobs\\SendInvoice'), (string) ($time() - AttemptsCollector::NEW_SERIES_HOLD_SECONDS - 0.5));
+
+    expect($scrape())->toBe(1)
+        ->and(Storage::hash($this->keys->created()))->toBe([]);
 });
 
 it('stores ready_at on a cluster connection (C10)', function (): void {

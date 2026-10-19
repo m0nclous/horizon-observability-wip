@@ -14,6 +14,8 @@ use DF\HorizonObservability\Metrics\Metric;
 use DF\HorizonObservability\Metrics\MetricFamily;
 use DF\HorizonObservability\Metrics\ScrapeContext;
 use DF\HorizonObservability\Redis\Keys;
+use DF\HorizonObservability\Redis\RedisScriptFailed;
+use DF\HorizonObservability\Redis\ServerClock;
 use Throwable;
 
 /**
@@ -21,9 +23,9 @@ use Throwable;
  * histograms, the duration extremes of the last 150 seconds, `exporter_attempts_dropped_total` and the live push
  * self-metrics, read from the storage written by the workers.
  *
- * Per scrape: the reset guard `EVAL`, the five counter hashes, the creation times, one `extremes_read` `EVAL`, `meta`
- * and the job-class set (read only), on the short-timeout reader of the storage connection. Values are absolute (no
- * registry, C3).
+ * Per scrape: the reset guard `EVAL`, the five counter hashes, one `new_series` `EVAL`, one `extremes_read` `EVAL`,
+ * `meta` and the job-class set (read only), on the short-timeout reader of the storage connection. Values are
+ * absolute (no registry, C3).
  * - Every (connection, queue, job_class) of `queue_jobs_total` is zero-filled with all five statuses, so the first
  *   failure or timeout of a known class is visible to `increase()`, and has a duration histogram (all zero until
  *   its first duration); every queue of those has a wait histogram (all zero until its first wait).
@@ -31,20 +33,25 @@ use Throwable;
  *   `increase()` and the dashboard's exact differences start from it, so a class or queue whose first scrape showed
  *   3 completed attempts counted 0 of them. The exporter knows when a series was created
  *   ({@see Keys::created()}, written by `record_attempt.lua` with its first count) and exports a series created less
- *   than {@see self::NEW_SERIES_HOLD_SECONDS} ago as 0: every scraper (5-60 s intervals, every replica, clocks
- *   within 15 s) records at least one 0 sample before the real value, which then counts in full. Series without a
- *   creation time (the counters of a scrape job added later, of a replica that starts later, data from before the
- *   creation times) are exported as they are, so their old totals are never counted as new. The cost: the first
- *   attempts of a new (connection, queue, job_class) and the first waits of a new queue show up to 90 s late, and
- *   while a new class of a known queue is held, that queue's wait histogram (not held) already counts its first
- *   waits.
+ *   than {@see self::NEW_SERIES_HOLD_SECONDS} ago as 0: every scraper records at least one 0 sample before the real
+ *   value, which then counts in full. The creation time and the age are both on the storage Redis' clock
+ *   ({@see ServerClock}: `TIME` inside `record_attempt.lua` and `new_series.lua`), so the clocks of the workers, of
+ *   the replicas behind the one scrape target (Arch Q1.5) and of the scrapers never enter the hold, and the end of
+ *   the hold is one decision for every replica. `new_series.lua` deletes the creation time of a released series, so
+ *   it is never held again, whatever any clock does later: an exported counter never drops back to 0. Series without
+ *   a creation time (the counters of a scrape job added later, of a replica that starts later, data from before the
+ *   creation times, released series) are exported as they are, so their old totals are never counted as new. The
+ *   cost: the first attempts of a new (connection, queue, job_class) and the first waits of a new queue show up to
+ *   90 s late, and while a new class of a known queue is held, that queue's wait histogram (not held) already counts
+ *   its first waits.
  * - Fields of classes that left the class set (idle for 30 days and pruned by `record_attempt.lua` when the full set
  *   needed room for a new class, Arch Q4) are not exported and are deleted lazily, at most
  *   {@see self::FORGET_LIMIT} per scrape; `(other)` always stays.
  * - Histograms are cumulative over the configured bounds ({@see HistogramSnapshot}).
  * - `exporter_attempts_dropped_total` is always exported; the live push series only once a stream leader pushed
  *   (`meta.live_push_at`).
- * - A failing reset guard or deletion keeps the data but marks the collector as failed.
+ * - A failing reset guard or deletion keeps the data but marks the collector as failed; so does a failing hold
+ *   script (e.g. `TIME` refused by an ACL), which holds every series that still has a creation time instead.
  *
  * @internal
  */
@@ -58,15 +65,16 @@ final readonly class AttemptsCollector implements Collector
     /**
      * Seconds a new counter series is exported as 0, so that every scraper exports at least one 0 sample of it.
      *
-     * The first scrape that sees a series comes less than S + 2j after its creation (S the scrape interval, j how far
-     * a scrape's request time may deviate from its slot, so the scrape before the creation can be j early and the
-     * next one j late). The creation time is the worker's clock and the age is this host's, so a worker clock k
-     * behind adds k to the age. The hold covers S <= 60 s (Addendum R3), j <= 7.5 s (the scrape deviation budget of
-     * Addendum R3.4) and k <= 15 s: 60 + 2 x 7.5 + 15 = 90. A worker clock ahead, or a series created during the
-     * scrape (after its request time, within the scrape budget of at most 8 s), gives a negative age, which is held
-     * as well while |age| < 90 s. Beyond that budget (a slower scrape interval, scrapes further off their slots,
-     * clocks further apart, every scrape of the hold failing) a new series can start without its 0 sample again.
-     * Proven by tests/Truth/FirstValueTruthTest at the worst alignment and skew in both directions.
+     * Measured on one clock, the storage Redis' ({@see ServerClock}). A scraper whose last scrape before the creation
+     * read the counters at r sees the new series first at its next successful scrape and exports it as 0 if that
+     * scrape's hold read comes less than 90 s after the creation, which is certain when it comes less than 90 s
+     * after r: the successful scrapes of one scraper must read the counters less than 90 s apart (less the one round
+     * trip from the counter read to the hold read). That covers S <= 60 s (Addendum R3) with 30 s to spare, e.g.
+     * scrapes less than 15 s off their slots in both directions at S = 60 s (twice the deviation budget of Addendum
+     * R3.4), or up to 7 failed scrapes in a row at S = 10 s. No other clock enters: the workers' and the exporter
+     * replicas' clocks may be anything. Beyond the budget (a slower scrape interval, longer gaps, a step of the Redis
+     * clock) a new series can start without its 0 sample, as without the hold, but no exported counter ever
+     * decreases. Proven by tests/Truth/FirstValueTruthTest at the worst alignment, with any worker and replica clocks.
      */
     public const NEW_SERIES_HOLD_SECONDS = 90;
 
@@ -92,23 +100,30 @@ final readonly class AttemptsCollector implements Collector
             $context->reportFailure('attempts:reset_guard', $e);
         }
 
-        // The creation times are read after the hashes: a series created in between has no counts in them yet, so a
-        // series with counts always has its creation time. The class set is read last: a class admitted after the
-        // hashes were read has no field in them yet, so a brand-new class is never taken for a stale one.
+        // The hold is read right after the hashes: a series created in between has no counts in them yet, so a
+        // series with counts always has its creation time there, unless it was released already. The class set is
+        // read last: a class admitted after the hashes were read has no field in them yet, so a brand-new class is
+        // never taken for a stale one.
         $counters = $this->store->counters();
-        $created = $this->store->created();
+
+        try {
+            $held = array_fill_keys($this->store->held(self::NEW_SERIES_HOLD_SECONDS), true);
+        } catch (RedisScriptFailed $e) {
+            // E.g. TIME refused by an ACL: hold every series that still has a creation time and release none, so no
+            // exported counter can drop back to 0 later.
+            $context->reportFailure('attempts:hold', $e);
+            $held = array_fill_keys($this->store->createdFields(), true);
+        }
+
         $extremes = $this->store->extremes($now);
         $meta = $this->store->meta();
         $known = array_fill_keys($this->store->jobClasses(), true);
         $known[Labels::OTHER] = true;
-        $held = $this->held($created, $now->getPreciseTimestamp(3) / 1000);
 
         /** @var array<string, list<string>> $stale */
         $stale = [];
         /** @var array<string, array{connection: string, queue: string, job_class: string}> $tuples */
         $tuples = [];
-
-        $this->staleCreated($created, $known, $stale);
 
         $families = [
             $this->jobsTotal($counters['attempts'], $known, $held, $stale, $tuples),
@@ -133,7 +148,7 @@ final readonly class AttemptsCollector implements Collector
     /**
      * @param  array<string, string>  $fields  `conn\x1fqueue\x1fclass\x1fstatus` => count
      * @param  array<string, true>  $known
-     * @param  array<string, true>  $held  raw fields of the series exported as 0 ({@see self::held()})
+     * @param  array<string, true>  $held  raw fields of the series exported as 0 ({@see AttemptStore::held()})
      * @param  array<string, list<string>>  $stale
      * @param  array<string, array{connection: string, queue: string, job_class: string}>  $tuples  filled: series id => labels
      */
@@ -281,53 +296,6 @@ final readonly class AttemptsCollector implements Collector
         }
 
         return $this->histogram(Metric::JobWait, $series);
-    }
-
-    /**
-     * The raw fields (`conn\x1fqueue\x1fclass` or `conn\x1fqueue`) of the series created less than
-     * {@see self::NEW_SERIES_HOLD_SECONDS} ago, which are exported as 0. A creation time in the future (a worker
-     * clock ahead of this host's) holds the series too, at most for the hold after it.
-     *
-     * @param  array<string, string>  $created  field => Unix seconds
-     * @return array<string, true>
-     */
-    private function held(array $created, float $now): array
-    {
-        $held = [];
-
-        foreach ($created as $field => $at) {
-            $age = is_numeric($at) ? $now - (float) $at : INF;
-
-            if (is_finite($age) && abs($age) < self::NEW_SERIES_HOLD_SECONDS) {
-                $held[$field] = true;
-            }
-        }
-
-        return $held;
-    }
-
-    /**
-     * Creation times of attempt series whose class left the class set are stale like their counters; those of the
-     * queues (two parts) never are.
-     *
-     * @param  array<string, string>  $created
-     * @param  array<string, true>  $known
-     * @param  array<string, list<string>>  $stale
-     */
-    private function staleCreated(array $created, array $known, array &$stale): void
-    {
-        foreach (array_keys($created) as $field) {
-            $field = (string) $field;
-            $parts = Keys::splitField($field);
-
-            if (count($parts) === 2) {
-                continue;
-            }
-
-            if (count($parts) !== 3 || ! isset($known[$parts[2]])) {
-                $stale[$this->keys->created()][] = $field;
-            }
-        }
     }
 
     /**

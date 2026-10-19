@@ -8,6 +8,7 @@ use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Redis\Keys;
+use DF\HorizonObservability\Redis\ServerClock;
 use DF\HorizonObservability\Tests\Fixtures\Attempts\Storage;
 use DF\HorizonObservability\Tests\Integration\Live\Support\Processes;
 use DF\HorizonObservability\Tests\Support\Exposition;
@@ -34,6 +35,7 @@ use Throwable;
  *
  * The clock (Laravel's and CarbonImmutable's, so also Horizon's and Carbon 2's) stays on whole seconds near the real
  * time: payloads carry the real `pushedAt` (microtime) next to `createdAt`, and the model reads both from the payload.
+ * The storage Redis' clock, on which the new-series hold runs ({@see ServerClock}), is pinned to the same time.
  * Durations are real (the attempts sleep their planned time); everything else is exact.
  */
 final class Scenario
@@ -243,12 +245,16 @@ final class Scenario
     }
 
     /**
-     * Unfreeze the clocks.
+     * Unfreeze the clocks, the server clock included.
      */
     public static function stop(): void
     {
         Carbon::setTestNow();
         CarbonImmutable::setTestNow();
+
+        if (Container::getInstance()->bound(ServerClock::class)) {
+            Container::getInstance()->make(ServerClock::class)->pin(null);
+        }
     }
 
     /**
@@ -273,6 +279,7 @@ final class Scenario
         $this->now = $time;
         Carbon::setTestNow($time);
         CarbonImmutable::setTestNow($time);
+        self::app()->make(ServerClock::class)->pin((float) $time->format('U.u'));
 
         return $this;
     }

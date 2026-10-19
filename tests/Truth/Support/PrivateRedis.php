@@ -119,6 +119,25 @@ final class PrivateRedis
     }
 
     /**
+     * Send one command to the running server and return the first line of its reply (e.g. `+OK` or `-ERR ...`).
+     */
+    public function command(string ...$arguments): string
+    {
+        $connection = fsockopen('127.0.0.1', $this->port, $code, $message, 5.0);
+
+        if ($connection === false) {
+            throw new RuntimeException(sprintf('Cannot reach the private Redis: %s', $message));
+        }
+
+        stream_set_timeout($connection, 10);
+        fwrite($connection, '*'.count($arguments)."\r\n".implode('', array_map(static fn (string $argument): string => '$'.strlen($argument)."\r\n".$argument."\r\n", $arguments)));
+        $reply = fgets($connection);
+        fclose($connection);
+
+        return is_string($reply) ? rtrim($reply, "\r\n") : '';
+    }
+
+    /**
      * Shut the server down; with `$save` its dataset is loaded by the next start, otherwise it is gone.
      */
     public function stop(bool $save): void

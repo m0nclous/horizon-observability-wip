@@ -22,7 +22,8 @@ use LogicException;
  * - the queue state: pending (incl. due delayed), delayed, due, the oldest wait (C8), ready and reserved jobs per class.
  *
  * New series are exported as 0 for their first 90 s (`AttemptsCollector::NEW_SERIES_HOLD_SECONDS`, T16): the model
- * applies the same rule from the time each series got its first count (one clock: the scenario's).
+ * applies the same rule from the time each series got its first count (one clock: the scenario's, to which the
+ * scenario pins the storage Redis' clock, `ServerClock`, that the hold runs on).
  */
 final class Model
 {

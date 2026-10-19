@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use DF\HorizonObservability\Collectors\AttemptsCollector;
 use DF\HorizonObservability\Metrics\Metric;
+use DF\HorizonObservability\Redis\ServerClock;
 use DF\HorizonObservability\Tests\Fixtures\Attempts\Jobs\CompletingJob;
 use DF\HorizonObservability\Tests\Fixtures\Attempts\Storage;
 use DF\HorizonObservability\Tests\Truth\Support\HorizonTruth;
@@ -116,11 +117,13 @@ it('exports the supervisors a real Horizon registers and the attempts its worker
                 Model::key(['supervisor' => 'supervisor-pool', 'queue' => 'sms', 'pool' => 'mail,sms']),
             ]);
 
-        // The attempts past the hold of their new series: this scrape runs 95 s (the hold + 5 s) ahead of the
-        // workers' clock.
+        // The attempts past the hold of their new series: Horizon's workers stamped their creation times with the
+        // storage Redis' TIME (no clock is pinned in their processes), and this scrape runs with the server clock
+        // pinned 95 s (the hold + 5 s) later, like the test's own clocks.
         $later = CarbonImmutable::now()->addSeconds(AttemptsCollector::NEW_SERIES_HOLD_SECONDS + 5);
         Carbon::setTestNow($later);
         CarbonImmutable::setTestNow($later);
+        app(ServerClock::class)->pin((float) $later->format('U.u'));
         $samples = new Samples($scenario->scrape());
 
         foreach ($jobs as $queue => $count) {

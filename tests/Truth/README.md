@@ -125,20 +125,48 @@ two checkouts, the integration branch before the fix and this one (3 attempts of
 before `increase()` 2.10 and `delta()` 2, after 5.06 and 5 (`probes/first-value/results-real.txt`). Both probes ran
 with the first hold of 75 s; its length does not change their results, which need only one 0 sample per scraper.
 
-The hold (`NEW_SERIES_HOLD_SECONDS`) is sized for a stated budget. The first scrape that sees a series comes less
-than S + 2j after its creation (the scrape before it j early, the next one j late), and the creation time is the
-worker's clock while the age is the exporter's, so a worker clock k behind adds k: 90 s = S 60 s (the longest
-supported interval, Add §R3) + 2 × 7.5 s (the scrape deviation budget of Add §R3.4) + k 15 s. A worker clock ahead,
-or a series created during a scrape (after its request time), gives a negative age, which is held too while
-|age| < 90 s. `FirstValueTruthTest` checks every schedule of 5-60 s with slots at, between and 7.5 s after the
-creation, deviations of ±7.5 s in four patterns (including the worst: the scrape before the creation 7.5 s early,
-1 ms before it, and the next one 7.5 s late) and worker clocks 15 s behind, in sync and 15 s ahead; the worst case
-(89.999 s) is held by 1 ms. Outside the budget (a slower interval, scrapes further off their slots, clocks further
-apart than 15 s, all scrapes of the hold failing) a new series can start without its 0 sample, as without the hold;
-NTP keeps clocks within milliseconds, and a creation time far in the future is not trusted (a series is never held
-for more than 2 × 90 s of the exporter's clock).
+**One clock: the storage Redis'** (QA round 2). The creation time and the age are both read from the storage
+Redis' `TIME`, inside `record_attempt.lua` (only when it writes a creation time) and inside `new_series.lua`, which
+the collector runs once per scrape right after the counters. No worker, exporter replica or scraper clock enters the
+hold, so every replica behind the one scrape target (Arch Q1.5) makes the same decision, and a worker clock ahead or
+behind changes nothing. `new_series.lua` also deletes the creation time of every series it releases, so a released
+series is never held again, whatever any clock does later (a step back of the Redis clock, a replica that answers
+later): an exported counter never drops back to 0. Before, the hold compared the worker's clock with the clock of
+whichever replica answered: two replicas 15 s apart exported 0, 3, 0, 3 at the end of the hold, which Prometheus
+v3.15.0 took for a reset (`increase()` 6.02 for 3 attempts, `resets()` 1; `probes/replica-clocks/results.txt`), and a
+worker clock more than 90 s ahead dropped an exported counter back to 0 for 180 s. With the real exporter of both
+checkouts (`probes/replica-clocks/run-real.sh`: two replicas 15 s apart behind one target, a worker 120 s ahead, 3
+attempts of a new class, truth 3) Prometheus v3.15.0 counted `increase()` 9.18 with `resets()` 3 before and 3.01
+with `resets()` 0 after, the samples 0 until 90 s after the attempts and 3 from then on
+(`probes/replica-clocks/results-real.txt`). Tests pin the server clock (`Redis\ServerClock`, Storage's `server:`,
+the scenario clock); the production path (`TIME`, nothing pinned) has its own cases in `FirstValueTruthTest`, on
+the cluster leg (`ClusterStorageTest`) and on a Redis 6.2 that replicates scripts verbatim.
 
-The cost, all bounded by the hold:
+The hold (`NEW_SERIES_HOLD_SECONDS`) is sized for a stated budget on that clock. A scraper whose last scrape before
+the creation read the counters at r sees the series first at its next successful scrape and exports it as 0 if that
+scrape's hold read comes less than 90 s after the creation, which is certain when it comes less than 90 s after r:
+the successful scrapes of one scraper must read the counters less than 90 s apart. That covers every supported
+interval (S <= 60 s, Add §R3) with 30 s to spare: scrapes less than 15 s off their slots at S = 60 s (twice the
+deviation budget of Add §R3.4), or up to 7 failed scrapes in a row at S = 10 s. `FirstValueTruthTest` checks every
+schedule of 5-60 s with slots at, between and 15 s after the creation, deviations of ±(15 s - 1 ms) in four patterns
+(including the worst: the read before the creation 15 s early, 1 ms before it, and the next one 15 s late), each with
+a worker clock an hour behind, in sync and an hour ahead and two replicas answering in turn with clocks up to an hour
+apart; the worst case (89.999 s) is held by 1 ms. Outside the budget (a slower interval, longer gaps between
+successful scrapes, a step of the Redis clock) a new series can start without its 0 sample, as without the hold (an
+undercount of its first attempts, never a decrease). A creation time ahead of the Redis clock (only after the clock
+stepped back) is held until the clock is 90 s past it, and released at once when it is 90 s or more ahead.
+
+Redis requirements: `TIME`, `INFO` and `HGETALL` are non-deterministic and followed by writes in these scripts, so
+they ask for effects replication first (`redis.replicate_commands()`): the default since Redis 5, the only mode since
+Redis 7 and in Valkey (where the call is a no-op), and needed on Redis 6.2 configured with
+`lua-replicate-commands no`. On a Redis Cluster the scripts run on the node of the package's slot and use its clock; a
+failover or a move to another node changes the run id, and the reset guard then deletes the counters and the
+creation times together, so creation times of two clocks never meet. A server that refuses `TIME` (an ACL without
+`@fast`) still records every attempt, without a creation time (its series is not held); the scrape then marks the
+attempts collector as failed (`attempts:hold`, so the problem is visible) and holds the series that still have a
+creation time without releasing any, so nothing exported decreases. Allowing `TIME` (`+time`) restores the hold.
+
+The cost (the first three bounded by the hold):
 - the first attempts of a new (connection, queue, job_class), and the first waits of a new queue, show up to 90 s
   late (the live overview's ring buffer is not delayed);
 - they are counted when the hold ends, so a range that starts inside a hold also counts that series' attempts from
@@ -146,7 +174,11 @@ The cost, all bounded by the hold:
 - the families lag each other while a series is held: a new class on a known queue has its attempts and durations
   held, but the queue's wait histogram (an existing series) counts its first waits at once, so for up to 90 s that
   queue exports more waits than attempts (the waits invariant above allows that only while a series of the queue is
-  held).
+  held);
+- in Redis: one `new_series.lua` `EVAL` per scrape in place of the `HGETALL created` before it (the same 10 round
+  trips): `TIME`, `HGETALL` of the creation times (only series younger than 90 s stay there) and `HDEL`s of the
+  released ones; one `TIME` in `record_attempt.lua` for the first attempt of a new series or the first wait of a new
+  queue.
 
 ### 2. balance=false pooled queues need the exporter's queue map
 
@@ -164,6 +196,11 @@ the busy workers come out right:
   label_replace(ho_horizon_supervisor_processes, "pool", "$1", "queue", "(.*)"))`;
 - the supervisor of each queue (utilisation, Supervisor filter): `group by (supervisor, queue)
   (ho_horizon_supervisor_queues)`.
+
+While the masters disagree on a supervisor's options (a rolling deploy that changes a balance=false queue list or the
+balance), both masters' pools work the common queues: the map then has a series for every pool that works a queue
+(`mail` in `mail,sms` and in `mail,sms,push`), so the processes per queue add up over both (QA round 2; before, only
+the first master's pool was mapped and `mail` read 2 processes instead of 5).
 
 The dashboard change is T13's (`src/Grafana/Panels/Queues.php` `$supervised`, `Queries/Workers::supervisorQueues()`,
 `queueBusy()`, `processesValue()`, `Variables`); T17 proves it.

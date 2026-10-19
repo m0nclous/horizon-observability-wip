@@ -28,6 +28,12 @@ use DF\HorizonObservability\Tests\Truth\Support\Scenario;
 | - while a deploy changes a balance=false queue option, both masters' pools work the common queues, but
 |   horizon_supervisor_queues keeps only the first master's pool, so the processes per queue miss the other's.
 | The other cases pass and stay as regression tests.
+|
+| Fixed after round 2 (implementer): the hold runs on the storage Redis' clock (ServerClock: TIME inside
+| record_attempt.lua for the creation time and inside new_series.lua for the age), which releases a series for good
+| by deleting its creation time; horizon_supervisor_queues keeps every master's pools. The hold cases therefore pass
+| the server clock explicitly (Storage's `server:`, the real time of each event) next to the worker's and the
+| replicas' own clocks (`now:`), which no longer enter.
 */
 
 pest()->group('redis', 'truth');
@@ -65,32 +71,48 @@ it('keeps a counter monotonic when two replicas behind the one scrape target ans
     // series is continuous". The worker that records the first attempt is in sync with replica A and 15 s behind
     // replica B (within the stated budget: worker clocks <= 15 s off the exporter's).
     $created = 1_800_000_000;
-    Storage::record(status: AttemptStatus::Completed, duration: 0.2, now: CarbonImmutable::createFromTimestamp($created));
+    Storage::record(status: AttemptStatus::Completed, duration: 0.2, now: CarbonImmutable::createFromTimestamp($created), server: $created);
     $skew = ['A' => 0, 'B' => 15];
     $values = [];
 
     for ($k = 0, $real = $created + $phase; $real < $created + 200; $k++, $real += $interval) {
         $replica = $k % 2 === 0 ? 'A' : 'B';
-        $values[sprintf('+%d s via %s', $real - $created, $replica)] = Storage::scrape(CarbonImmutable::createFromTimestamp($real + $skew[$replica]))['samples']['queue_jobs_total'][ADV2_SERIES];
+        $values[sprintf('+%d s via %s', $real - $created, $replica)] = Storage::scrape(CarbonImmutable::createFromTimestamp($real + $skew[$replica]), server: $real)['samples']['queue_jobs_total'][ADV2_SERIES];
+    }
+
+    // One decision for both replicas, at 90 s on the server clock: 0 before, the count from then on.
+    $expected = [];
+
+    foreach (array_keys($values) as $index => $at) {
+        $expected[$at] = $phase + $index * $interval < AttemptsCollector::NEW_SERIES_HOLD_SECONDS ? 0 : 1;
     }
 
     expect(adv2Decreases($values))->toBe([])
         ->and(reset($values))->toBe(0)
-        ->and(end($values))->toBe(1);
+        ->and(end($values))->toBe(1)
+        ->and($values)->toBe($expected);
 })->with(['S=5 s, phase 1 s' => [5, 1], 'S=10 s, phase 6 s' => [10, 6]]);
 
 it('never lowers an exported counter later when the worker clock was more than the hold ahead', function (int $ahead): void {
     // The README: "a creation time far in the future is not trusted". It must stay untrusted: a counter that was
     // exported with its value must not drop back to 0 when the exporter's clock comes within the hold of it.
     $real = 1_800_000_000;
-    Storage::record(status: AttemptStatus::Completed, duration: 0.2, now: CarbonImmutable::createFromTimestamp($real + $ahead));
+    Storage::record(status: AttemptStatus::Completed, duration: 0.2, now: CarbonImmutable::createFromTimestamp($real + $ahead), server: $real);
     $values = [];
 
     for ($t = $real + 1; $t < $real + $ahead + 2 * AttemptsCollector::NEW_SERIES_HOLD_SECONDS + 30; $t += 10) {
-        $values[sprintf('+%d s', $t - $real)] = Storage::scrape(CarbonImmutable::createFromTimestamp($t))['samples']['queue_jobs_total'][ADV2_SERIES];
+        $values[sprintf('+%d s', $t - $real)] = Storage::scrape(CarbonImmutable::createFromTimestamp($t), server: $t)['samples']['queue_jobs_total'][ADV2_SERIES];
     }
 
-    expect(adv2Decreases($values))->toBe([]);
+    // The worker's clock never enters: held for the hold after the creation on the server clock, then counted.
+    $expected = [];
+
+    foreach (array_keys($values) as $index => $at) {
+        $expected[$at] = 1 + $index * 10 < AttemptsCollector::NEW_SERIES_HOLD_SECONDS ? 0 : 1;
+    }
+
+    expect(adv2Decreases($values))->toBe([])
+        ->and($values)->toBe($expected);
 })->with(['ahead 120 s' => 120, 'ahead 1 h' => 3600]);
 
 it('holds a new series for the hold at most after its creation by the exporter clock when the worker is in sync', function (): void {
