@@ -6,8 +6,8 @@ use Symfony\Component\Process\Process;
 use Workbench\App\Perf\SyntheticModel;
 
 /*
-| workbench:perf-exporter (ADDENDUM R2.2 step 2, T11): a real server process on a free port serves the model on
-| /metrics without job or instance labels.
+| workbench:perf-exporter (the continuation exporter of the dashboard performance profile, docker/perf/README.md):
+| a real server process on a free port serves the model on /metrics without job or instance labels.
 */
 
 it('serves the synthetic metrics to Prometheus', function (): void {

@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 
 /*
-| PUBLIC horizon-observability:stream (Addendum R4.6): the preconditions name the env var to set, --once pushes one
+| PUBLIC horizon-observability:stream: the preconditions name the env var to set, --once pushes one
 | snapshot (0, or 1 when nothing was pushed), --max-time ends the process with 0, and the token is never printed.
 */
 

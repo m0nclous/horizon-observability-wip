@@ -10,15 +10,16 @@ use DF\HorizonObservability\Tests\TestCase;
 use Illuminate\Support\Facades\Artisan;
 
 /*
-| PUBLIC horizon-observability:flush (Arch Q7, Appendix E, Addendum E'): deletes exactly the package keys of the
-| storage connection, live:* included, found with SCAN on the connection prefix; never Horizon's or the app's keys,
-| nor the package keys of another prefix. Asks first; refuses in production without --force.
+| PUBLIC horizon-observability:flush: deletes exactly the package keys of the storage connection, live:* included,
+| found with SCAN on the connection prefix; never Horizon's or the app's keys, nor the package keys of another
+| prefix. Asks first; refuses in production without --force.
 */
 
 pest()->group('redis');
 
 /**
- * Every kind of package key (Appendix E and E') under the storage prefix, plus keys that must survive.
+ * Every kind of package key (counters, histograms, extremes, job classes, meta, batch links, ready_at, live:*) under
+ * the storage prefix, plus keys that must survive.
  *
  * @return array{package: list<string>, others: list<string>}
  */

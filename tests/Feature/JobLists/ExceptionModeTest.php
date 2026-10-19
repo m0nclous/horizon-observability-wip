@@ -9,7 +9,7 @@ use DF\HorizonObservability\Tests\Integration\JobStore\Support\HorizonJobs;
 use DF\HorizonObservability\Tests\Support\RedisCommands;
 
 /*
-| C4 (job-list part): the pilot returned up to 1000 bytes of every failed job's first exception line, with SQL text,
+| The pilot returned up to 1000 bytes of every failed job's first exception line, with SQL text,
 | values and internal hostnames, and had no way to turn it off. The `exceptions` mode now chooses: full (short
 | class and message, first line), class (short class only) or none (the text never leaves Redis).
 */

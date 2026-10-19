@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Sleep;
 
 /*
-| PUBLIC horizon-observability:demo (owner decision 12): a short burst of sample jobs on the first Horizon queue of the
+| PUBLIC horizon-observability:demo: a short burst of sample jobs on the first Horizon queue of the
 | default Redis connection (completed, failed, retried, released, delayed, one batch); refuses in production and is
 | safe to run twice. A real worker gives the outcomes the summary promises.
 */

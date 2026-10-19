@@ -10,9 +10,9 @@ use Illuminate\Routing\RouteCollectionInterface;
 use Laravel\Horizon\HorizonServiceProvider;
 
 /*
-| Arch Q2.2: the package routes, registered from an application booting callback, beat Horizon's catch-all route
-| in both provider orders, uncached and as route:cache compiles them, for every horizon.path; /live is included
-| (Addendum Q9'), and live.enabled=false leaves no live route.
+| The package routes, registered from an application booting callback, beat Horizon's catch-all route in both
+| provider orders, uncached and as route:cache compiles them, for every horizon.path; /live is included, and
+| live.enabled=false leaves no live route.
 */
 
 dataset('provider orders', [

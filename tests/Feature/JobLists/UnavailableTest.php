@@ -9,7 +9,7 @@ use DF\HorizonObservability\Tests\Support\LogRecorder;
 
 /*
 | When the Redis behind a list cannot be read, the job list answers 503 JSON and logs one throttled line, instead of
-| an exception (and its report) on every Grafana refresh. Read paths do not use the circuit breaker (Arch Q6.6).
+| an exception (and its report) on every Grafana refresh. Read paths do not use the circuit breaker.
 */
 
 pest()->group('redis');

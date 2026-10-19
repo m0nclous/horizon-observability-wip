@@ -13,10 +13,10 @@ use DF\HorizonObservability\Tests\TestCase;
 use Predis\Client;
 
 /*
-| horizon-observability:check on a Redis Cluster (Arch Q6.5, the WP10 seeded case "cluster topology"; the `cluster`
-| leg: a single-node cluster on 127.0.0.1:7000, override with REDIS_CLUSTER_HOST and REDIS_CLUSTER_PORT): the storage
-| on a cluster is reported as such, and an untagged queue on a framework without first-class cluster queues fails
-| the queues collector with the hash tag fix instead of a CROSSSLOT error. Skipped when no cluster answers.
+| horizon-observability:check on a Redis Cluster (the seeded case "cluster topology"; the `cluster` CI leg: a
+| single-node cluster on 127.0.0.1:7000, override with REDIS_CLUSTER_HOST and REDIS_CLUSTER_PORT): the storage on a
+| cluster is reported as such, and an untagged queue on a framework without first-class cluster queues fails the
+| queues collector with the hash tag fix instead of a CROSSSLOT error. Skipped when no cluster answers.
 */
 
 pest()->group('cluster');

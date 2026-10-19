@@ -15,12 +15,12 @@ use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Predis\Client;
 
 /*
-| The Timeouts block of horizon-observability:check (T14 addition of the phase B review: check warns when the default
-| cache store or the batching database connection has no connect/read timeout, since a hung store can cost a scrape
-| its budget). The default cache store backs the throttled logs, the batching detection and the job-class runtime
-| cache. Every driver Laravel 13 ships is judged:
+| The Timeouts block of horizon-observability:check: it warns when the default cache store or the batching database
+| connection has no connect/read timeout, since a hung store can cost a scrape its budget. The default cache store
+| backs the throttled logs, the batching detection and the job-class runtime cache. Every driver Laravel 13 ships is
+| judged:
 | - redis and database by their connection's timeouts (PDO::ATTR_TIMEOUT, login_timeout on SQL Server);
-| - failover by the stores it tries in order, up to the first local one (T14 QA round 2: it read "no network");
+| - failover by the stores it tries in order, up to the first local one (an earlier check read it as "no network");
 | - storage by its filesystem disk (s3 by its HTTP timeouts, ftp and sftp by their timeout, scoped by its parent);
 | - memcached and dynamodb as info, array, file, null, apc, octane and session as no network;
 | - any other driver as info, never as "no network".

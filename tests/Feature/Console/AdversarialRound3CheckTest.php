@@ -12,11 +12,11 @@ use Illuminate\Redis\Connectors\PhpRedisConnector;
 use Predis\Client;
 
 /*
-| T14 QA round 3 (adversarial): horizon-observability:check on valid but unusual Redis setups.
+| Adversarial probes of horizon-observability:check on valid but unusual Redis setups.
 |
-| 1. The Timeouts block (T14 addition of the phase B review: check warns when a connection the scrape waits on has no
-|    connect/read timeout) reads the timeout keys from the merge of the connection, the global `database.redis.options`
-|    and the connection's own `options`, and for a cluster from its first node too (Diagnostics::redisSettings(), "as
+| 1. The Timeouts block (check warns when a connection the scrape waits on has no connect/read timeout) reads the
+|    timeout keys from the merge of the connection, the global `database.redis.options` and the connection's own
+|    `options`, and for a cluster from its first node too (Diagnostics::redisSettings(), "as
 |    Laravel's connectors merge them"). That is how Laravel's phpredis connector builds a single client, but not how
 |    the others do (Illuminate\Redis\Connectors in the Laravel the suite resolves):
 |    - PredisConnector::connect() passes the connection array as the predis connection parameters and every
@@ -31,7 +31,7 @@ use Predis\Client;
 |    every worker write and the scrape's reset guard fail with READONLY. check reports the Storage connection as
 |    "reachable" (ok) and the failed attempts collector with the fix "Check that Redis is reachable with the settings
 |    in config/database.php (see Storage and Queues)", which the Storage line just contradicted and which does not say
-|    what to change (owner decision 12: every problem has one actionable fix line). It needs its own throwaway server,
+|    what to change (every problem must have one actionable fix line). It needs its own throwaway server,
 |    never the shared one (REPLICAOF makes it read-only): set REDIS_READONLY_PROBE_PORT, e.g.
 |    docker run -d --rm -p 127.0.0.1:16404:6379 redis:7.4-alpine and REDIS_READONLY_PROBE_PORT=16404.
 */

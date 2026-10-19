@@ -7,7 +7,7 @@ use Workbench\App\Simulation\SimulatedJob;
 use Workbench\App\Simulation\TaskProfile;
 
 /*
-| GET /demo/dispatch?count=&queue= (workbench/routes/web.php, Arch 8.2): a manual burst of simulated jobs.
+| GET /demo/dispatch?count=&queue= (workbench/routes/web.php): a manual burst of simulated jobs.
 */
 
 beforeEach(function (): void {

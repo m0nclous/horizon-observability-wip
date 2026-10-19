@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Artisan;
 use Predis\Client;
 
 /*
-| T14 QA round 2 (adversarial): horizon-observability:flush reports what it did, also when DEL is refused.
+| Adversarial probe: horizon-observability:flush reports what it did, also when DEL is refused.
 |
 | The page-by-page rewrite counts the deleted keys from the DEL replies. phpredis returns false for many error replies
 | instead of throwing, which would read as "0 deleted" and end in "No package keys" while every key is still there.

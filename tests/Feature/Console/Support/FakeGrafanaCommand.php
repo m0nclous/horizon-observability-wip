@@ -7,10 +7,9 @@ namespace DF\HorizonObservability\Tests\Feature\Console\Support;
 use Illuminate\Console\Command;
 
 /**
- * Stand-in for `horizon-observability:grafana` (T13) while its class is not on this branch: the same arguments and
+ * Stand-in for `horizon-observability:grafana`, registered only when the real command is missing: the same arguments,
  * output files (`{path}/dashboards/horizon-observability.json`, `{path}/alerting/horizon-observability.json`) and
- * `--check` semantics, so the install tests run before and after the merge. Registered only when the real command
- * is missing.
+ * `--check` semantics, so the install tests run with or without that command.
  */
 final class FakeGrafanaCommand extends Command
 {

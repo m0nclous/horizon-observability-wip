@@ -18,11 +18,11 @@ use Symfony\Component\HttpFoundation\Cookie;
 use Workbench\App\Providers\WorkbenchServiceProvider;
 
 /*
-| WP7 (Arch Q7, Q9): the "Grafana" link is in the real Horizon page (GET {horizon.path} and the SPA paths of
-| horizon.index) right after "Dashboard", in both provider orders, with the web middleware kept (C16); it is absent
-| without a valid URL or when the package is disabled; Horizon's JSON API is untouched; a layout without the markers
-| is passed through untouched (C16 rendering side). Each case boots its own application (Tests\Support\Apps) with the
-| config set before any provider boots, as an application's config file would be.
+| The "Grafana" link is in the real Horizon page (GET {horizon.path} and the SPA paths of horizon.index) right after
+| "Dashboard", in both provider orders, with the web middleware kept; it is absent without a valid URL or when the
+| package is disabled; Horizon's JSON API is untouched; a layout without the markers is passed through untouched.
+| Each case boots its own application (Tests\Support\Apps) with the config set before any provider boots, as an
+| application's config file would be.
 */
 
 const HORIZON_MENU_LINK_URL = 'http://localhost:3000/d/horizon-observability';
@@ -124,7 +124,7 @@ function horizonMenuLinkStable(string $html): string
     return (string) preg_replace('~<meta name="csrf-token" content="[^"]*">~', '<meta name="csrf-token" content="">', $html);
 }
 
-it('adds the link right after "Dashboard" in the real Horizon page and keeps web (C16)', function (array $providers): void {
+it('adds the link right after "Dashboard" in the real Horizon page and keeps web', function (array $providers): void {
     $uris = ['/horizon', '/horizon/dashboard', '/horizon/failed'];
     $with = horizonMenuLinkPages($providers, ['horizon-observability.grafana.url' => HORIZON_MENU_LINK_URL], $uris);
     $without = horizonMenuLinkPages($providers, [], $uris);
@@ -177,7 +177,7 @@ it('has no link with an invalid Grafana URL', function (string $url): void {
         ['/horizon'],
     )['/horizon'];
 
-    // The boot path does not validate (Arch Q3), so the middleware is attached; the validated Config URL is null.
+    // The boot path does not validate, so the middleware is attached; the validated Config URL is null.
     expect($page['status'])->toBe(200)
         ->and($page['middleware'])->toContain(InjectGrafanaLink::class)
         ->and($page['content'])->not->toContain('<span>Grafana</span>')
@@ -211,7 +211,7 @@ it('reads the URL at request time', function (): void {
         ->and($page['content'])->not->toContain('<span>Grafana</span>');
 });
 
-it('passes a Horizon layout without the markers through untouched (C16 rendering side)', function (string $layout): void {
+it('passes a Horizon layout without the markers through untouched', function (string $layout): void {
     $views = sys_get_temp_dir().'/ho-menu-link-views-'.getmypid().'-'.md5($layout);
     File::ensureDirectoryExists($views);
     File::put($views.'/layout.blade.php', $layout);

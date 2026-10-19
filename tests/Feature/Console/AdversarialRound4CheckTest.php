@@ -15,13 +15,14 @@ use Laravel\Horizon\Horizon;
 use Symfony\Component\Process\Process;
 
 /*
-| T14 QA round 4 (adversarial): horizon-observability:check on a storage Redis that answers but refuses, and the
+| Adversarial probes of horizon-observability:check on a storage Redis that answers but refuses, and of the
 | Timeouts fix line applied as written.
 |
-| 1. Round 3 finding 2 was fixed with a list of error codes (RedisErrorReply::CODES and "unknown command `x`"); every
-|    other error reply of a server that answered still falls through Diagnostics::collectorFailure() to "Check that
-|    Redis is reachable with the settings in config/database.php (see Storage and Queues)", which the Storage line
-|    ("reachable", ok) right above contradicts (owner decision 12: one actionable fix line per problem). Seen on
+| 1. The read-only storage case (item 2 of AdversarialRound3CheckTest) was fixed with a list of error codes
+|    (RedisErrorReply::CODES and "unknown command `x`"); every other error reply of a server that answered still falls
+|    through Diagnostics::collectorFailure() to "Check that Redis is reachable with the settings in config/database.php
+|    (see Storage and Queues)", which the Storage line ("reachable", ok) right above contradicts (check promises one
+|    actionable fix line per problem). Seen on
 |    redis:7.4, redis:6.2, valkey:7.2 and valkey:8, both clients:
 |    - a primary with min-replicas-to-write and no replica (a durability setting): every write of the scrape's reset
 |      guard is refused with "NOREPLICAS Not enough good replicas to write.";
@@ -119,7 +120,7 @@ it('gives a write refused for missing replicas its own fix, not the reachability
         ->and($attempts->message)->toContain('NOREPLICAS')
         ->and(str_contains((string) $attempts->fix, 'reachable'))->toBeFalse(sprintf('Storage says "%s", the fix "%s"', $results['Storage / Connection']->message, $attempts->fix))
         ->and($attempts->fix)->toMatch('/replica/i');
-})->with(['phpredis', 'predis'])->skip('T19 patch backlog item 1: error replies outside the RedisErrorReply list (NOREPLICAS) get the reachability fix');
+})->with(['phpredis', 'predis'])->skip('Known issue #27: error replies outside the RedisErrorReply list (NOREPLICAS) get the reachability fix');
 
 it('gives a server without TIME the fix for a command it does not offer, also inside the package scripts', function (string $client): void {
     if (! is_int($GLOBALS['ho_adversarial_round4_timeless_port'] ?? null)) {
@@ -164,14 +165,14 @@ it('gives a server without TIME the fix for a command it does not offer, also in
     $attempts = $results['Collectors / attempts'];
 
     expect($results['Storage / Connection']->status->value)->toBe('ok')
-        // The new-series hold reads the storage Redis' clock with TIME inside new_series.lua (T16).
+        // The new-series hold reads the storage Redis' clock with TIME inside new_series.lua.
         ->and($attempts->status->value)->toBe('error')
         // Redis 7+ and Valkey 7.2 "Unknown Redis command called from script", 6.2 "... from Lua script", Valkey 8
         // "Unknown command called from script".
         ->and($attempts->message)->toMatch('/Unknown (Redis )?command called from/')
         ->and(str_contains((string) $attempts->fix, 'reachable'))->toBeFalse(sprintf('Storage says "%s", the fix "%s"', $results['Storage / Connection']->message, $attempts->fix))
         ->and($attempts->fix)->toMatch('/\bTIME\b/i');
-})->with(['phpredis', 'predis'])->skip('T19 patch backlog item 1: TIME refused inside the package scripts gets the reachability fix');
+})->with(['phpredis', 'predis'])->skip('Known issue #27: TIME refused inside the package scripts gets the reachability fix');
 
 it('never gives the Redis connection of a blocking queue a read timeout shorter than its block_for', function (string $client): void {
     config()->set('database.redis.client', $client);
@@ -214,4 +215,4 @@ it('never gives the Redis connection of a blocking queue a read timeout shorter 
         microtime(true) - $started,
         $error instanceof Throwable ? $error::class.': '.$error->getMessage() : '',
     ));
-})->with(['phpredis', 'predis'])->skip('T19 patch backlog item 2: the Horizon Timeouts fix ignores block_for of the queue');
+})->with(['phpredis', 'predis'])->skip('Known issue #28: the Horizon Timeouts fix ignores block_for of the queue');

@@ -16,14 +16,13 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 
 /*
-| The check states of horizon-observability:check that CheckCommandTest does not seed (T14 QA round 2), each with its
-| exact message and fix line (owner decision 12), and the numbers check prints (owner decision 13: they must equal
-| the configuration and the state they report):
+| The check states of horizon-observability:check that CheckCommandTest does not seed, each with its exact message
+| and fix line, and the numbers check prints (they must equal the configuration and the state they report):
 | - Configuration: the config file, Enabled = no, an empty namespace;
-| - Storage: the braces in the prefix (Arch Q7: an empty hash tag is a warning, and an error on a cluster; a tag is
-|   info) and the client timeouts;
+| - Storage: the braces in the prefix (an empty hash tag is a warning, and an error on a cluster; a tag is info) and
+|   the client timeouts;
 | - Queues: no supervisor in the environment, a queue connection that is not redis, an unreachable queue Redis;
-| - Batches (Arch Q7 "batching driver and table"): collectors.batches = true with another driver, and the table found;
+| - Batches (the batching driver and table): collectors.batches = true with another driver, and the table found;
 | - Live: live off with stream settings, the poll endpoint's shared TTL, the age of the last stream push;
 | - the error and warning totals of check (JSON and text).
 */

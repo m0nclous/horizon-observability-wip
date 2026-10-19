@@ -14,8 +14,8 @@ use Illuminate\Support\Facades\Artisan;
 use Laravel\Horizon\HorizonServiceProvider;
 
 /*
-| enabled = false is inert (Arch Q9 WP0b): no routes, no queue event listeners, no menu link, no maintenance
-| exception. The commands stay, so check and flush still work.
+| enabled = false is inert: no routes, no queue event listeners, no menu link, no maintenance exception. The commands
+| stay, so check and flush still work.
 */
 
 dataset('provider orders', [
@@ -87,7 +87,7 @@ it('wires everything when enabled', function (array $providers): void {
         'legacy' => ! $app->make(Versions::class)->payloadCarriesDelay(),
     ]);
 
-    // The legacy ready_at listener exists only below Laravel 12.11 or Horizon 5.49 (Arch Q6.8, lowest CI legs).
+    // The legacy ready_at listener exists only below Laravel 12.11 or Horizon 5.49 (the lowest CI legs).
     $listeners = [
         'Illuminate\\Queue\\Events\\JobAttempted => '.AttemptTracker::class.'@onAttempted',
         'Illuminate\\Queue\\Events\\JobExceptionOccurred => '.AttemptTracker::class.'@onExceptionOccurred',
@@ -113,7 +113,7 @@ it('skips the listeners of disabled collectors and the maintenance exception on 
     expect($state)->toBe([[], []]);
 });
 
-it('adds the legacy ready_at listener below Laravel 12.11 (Arch Q6.8)', function (): void {
+it('adds the legacy ready_at listener below Laravel 12.11', function (): void {
     $listeners = Apps::inspect(
         [HorizonServiceProvider::class, HorizonObservabilityServiceProvider::class],
         ['horizon-observability.collectors.batches' => false],

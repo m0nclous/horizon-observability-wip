@@ -16,10 +16,9 @@ use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Http;
 
 /*
-| Adversarial probe of the round 3 clock change (T12 QA round 3): the live path now reads Laravel's clock
-| (`now()->toImmutable()`). Apps commonly switch Laravel's date class to CarbonImmutable (`Date::use()`) or run in a
-| non-UTC timezone; /live, the exporter and the stream must still answer, agree with each other and stamp the same
-| instant.
+| Adversarial probe of the live path's clock: it reads Laravel's clock (`now()->toImmutable()`). Apps commonly
+| switch Laravel's date class to CarbonImmutable (`Date::use()`) or run in a non-UTC timezone; /live, the exporter
+| and the stream must still answer, agree with each other and stamp the same instant.
 */
 
 pest()->group('redis');

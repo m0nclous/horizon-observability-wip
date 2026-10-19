@@ -13,9 +13,8 @@ use Illuminate\Foundation\Application;
 use Laravel\Horizon\HorizonServiceProvider;
 
 /*
-| T14 QA round 2 (adversarial): the Timeouts block of horizon-observability:check (T14 addition of the phase B review:
-| "check warns when the default cache store [...] has no connect/read timeout (a hung store can cost a scrape its
-| budget)").
+| Adversarial probes of the Timeouts block of horizon-observability:check, which warns when the default cache store
+| has no connect/read timeout (a hung store can cost a scrape its budget).
 |
 | Laravel 13's skeleton config/cache.php ships two store drivers the block does not know (Illuminate\Cache\CacheManager
 | ::createFailoverDriver() and ::createStorageDriver(), both in the Laravel 13 the suite resolves):

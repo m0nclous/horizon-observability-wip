@@ -6,7 +6,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 
 /*
-| T14 QA round 1 (adversarial), e2e against a running `install --docker` stack (FIRST_DASHBOARD_GRAFANA_URL, e.g.
+| Adversarial e2e probe against a running `install --docker` stack (FIRST_DASHBOARD_GRAFANA_URL, e.g.
 | http://localhost:3000, admin/admin as written by the stack); skipped without it.
 |
 | The stack makes the rendered dashboard Grafana's home page (GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH) and install

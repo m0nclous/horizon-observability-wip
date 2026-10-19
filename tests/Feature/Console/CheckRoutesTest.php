@@ -13,11 +13,11 @@ use Illuminate\Routing\Router;
 use Laravel\Horizon\HorizonServiceProvider;
 
 /*
-| The route precedence of horizon-observability:check (Arch Q2.2) with a package domain (HORIZON_OBSERVABILITY_DOMAIN).
+| The route precedence of horizon-observability:check with a package domain (HORIZON_OBSERVABILITY_DOMAIN).
 | The routes are bound to the domain as Route::getDomain() returns it (a leading http:// or https:// dropped), and
 | Laravel compares it with the request host alone. check matches each endpoint on that host, in an application booted
 | with the domain (the routes are registered at boot):
-| - a domain written with its scheme is checked on its host (it was matched as http://https://..., T14 QA round 2);
+| - a domain written with its scheme is checked on its host (it was matched as http://https://...);
 | - a domain with route parameters ({tenant}.metrics.internal) is checked on a sample host the package route accepts,
 |   or reported as not checked when it accepts none (it was checked on the literal "{tenant}.metrics.internal");
 | - a domain no request host can equal (a port, a path, an upper-case scheme) is one error with the domain fix, not

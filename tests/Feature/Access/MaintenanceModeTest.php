@@ -13,7 +13,7 @@ use Illuminate\Http\Request;
 use Laravel\Horizon\HorizonServiceProvider;
 
 /*
-| Arch Q2.4: with available_during_maintenance (the default) the endpoints stay reachable during "php artisan down",
+| With available_during_maintenance (the default) the endpoints stay reachable during "php artisan down",
 | so queue visibility survives a deploy; everything else answers 503. The opt-out restores the 503.
 | The maintenance state lives in the array cache, so nothing is written to the filesystem; the scrapes use quiet fake
 | collectors.

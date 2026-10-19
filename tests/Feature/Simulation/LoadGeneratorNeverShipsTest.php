@@ -15,7 +15,7 @@ use Symfony\Component\Finder\SplFileInfo;
 use Symfony\Component\Process\Process;
 
 /*
-| C25: the pilot registered its load test (queue-metrics:load-test with its job) in every installing application and
+| The pilot registered its load test (queue-metrics:load-test with its job) in every installing application and
 | shipped it in the dist archive. The load generator now lives in the workbench, which is autoload-dev and
 | export-ignored; the CI dist job checks the real `git archive`.
 */
@@ -83,7 +83,7 @@ function simulationExportedPaths(): ?array
     return $exported;
 }
 
-it('registers no load generator from the package (C25)', function (): void {
+it('registers no load generator from the package', function (): void {
     // Command name => class of every command the package's own classes provide.
     $package = Apps::inspect(
         [HorizonServiceProvider::class, HorizonObservabilityServiceProvider::class],
@@ -94,14 +94,14 @@ it('registers no load generator from the package (C25)', function (): void {
         ),
     );
 
-    // The onboarding demo (owner decision 12, T14) is the one exception: a bounded burst that refuses in production.
+    // The onboarding demo is the one exception: a bounded burst that refuses in production.
     expect($package)->not->toBeEmpty()
         ->and(array_keys($package))->each->toStartWith('horizon-observability:')
         ->and(array_filter(array_keys($package), static fn (string $name): bool => preg_match('/load|simulat/i', $name) === 1))->toBe([])
         ->and(array_values(array_filter(array_keys($package), static fn (string $name): bool => str_contains($name, 'demo'))))->toBe(['horizon-observability:demo']);
 });
 
-it('keeps the load generator in the workbench only (C25)', function (): void {
+it('keeps the load generator in the workbench only', function (): void {
     $sources = array_map(
         static fn (SplFileInfo $file): string => $file->getRelativePathname(),
         iterator_to_array(Finder::create()->files()->in(dirname(__DIR__, 3).'/src')->name('/(LoadTest|Simulat|Demo)/')->sortByName(), false),
@@ -111,7 +111,7 @@ it('keeps the load generator in the workbench only (C25)', function (): void {
         ->and($sources)->toBe(['Console/DemoCommand.php', 'Demo/DemoJob.php']);
 });
 
-it('ships only a demo that refuses to run in production (C25, owner decision 12)', function (): void {
+it('ships only a demo that refuses to run in production', function (): void {
     $this->app['env'] = 'production';
 
     expect(Artisan::call('horizon-observability:demo'))->toBe(1)
@@ -119,7 +119,7 @@ it('ships only a demo that refuses to run in production (C25, owner decision 12)
         ->and(DemoCommand::MAX_JOBS)->toBe(1000);
 });
 
-it('exports only the package files in the dist archive (C25)', function (): void {
+it('exports only the package files in the dist archive', function (): void {
     $exported = simulationExportedPaths();
 
     if ($exported === null) {

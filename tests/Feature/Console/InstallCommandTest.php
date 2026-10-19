@@ -18,11 +18,11 @@ use Symfony\Component\Process\Process;
 use Symfony\Component\Yaml\Yaml;
 
 /*
-| PUBLIC horizon-observability:install (Arch Q7 and the WP10 row, Addendum Q9' WP10, owner decision 12): interactive and
-| idempotent with --no-interaction defaults; publishes the config, writes a working token to .env (never over an
-| existing value), prints the scrape job at 10 s, the Grafana steps, the render command of each live mode and the
-| stream steps, ends with the URL to open and a passing check. --docker writes a stack that `docker compose config`
-| accepts; --demo dispatches the sample jobs. Each test runs in its own application directory.
+| PUBLIC horizon-observability:install: interactive and idempotent with --no-interaction defaults; publishes the
+| config, writes a working token to .env (never over an existing value), prints the scrape job at 10 s, the Grafana
+| steps, the render command of each live mode and the stream steps, ends with the URL to open and a passing check.
+| --docker writes a stack that `docker compose config` accepts; --demo dispatches the sample jobs. Each test runs in
+| its own application directory.
 */
 
 pest()->group('redis');
@@ -160,7 +160,7 @@ it('fills in an empty token and uses --token', function (): void {
 
 /**
  * The literals Laravel's env() reads as no value (Illuminate\Support\Env::get()), as a project writes them: the
- * skeleton's .env.example uses KEY=null for a value that is not set yet (T14 QA round 3).
+ * skeleton's .env.example uses KEY=null for a value that is not set yet.
  *
  * @return array<string, array{0: string, 1: string}> name => [line, newline]
  */

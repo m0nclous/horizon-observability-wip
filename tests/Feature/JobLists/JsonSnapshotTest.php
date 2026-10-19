@@ -12,17 +12,17 @@ use Illuminate\Testing\TestResponse;
 use Symfony\Component\HttpFoundation\Response;
 
 /*
-| GET {base}/jobs/{list} (Arch Q2.1, Q8.4 "Job lists: JSON snapshots per list"). The legacy code is not runnable,
-| so tests/Fixtures/job-lists/<list>.json were written by hand from
-| legacy/src/Http/Resources/Horizon{Pending,Completed,Failed,Delayed}JobResource.php and the Q2.1 table: the same
-| fields, order and units (epoch ms, runtime in seconds to 3 decimals, horizon_path relative to Horizon's URL).
-| Access is T03's (tests/Feature/Access); these tests let every request through.
+| GET {base}/jobs/{list}: JSON snapshots per list. The pilot cannot run in this suite, so
+| tests/Fixtures/job-lists/<list>.json were written by hand from its job-list resources
+| (Horizon{Pending,Completed,Failed,Delayed}JobResource): the same fields, order and units (epoch ms, runtime in
+| seconds to 3 decimals, horizon_path relative to Horizon's URL). Access is tested in tests/Feature/Access; these
+| tests let every request through.
 */
 
 pest()->group('redis');
 
 /**
- * The query string the dashboard sends (Arch Q2.5) with every filter at "All".
+ * The query string the dashboard sends with every filter at "All".
  */
 const JSON_SNAPSHOT_TEST_QUERY = '?limit=500&from=1699990000000&to=1700090000000&var-supervisor=%24__all&var-batch_kind=%24__all&var-queue=%24__all&var-job_class=%24__all';
 
@@ -116,7 +116,7 @@ it('answers 200 with a null runtime when a stored time is not a finite number', 
         ->assertJsonPath('data.0.runtime', null);
 });
 
-it('answers 200 with a null time when a stored time is finite but past an integer of milliseconds (PHP 8.5, T18 QA)', function (string $list): void {
+it('answers 200 with a null time when a stored time is finite but past an integer of milliseconds (PHP 8.5)', function (string $list): void {
     // 1e17 s is 1e20 ms, above PHP_INT_MAX: (int) wraps it to a garbage timestamp on PHP 8.2-8.4 and warns on 8.5,
     // which Laravel's error handler turns into an ErrorException, so the list would fail until the hash expires.
     $jobs = HorizonJobs::using($this->app);

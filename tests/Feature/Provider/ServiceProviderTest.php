@@ -107,7 +107,7 @@ it('adds an about section', function (): void {
         'live' => 'enabled',
         'config_problems' => '0',
     ])
-        // No token outside "local": locked. T03 may add a hint (e.g. the env var to set) after the word.
+        // No token outside "local": locked, with a hint after the word (the env var to set).
         ->and($about['horizon_observability']['access'] ?? null)->toStartWith('locked');
 });
 

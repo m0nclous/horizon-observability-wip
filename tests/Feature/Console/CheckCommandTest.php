@@ -36,10 +36,10 @@ use Laravel\Horizon\HorizonServiceProvider;
 use Predis\Client;
 
 /*
-| PUBLIC horizon-observability:check (Arch Q7 and the WP10 row, Addendum Q9' WP10, owner decision 12): every seeded
-| problem is caught with the right exit code and --json, and every warning and error carries one fix line. Seeded:
-| locked auth, shadowed route, missing table, no timeout, persistent client, config problem, cluster topology, and
-| the live cases (missing token, 401 token, 403 token, invalid stream id).
+| PUBLIC horizon-observability:check: every seeded problem is caught with the right exit code and --json, and every
+| warning and error carries one fix line. Seeded: locked auth, shadowed route, missing table, no timeout, persistent
+| client, config problem, cluster topology, and the live cases (missing token, 401 token, 403 token, invalid stream
+| id).
 */
 
 pest()->group('redis');

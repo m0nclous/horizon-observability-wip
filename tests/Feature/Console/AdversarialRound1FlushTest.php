@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Artisan;
 use Predis\Client;
 
 /*
-| T14 QA round 1 (adversarial): horizon-observability:flush.
+| Adversarial probes of horizon-observability:flush.
 |
 | - Bounded cost: on a legacy stack (Laravel 11, or Laravel < 12.11 / Horizon < 5.49) every delayed job leaves a
 |   `ready_at:<uuid>` key for its delay plus one day, so a busy app keeps hundreds of thousands of package keys. flush
@@ -56,7 +56,8 @@ it('flushes 100 000 package keys with bounded memory', function (): void {
     expect($code)->toBe(0)
         ->and(Artisan::output())->toContain('Deleted 100000 package keys (ready_at 100000)')
         ->and(RedisKeys::all(adversarialFlushPrefix().(new Keys)->root()))->toBe([])
-        // A page of SCAN plus one DEL batch is far below 8 MB; the round 1 command peaks at about 35 MB here.
+        // A page of SCAN plus one DEL batch is far below 8 MB; the command that kept every key name in PHP arrays
+        // peaked at about 35 MB here.
         ->and($peak)->toBeLessThan(8 * 1024 * 1024);
 });
 

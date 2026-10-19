@@ -10,7 +10,7 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 
 /*
-| T14 QA round 4 (adversarial): horizon-observability:install and a token defined twice without a value.
+| Adversarial probe of horizon-observability:install and a token defined twice without a value.
 |
 | EnvFile::with() fills every no-value definition of the key in place, and appends the key only when none of them can
 | be filled (a comment after the value). With two definitions where only the last one has a comment
@@ -59,4 +59,4 @@ it('gives the app the token when a later definition without a value has a commen
     expect(in_array(strtolower((string) $read), ['null', '(null)', 'empty', '(empty)', ''], true))->toBeFalse('the app reads HORIZON_OBSERVABILITY_TOKEN='.$read.'; install said: '.trim($output))
         ->and(strlen((string) $read))->toBeGreaterThanOrEqual(Config::MIN_TOKEN_LENGTH)
         ->and($code)->toBe(0);
-})->with(['null', '', '(empty)'])->skip('T19 patch backlog item 3: a later commented no-value token line is not filled');
+})->with(['null', '', '(empty)'])->skip('Known issue #29: a later commented no-value token line is not filled');

@@ -12,7 +12,7 @@ use DF\HorizonObservability\Tests\TestCase;
 use DF\HorizonObservability\Tests\Truth\Support\PrivateRedis;
 
 /*
-| horizon-observability:check on a storage Redis that answers but refuses (T14 QA round 3): a read-only replica (a
+| horizon-observability:check on a storage Redis that answers but refuses: a read-only replica (a
 | REDIS_HOST on a replica, or a primary a failover demoted), ACL refusals of the commands the package needs (TIME in
 | the new-series hold and record_attempt, EVAL, the package keys) and a server at its maxmemory. Each failure gets the
 | fix for its reply, never "check that Redis is reachable", which the Storage line ("reachable") contradicts; for an
@@ -128,7 +128,7 @@ it('names a command an ACL refuses and the rule that allows it', function (strin
 
     expect(replyCheck()['Collectors / attempts']->status->value)->toBe('ok');
 })->with(['phpredis', 'predis'])->with([
-    // The new-series hold reads the storage Redis' clock (T16); Redis 7+ and Valkey answer "ERR ACL failure in
+    // The new-series hold reads the storage Redis' clock; Redis 7+ and Valkey answer "ERR ACL failure in
     // script: ..." inside the script, Redis 6.2 NOPERM.
     'TIME' => ['time', 'attempts:hold'],
     // Every script of the scrape: the first one that is not caught fails the whole collector.
