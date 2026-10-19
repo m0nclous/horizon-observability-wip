@@ -147,14 +147,15 @@ the creation read the counters at r sees the series first at its next successful
 scrape's hold read comes less than 90 s after the creation, which is certain when it comes less than 90 s after r:
 the successful scrapes of one scraper must read the counters less than 90 s apart. That covers every supported
 interval (S <= 60 s, Add §R3) with 30 s to spare: scrapes less than 15 s off their slots at S = 60 s (twice the
-deviation budget of Add §R3.4), or up to 7 failed scrapes in a row at S = 10 s. `FirstValueTruthTest` checks every
-schedule of 5-60 s with slots at, between and 15 s after the creation, deviations of ±(15 s - 1 ms) in four patterns
-(including the worst: the read before the creation 15 s early, 1 ms before it, and the next one 15 s late), each with
-a worker clock an hour behind, in sync and an hour ahead and two replicas answering in turn with clocks up to an hour
-apart; the worst case (89.999 s) is held by 1 ms. Outside the budget (a slower interval, longer gaps between
-successful scrapes, a step of the Redis clock) a new series can start without its 0 sample, as without the hold (an
-undercount of its first attempts, never a decrease). A creation time ahead of the Redis clock (only after the clock
-stepped back) is held until the clock is 90 s past it, and released at once when it is 90 s or more ahead.
+deviation budget of Add §R3.4), or up to 7 failed scrapes in a row at S = 10 s. `FirstValueTruthTest` checks the
+schedules of 5, 10, 15, 30, 45 and 60 s with slots at, between and 15 s after the creation, deviations of
+±(15 s - 1 ms) in four patterns (including the worst: the read before the creation 15 s early, 1 ms before it, and the
+next one 15 s late), each with a worker clock an hour behind, in sync and an hour ahead and two replicas answering in
+turn with clocks up to an hour off the Redis clock (up to two hours apart); the worst case (89.999 s) is held by 1 ms.
+Outside the budget (a slower interval, longer gaps between successful scrapes, a step of the Redis clock) a new
+series can start without its 0 sample, as without the hold (an undercount of its first attempts, never a decrease).
+A creation time ahead of the Redis clock (only after the clock stepped back) is held until the clock is 90 s past it,
+and released at once when it is 90 s or more ahead.
 
 Redis requirements: `TIME`, `INFO` and `HGETALL` are non-deterministic and followed by writes in these scripts, so
 they ask for effects replication first (`redis.replicate_commands()`): the default since Redis 5, the only mode since
