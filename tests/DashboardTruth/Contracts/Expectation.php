@@ -16,21 +16,24 @@ final readonly class Expectation
      * @param  string  $summary  a short human statement of the expected value for the report
      * @param  float|null  $total  for a tile whose number is the sum of its points: the period count C(from, to),
      *                             which the points must add up to on every grid (design section 7.2, a gate of its own)
+     * @param  float|null  $dash  the value the panel shows as a dash (`RPM: —` is -1), which is trivial
      */
     public function __construct(
         public array $series,
         public string $summary = '',
         public ?float $total = null,
+        public ?float $dash = null,
     ) {}
 
     /**
-     * Non-trivial (coverage gate, design section 11): at least one point that is not 0.
+     * Non-trivial (coverage gate, design section 11.1: non-empty, not all zero or dash): at least one point that is
+     * neither 0 nor the dash value.
      */
     public function nonTrivial(): bool
     {
         foreach ($this->series as $one) {
             foreach ($one['points'] as $value) {
-                if ($value !== 0.0) {
+                if ($value !== 0.0 && $value !== $this->dash) {
                     return true;
                 }
             }

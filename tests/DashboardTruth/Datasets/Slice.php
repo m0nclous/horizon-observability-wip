@@ -10,11 +10,15 @@ use DF\HorizonObservability\Tests\Truth\Support\TruthJob;
 use Illuminate\Support\Facades\Bus;
 
 /**
- * The dataset of the thin end-to-end slice (WP1, design section 6.4): E_0 = 2025-03-03T00:00Z, 1 h 40 min, one target
+ * The dataset of the thin end-to-end slice (WP1, design section 6.4): E_6 = 2025-04-20T00:00Z, 1 h 40 min, one target
  * `app` / `app:8080` scraped every 10 s at a phase of 3.2 s, one supervisor (`supervisor-default`: queue default,
  * balance auto, 1 to 3 processes, 3 running).
  *
- * | at (s after E_0)       | jobs on `default`                                                                  |
+ * k = 6 is the first epoch after the design's datasets (core 0 to quiet 5): the slice stays next to them (design
+ * section 13) and shares the job `app` and the instance `app:8080` with core, so it needs an epoch of its own for
+ * both to live in one Prometheus.
+ *
+ * | at (s after E_6)       | jobs on `default`                                                                  |
  * |------------------------|------------------------------------------------------------------------------------|
  * | 60 + 30k, k = 0..197   | (k mod 3) + 1 x Truth\Invoice complete; k mod 4 = 3: one fails; k mod 5 = 2: one    |
  * |                        | throws once and completes (retried, then completed)                                |
@@ -28,7 +32,9 @@ use Illuminate\Support\Facades\Bus;
  */
 final class Slice implements Dataset
 {
-    public const EPOCH = 1740960000;
+    public const K = 6;
+
+    public const EPOCH = Datasets::E_0 + self::K * Datasets::SPACING;
 
     public const SPAN = 6000;
 

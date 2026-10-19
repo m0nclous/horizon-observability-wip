@@ -145,6 +145,7 @@ final class Completed implements PanelSpec
         return new Expectation(
             series: [['labels' => [], 'points' => [$context->toMs => $rpm]]],
             summary: $rpm < 0 ? 'no metrics: -1 (RPM: —)' : sprintf('RPM %d over the last %d min', (int) $rpm, self::rpmMinutes($context->scrapeInterval())),
+            dash: -1.0,
         );
     }
 
@@ -195,7 +196,7 @@ final class Completed implements PanelSpec
         $visible = AttemptLog::visible($context->manifest, static fn (array $attempt): bool => $attempt['status'] === 'completed', $scrapes, $context->fromMs, $context->toMs);
 
         if ((float) $visible !== $total) {
-            throw new RuntimeException(sprintf('exporter mismatch: the stored samples count %s completed attempts in the period, the model %d visible ones.', $total, $visible));
+            throw new RuntimeException(sprintf('exporter mismatch: the stored samples and the model disagree: the counter rule counts %s completed attempts in the period, the model %d visible ones (an exporter defect, or a defect of the counter rule or the visibility model of T17).', $total, $visible));
         }
     }
 }

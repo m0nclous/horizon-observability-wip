@@ -8,6 +8,7 @@ use DF\HorizonObservability\Tests\DashboardTruth\Compare\Checks;
 use DF\HorizonObservability\Tests\DashboardTruth\Compare\Report;
 use DF\HorizonObservability\Tests\DashboardTruth\Contracts\CaseDef;
 use DF\HorizonObservability\Tests\DashboardTruth\Contracts\Category;
+use DF\HorizonObservability\Tests\DashboardTruth\Contracts\Expectation;
 use DF\HorizonObservability\Tests\DashboardTruth\Contracts\Mode;
 use DF\HorizonObservability\Tests\DashboardTruth\Contracts\Observation;
 
@@ -15,7 +16,8 @@ use DF\HorizonObservability\Tests\DashboardTruth\Contracts\Observation;
 | The gates of the assert stage on synthetic artifacts (T17, design sections 5.2 and 11.2): the runtime gate fails
 | when #8 A or B made no assertion, when a range target was not compared at its replay steps and when every
 | expectation was trivial; a URL value that is not an option of its variable fails as case setup (unless the case is
-| custom); a `$` left in a sent query fails as case setup; an aborted request that the frontend re-sent is no failure.
+| custom); a `$` left in a sent query fails as case setup (`$__all` only outside an Infinity URL); an aborted request
+| that the frontend re-sent is no failure; a dash (#8 B's -1) is a trivial expectation.
 */
 
 pest()->group('grafana');
@@ -190,4 +192,18 @@ it('accepts an aborted request that the frontend re-sent, and fails one it did n
     expect($resent)->toBe([])
         ->and($lost)->toHaveCount(1)
         ->and($lost[0]->category)->toBe(Category::Infrastructure);
+});
+
+it('takes the dash of a panel for a trivial expectation', function (): void {
+    $dash = new Expectation([['labels' => [], 'points' => [1740966000000 => -1.0]]], dash: -1.0);
+
+    expect($dash->nonTrivial())->toBeFalse()
+        ->and(new Expectation([['labels' => [], 'points' => [1740966000000 => 5.0]]], dash: -1.0)->nonTrivial())->toBeTrue()
+        ->and(new Expectation([['labels' => [], 'points' => [1740966000000 => 0.0]]])->nonTrivial())->toBeFalse();
+});
+
+it('allows $__all in an Infinity URL only', function (): void {
+    expect(Checks::leftover(['url' => '/horizon/observability/jobs/completed?queue=$__all&from=1']))->toBeNull()
+        ->and(Checks::leftover(['expr' => 'x{queue=~"$__all"}']))->toBe('expr holds $__all')
+        ->and(Checks::leftover(['interval' => '$__all']))->toBe('interval holds $__all');
 });

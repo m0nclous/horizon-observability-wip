@@ -18,7 +18,7 @@ interface Dataset
     public function name(): string;
 
     /**
-     * E_k, epoch seconds: 1740960000 + k x 691200 (2025-03-03T00:00Z + k x 8 days).
+     * E_k, epoch seconds: Datasets::E_0 + k x Datasets::SPACING (2025-03-03T00:00Z + k x 8 days), a k of its own.
      */
     public function epoch(): int;
 

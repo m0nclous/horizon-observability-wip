@@ -13,6 +13,16 @@ use InvalidArgumentException;
 final class Datasets
 {
     /**
+     * E_0, epoch seconds: 2025-03-03T00:00Z; dataset k starts at E_k = E_0 + k x SPACING (design section 4).
+     */
+    public const E_0 = 1740960000;
+
+    /**
+     * 8 days, longer than the dashboard's longest lookback ([7d:5m]), so datasets never see each other's series.
+     */
+    public const SPACING = 691200;
+
+    /**
      * @return array<string, Dataset>
      */
     public static function all(): array

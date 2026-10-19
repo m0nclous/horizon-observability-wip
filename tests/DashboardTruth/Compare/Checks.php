@@ -22,11 +22,16 @@ use DF\HorizonObservability\Tests\DashboardTruth\Contracts\Observation as Captur
 final class Checks
 {
     /**
-     * The `$` references Grafana's backend substitutes (design section 5.2), and `$__all`, the value Grafana sends for
-     * All in the `queryparam` format of a variable without an all value (`var-queue=$__all`), which the job-list
-     * endpoints read as All.
+     * The `$` references Grafana's backend substitutes (design section 5.2).
      */
-    public const MACROS = ['$__interval_ms', '$__interval', '$__range_s', '$__range_ms', '$__range', '$__rate_interval', '$__all'];
+    public const MACROS = ['$__interval_ms', '$__interval', '$__range_s', '$__range_ms', '$__range', '$__rate_interval'];
+
+    /**
+     * `$__all` is the value Grafana sends for All in the `queryparam` format of a variable without an all value
+     * (`var-queue=$__all`), which the job-list endpoints read as All: allowed in an Infinity URL only, never in a
+     * PromQL expression, where it would select nothing.
+     */
+    public const URL_ALL = '$__all';
 
     /**
      * @param  array<string, mixed>  $planned  the plan's entry of the case
@@ -165,8 +170,8 @@ final class Checks
     }
 
     /**
-     * A `$` reference left in a sent query other than the backend macros, `$__all`, `label_replace` group references
-     * (`$1`) and `${1}`, or null.
+     * A `$` reference left in a sent query other than the backend macros, `label_replace` group references (`$1`)
+     * and `${1}`, and `$__all` in a URL, or null.
      *
      * @param  array<array-key, mixed>  $query
      */
@@ -181,7 +186,7 @@ final class Checks
         }
 
         foreach ($texts as $field => $text) {
-            $text = str_replace(self::MACROS, '', $text);
+            $text = str_replace($field === 'url' ? [...self::MACROS, self::URL_ALL] : self::MACROS, '', $text);
             $text = (string) preg_replace('/\$\{?\d\}?/', '', $text);
 
             if (preg_match('/\$\{?[A-Za-z_][A-Za-z0-9_]*/', $text, $match) === 1) {
