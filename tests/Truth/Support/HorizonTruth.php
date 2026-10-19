@@ -68,10 +68,21 @@ final readonly class HorizonTruth
             }
 
             // Every master's queues and pools: during a deploy that changes the options, both masters' pools work.
+            // Horizon's pools (Supervisor::createProcessPools()): one for the whole option when the supervisor does
+            // not balance, else one per piece of the option split at commas, as it is ('mail, sms' gives ' sms', the
+            // label of its processes); a queue is the trimmed piece, worked by the first pool of its name.
             $queueOption = (string) ($options['queue'] ?? '');
+            $queues = [];
 
-            foreach (array_filter(array_map(trim(...), explode(',', $queueOption)), static fn (string $queue): bool => $queue !== '') as $queue) {
-                $pool = $balance === 'off' ? $queueOption : $queue;
+            foreach (explode(',', $queueOption) as $piece) {
+                $queue = trim($piece);
+
+                if ($queue === '' || in_array($queue, $queues, true)) {
+                    continue;
+                }
+
+                $queues[] = $queue;
+                $pool = $balance === 'off' ? $queueOption : $piece;
                 $families['horizon_supervisor_queues'][Model::key(['supervisor' => $name, 'queue' => $queue, 'pool' => $pool])] = 1.0;
             }
         }

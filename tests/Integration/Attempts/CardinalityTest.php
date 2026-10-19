@@ -9,8 +9,10 @@ use DF\HorizonObservability\Collectors\AttemptsCollector;
 use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Metrics\Labels;
 use DF\HorizonObservability\Redis\Keys;
+use DF\HorizonObservability\Redis\RedisClients;
 use DF\HorizonObservability\Tests\Fixtures\Attempts\Storage;
 use DF\HorizonObservability\Tests\Support\LogRecorder;
+use DF\HorizonObservability\Tests\Support\RedisCommands;
 
 /*
 | Cardinality guards of the attempts. The pilot labelled attempts by any displayName and kept every field forever: about
@@ -138,6 +140,36 @@ it('deletes at most 1000 stale fields per scrape', function (): void {
 
     expect($afterFirst)->toBe(1500 - AttemptsCollector::FORGET_LIMIT)
         ->and(Storage::exists($this->keys->attempts()))->toBeFalse();
+});
+
+it('deletes the stale fields of a key in HDELs of at most 500 fields', function (): void {
+    // 1201 stale fields in one key cross the chunk twice (500 + 500 + 201); the fields that stay and another key's
+    // stale fields are untouched or deleted on their own.
+    $field = static fn (int $index): string => Keys::field('redis', 'default', 'App\\Jobs\\Gone'.$index, 'completed');
+    $stale = array_map($field, range(1, 1201));
+    $kept = [$field(0) => '7', $field(9999) => '8'];
+    Storage::store()->reader()->hmset($this->keys->attempts(), [...array_fill_keys($stale, '1'), ...$kept]);
+    Storage::store()->reader()->hmset($this->keys->durationSum(), [Keys::field('redis', 'default', 'App\\Jobs\\Gone1') => '0.5', Keys::field('redis', 'default', 'App\\Jobs\\Stays') => '1.5']);
+    $commands = RedisCommands::start($this->app);
+
+    $deleted = app(AttemptStore::class)->forget([
+        $this->keys->attempts() => $stale,
+        $this->keys->durationSum() => [Keys::field('redis', 'default', 'App\\Jobs\\Gone1')],
+    ]);
+    $hdels = array_map(
+        static fn (array $command): array => [$command['parameters'][0], count($command['parameters']) - 1],
+        array_values(array_filter($commands->commands(RedisClients::READER.'horizon'), static fn (array $command): bool => $command['command'] === 'HDEL')),
+    );
+
+    expect($deleted)->toBe(1202)
+        ->and($hdels)->toBe([
+            [$this->keys->attempts(), 500],
+            [$this->keys->attempts(), 500],
+            [$this->keys->attempts(), 201],
+            [$this->keys->durationSum(), 1],
+        ])
+        ->and(Storage::hash($this->keys->attempts()))->toBe(['redis|default|App\\Jobs\\Gone0|completed' => '7', 'redis|default|App\\Jobs\\Gone9999|completed' => '8'])
+        ->and(Storage::hash($this->keys->durationSum()))->toBe(['redis|default|App\\Jobs\\Stays' => '1.5']);
 });
 
 it('labels a missing displayName as (unknown) and strips closure line numbers through the tracker label', function (): void {

@@ -138,6 +138,26 @@ it('maps numeric queue names and a balance=false option that repeats a queue as 
         ->and($samples->value(Metric::SupervisorProcesses->value, ['supervisor' => 'supervisor-shards', 'queue' => '1']))->toBe(3.0);
 });
 
+it('maps the queues of a queue option with spaces to the pools Horizon labels with them', function (): void {
+    // 'mail, sms': Horizon splits the option of a balancing supervisor at the commas without trimming, so the pool
+    // of sms and its processes are labelled ' sms'; the queue is sms, as the job lists and Supervisors split it.
+    $scenario = Scenario::start($this);
+    HorizonState::using(app())
+        ->master('host-a', 'running', ['host-a:supervisor-spaced', 'host-a:supervisor-pool'])
+        ->supervisor('host-a:supervisor-spaced', HorizonState::options('host-a:supervisor-spaced', queue: 'mail, sms'), ['redis:mail' => 1, 'redis: sms' => 2])
+        ->supervisor('host-a:supervisor-pool', HorizonState::options('host-a:supervisor-pool', queue: 'reports, slow', balance: false), ['redis:reports, slow' => 3]);
+    $samples = new Samples($scenario->scrape());
+
+    expect(horizonTruthScraped($samples))->toBe(horizonTruthExpected())
+        ->and($samples->series(Metric::SupervisorQueues->value))->toBe([
+            Model::key(['supervisor' => 'supervisor-spaced', 'queue' => 'sms', 'pool' => ' sms']) => 1.0,
+            Model::key(['supervisor' => 'supervisor-spaced', 'queue' => 'mail', 'pool' => 'mail']) => 1.0,
+            Model::key(['supervisor' => 'supervisor-pool', 'queue' => 'reports', 'pool' => 'reports, slow']) => 1.0,
+            Model::key(['supervisor' => 'supervisor-pool', 'queue' => 'slow', 'pool' => 'reports, slow']) => 1.0,
+        ])
+        ->and($samples->value(Metric::SupervisorProcesses->value, ['supervisor' => 'supervisor-spaced', 'queue' => ' sms']))->toBe(2.0);
+});
+
 it('maps a queue to every pool that works it while a deploy changes the queue options', function (): void {
     // A rolling deploy: the old master still runs the old options while the new one runs the new ones. The pool of
     // supervisor-pool gains push (balance=false, mail,sms -> mail,sms,push), supervisor-slow turns its pool into

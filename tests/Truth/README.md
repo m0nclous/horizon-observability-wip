@@ -204,6 +204,12 @@ balance), both masters' pools work the common queues: the map then has a series 
 (`mail` in `mail,sms` and in `mail,sms,push`), so the processes per queue add up over both (before a fix, only the
 first master's pool was mapped and `mail` read 2 processes instead of 5).
 
+A queue option with spaces keeps Horizon's pool labels as well: Horizon splits the option of a balancing supervisor
+at the commas without trimming (`'mail, sms'`), so the pool of `sms` and its processes are labelled ` sms`, and the
+map pairs the queue `sms` with that pool. A pool label longer than 200 bytes is cut with the hash of the whole label
+(`Labels::sanitize()`), so a long balance=false list before and after a deploy that adds a queue at its end stays two
+label values instead of one label set twice, which would drop the supervisor families.
+
 The dashboard does not join through the map yet (known issue #32, listed in the main README's known limitations):
 balance=false pools are left out of the off-mode Supervisor Processes tile and of the queue tables under Queue = All.
 

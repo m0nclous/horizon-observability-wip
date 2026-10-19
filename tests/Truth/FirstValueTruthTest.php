@@ -330,7 +330,8 @@ it('measures the age on the server clock, never the exporter\'s (TIME, not pinne
     expect($scrape(3600))->toBe(0)
         ->and($scrape(-3600))->toBe(0);
 
-    Storage::store()->reader()->hset($created, $field, (string) (firstValueServerTime() - AttemptsCollector::NEW_SERIES_HOLD_SECONDS + 1));
+    // 30 s inside the hold: the two scrapes on a slow runner cannot reach its end.
+    Storage::store()->reader()->hset($created, $field, (string) (firstValueServerTime() - AttemptsCollector::NEW_SERIES_HOLD_SECONDS + 30));
 
     expect($scrape(3600))->toBe(0)
         ->and($scrape(-3600))->toBe(0);
