@@ -58,10 +58,21 @@ on:
 permissions:
   contents: read
 
-# Per ref and event: a push cancels the previous run of its PR or branch, never the weekly run.
+# Per ref and event: a push cancels the previous run of its PR or branch, never the weekly run. A run that the job's
+# `if` skips (a draft without the label, or another label added to a labelled draft) takes a group of its own and
+# cancels nothing, so it never replaces a running check by a skipped one.
 concurrency:
-  group: dashboard-truth-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+  group: >-
+    dashboard-truth-${{ github.ref }}-${{ github.event_name }}${{
+      github.event_name == 'pull_request' && github.event.pull_request.draft
+      && (!contains(github.event.pull_request.labels.*.name, 'dashboard-truth')
+          || (github.event.action == 'labeled' && github.event.label.name != 'dashboard-truth'))
+      && format('-skipped-{0}', github.run_id) || '' }}
+  cancel-in-progress: >-
+    ${{ github.event_name != 'schedule'
+        && !(github.event_name == 'pull_request' && github.event.pull_request.draft
+             && (!contains(github.event.pull_request.labels.*.name, 'dashboard-truth')
+                 || (github.event.action == 'labeled' && github.event.label.name != 'dashboard-truth'))) }}
 
 env:
   COMPOSER_NO_INTERACTION: '1'
@@ -69,11 +80,15 @@ env:
 jobs:
   dashboard-truth:
     name: Dashboard truth / Grafana 12.4.13 and 13.2.4
-    # Draft PRs run only with the label dashboard-truth (owner question 5); a labelled event runs only for that label
+    # Draft PRs run only with the label dashboard-truth (owner question 5); on a draft, a labelled event runs only for
+    # that label. A ready PR runs on every event, labelled ones included: a skipped job reports success, and the
+    # latest check of a name is the one a required check reads, so a skip must never follow a red run of a PR that
+    # can be merged (a draft cannot, and ready_for_review runs it).
     if: >-
       github.event_name != 'pull_request'
-      || ((github.event.action != 'labeled' || github.event.label.name == 'dashboard-truth')
-          && (github.event.pull_request.draft == false || contains(github.event.pull_request.labels.*.name, 'dashboard-truth')))
+      || github.event.pull_request.draft == false
+      || (contains(github.event.pull_request.labels.*.name, 'dashboard-truth')
+          && (github.event.action != 'labeled' || github.event.label.name == 'dashboard-truth'))
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ (github.event_name == 'schedule' || inputs.set == 'full') && 80 || 30 }}
     services:
@@ -131,11 +146,14 @@ jobs:
       - name: Dashboard truth (record, ingest, stack, capture, assert)
         run: php tests/DashboardTruth/bin/run --ci --keep --run="$RUN_ID" --set="$SET" ${CASES:+--cases="$CASES"}
 
-      # Design section 11.3: the synthetic mutant of the slice (#8 A counting retried attempts as completed) must turn
-      # S01 red with a dashboard defect, on the same recordings and stack
-      - name: Mutant sensitivity (completed-retried)
+      # Design section 11.3: the synthetic mutants of the slice (#8 A counting retried attempts as completed; #8 A
+      # dropping its zero points) must turn S01 red with a dashboard defect, on the same recordings and stack
+      - name: Mutant sensitivity (completed-retried, drop-zeros)
         if: success() && env.CASES == ''
-        run: php tests/DashboardTruth/bin/run --ci --keep --run="$RUN_ID" --from=stack --cases=S01 --mutant=completed-retried --expect-red
+        run: |
+          for mutant in completed-retried drop-zeros; do
+            php tests/DashboardTruth/bin/run --ci --keep --run="$RUN_ID" --from=stack --cases=S01 --mutant="$mutant" --expect-red
+          done
 
       - name: Report
         if: always()
