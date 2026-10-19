@@ -62,13 +62,12 @@ Variations, all from the header of `docker-compose.yml`:
 
 - Everything in containers (the app image runs PHP 8.4, `APP_PHP_VERSION` picks 8.2 to 8.5):
   `PROMETHEUS_CONFIG=prometheus.app.yml APP_URL_FROM_GRAFANA=http://app:8000 docker compose --profile app up -d`.
-  The profile's `stream` service exits and restarts until `docker/grafana/bootstrap-live.sh` has written its Grafana
-  token; name the services (`... up -d app horizon simulate`) to leave it out.
 - Grafana 12: `GRAFANA_IMAGE=grafana/grafana:12.4.13 docker compose up -d`. Both 12.4.13 and 13.2.4 are supported and
   tested.
 - Valkey: `REDIS_IMAGE=valkey/valkey:8-alpine`.
 - Live Overview in stream mode: `docker/grafana/bootstrap-live.sh` (creates the Grafana service account and writes
-  `docker/grafana/live-token`), then `docker compose --profile app up -d stream`.
+  `docker/grafana/live-token`), then `docker compose --profile app up -d stream`. The `stream` service has its own
+  profile, so `--profile app` alone leaves it out, and it waits for the token file.
 - Several stacks side by side: set `COMPOSE_PROJECT_NAME` and the host ports `REDIS_PORT`, `PROMETHEUS_PORT`,
   `GRAFANA_PORT`, `APP_PORT` and `PERF_PROMETHEUS_PORT`. Every port listens on 127.0.0.1 only (Redis has no password
   and Grafana allows anonymous access); `BIND_ADDRESS=0.0.0.0` publishes them on every interface.

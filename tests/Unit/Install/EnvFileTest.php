@@ -29,6 +29,20 @@ it('reads a value', function (string $contents, ?string $value): void {
     'CRLF' => ["APP=1\r\nHORIZON_OBSERVABILITY_TOKEN=abc\r\n", 'abc'],
 ]);
 
+it('reads a value as phpdotenv reads it', function (string $line): void {
+    expect(EnvFile::value($line."\n", 'HORIZON_OBSERVABILITY_TOKEN'))->toBe(Dotenv::parse($line."\n")['HORIZON_OBSERVABILITY_TOKEN']);
+})->with([
+    // An unquoted value ends at the first #.
+    'a comment without a space' => ['HORIZON_OBSERVABILITY_TOKEN=null#x'],
+    'a comment after a value' => ['HORIZON_OBSERVABILITY_TOKEN=abc#def'],
+    'an escaped quote' => ['HORIZON_OBSERVABILITY_TOKEN="a\\"b"'],
+    'an escaped backslash before the quote' => ['HORIZON_OBSERVABILITY_TOKEN="a\\\\"'],
+    'an escaped dollar' => ['HORIZON_OBSERVABILITY_TOKEN="a\\$b"'],
+    'a newline escape' => ['HORIZON_OBSERVABILITY_TOKEN="a\\nb"'],
+    'a # in double quotes' => ['HORIZON_OBSERVABILITY_TOKEN="a#b" # c'],
+    'a backslash in single quotes' => ["HORIZON_OBSERVABILITY_TOKEN='a\\\\'"],
+]);
+
 it('appends a missing key and fills an empty one in place', function (string $contents, string $expected): void {
     expect(EnvFile::with($contents, 'HORIZON_OBSERVABILITY_TOKEN', 'new-token'))->toBe($expected);
 })->with([
@@ -111,6 +125,10 @@ it('treats a value Laravel reads as no value as unset, and fills it in place', f
     // The last definition wins: a value before it is not read, and stays as it is.
     'after a value' => ["HORIZON_OBSERVABILITY_TOKEN=old-token-0123456789\nHORIZON_OBSERVABILITY_TOKEN=null\n", "HORIZON_OBSERVABILITY_TOKEN=old-token-0123456789\nHORIZON_OBSERVABILITY_TOKEN=new-token\n"],
     'with a comment: a later line' => ["HORIZON_OBSERVABILITY_TOKEN=null # set by install\n", "HORIZON_OBSERVABILITY_TOKEN=null # set by install\n\nHORIZON_OBSERVABILITY_TOKEN=new-token\n"],
+    'a comment without a space: a later line' => ["HORIZON_OBSERVABILITY_TOKEN=null#x\n", "HORIZON_OBSERVABILITY_TOKEN=null#x\n\nHORIZON_OBSERVABILITY_TOKEN=new-token\n"],
+    // phpdotenv reads the last definition: when it cannot be filled in place, the key goes after it.
+    'a later definition with a comment' => ["HORIZON_OBSERVABILITY_TOKEN=null\nA=1\nHORIZON_OBSERVABILITY_TOKEN=null # set later\n", "HORIZON_OBSERVABILITY_TOKEN=null\nA=1\nHORIZON_OBSERVABILITY_TOKEN=null # set later\n\nHORIZON_OBSERVABILITY_TOKEN=new-token\n"],
+    'an earlier definition with a comment' => ["HORIZON_OBSERVABILITY_TOKEN=null # set later\nA=1\nHORIZON_OBSERVABILITY_TOKEN=\n", "HORIZON_OBSERVABILITY_TOKEN=null # set later\nA=1\nHORIZON_OBSERVABILITY_TOKEN=new-token\n"],
 ]);
 
 it('never changes a value Laravel reads as a value', function (string $contents): void {

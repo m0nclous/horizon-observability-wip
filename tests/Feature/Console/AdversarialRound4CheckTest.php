@@ -18,8 +18,10 @@ use Symfony\Component\Process\Process;
 | Adversarial probes of horizon-observability:check on a storage Redis that answers but refuses, and of the
 | Timeouts fix line applied as written.
 |
+| Found in QA round 4 of the operations commands, fixed for #27 and #28; the probes guard the fixes.
+|
 | 1. The read-only storage case (item 2 of AdversarialRound3CheckTest) was fixed with a list of error codes
-|    (RedisErrorReply::CODES and "unknown command `x`"); every other error reply of a server that answered still falls
+|    (RedisErrorReply::CODES and "unknown command `x`"); every other error reply of a server that answered fell
 |    through Diagnostics::collectorFailure() to "Check that Redis is reachable with the settings in config/database.php
 |    (see Storage and Queues)", which the Storage line ("reachable", ok) right above contradicts (check promises one
 |    actionable fix line per problem). Seen on
@@ -35,9 +37,10 @@ use Symfony\Component\Process\Process;
 |    without Docker off CI.
 | 2. The Timeouts fix of the Horizon connection names database.redis.<horizon.use> (e.g. default), the Redis connection
 |    the app's redis queue connection uses too. With block_for 5 on that queue connection (Laravel's documented option,
-|    BLPOP on the queue's :notify list), applying the line as written ('read_timeout' => 2.0, predis
-|    'read_write_timeout' => 2.0) makes every blocking pop of an empty queue fail after 2 s ("read error on
-|    connection", predis "Operation has timed out"): the worker reports an exception per idle poll.
+|    BLPOP on the queue's :notify list), applying the line as it was written ('read_timeout' => 2.0, predis
+|    'read_write_timeout' => 2.0) made every blocking pop of an empty queue fail after 2 s ("read error on
+|    connection", predis "Operation has timed out"): the worker reported an exception per idle poll. The line now
+|    suggests block_for + 2 s.
 */
 
 pest()->group('redis');
@@ -120,7 +123,7 @@ it('gives a write refused for missing replicas its own fix, not the reachability
         ->and($attempts->message)->toContain('NOREPLICAS')
         ->and(str_contains((string) $attempts->fix, 'reachable'))->toBeFalse(sprintf('Storage says "%s", the fix "%s"', $results['Storage / Connection']->message, $attempts->fix))
         ->and($attempts->fix)->toMatch('/replica/i');
-})->with(['phpredis', 'predis'])->skip('Known issue #27: error replies outside the RedisErrorReply list (NOREPLICAS) get the reachability fix');
+})->with(['phpredis', 'predis']);
 
 it('gives a server without TIME the fix for a command it does not offer, also inside the package scripts', function (string $client): void {
     if (! is_int($GLOBALS['ho_adversarial_round4_timeless_port'] ?? null)) {
@@ -172,7 +175,7 @@ it('gives a server without TIME the fix for a command it does not offer, also in
         ->and($attempts->message)->toMatch('/Unknown (Redis )?command called from/')
         ->and(str_contains((string) $attempts->fix, 'reachable'))->toBeFalse(sprintf('Storage says "%s", the fix "%s"', $results['Storage / Connection']->message, $attempts->fix))
         ->and($attempts->fix)->toMatch('/\bTIME\b/i');
-})->with(['phpredis', 'predis'])->skip('Known issue #27: TIME refused inside the package scripts gets the reachability fix');
+})->with(['phpredis', 'predis']);
 
 it('never gives the Redis connection of a blocking queue a read timeout shorter than its block_for', function (string $client): void {
     config()->set('database.redis.client', $client);
@@ -183,8 +186,8 @@ it('never gives the Redis connection of a blocking queue a read timeout shorter 
 
     $result = adversarialRound4Check()['Timeouts / Horizon connection'];
 
-    // Today: "Add 'timeout' => 2.0 and 'read_timeout' => 2.0 to database.redis.default in config/database.php; ..."
-    // (predis: 'read_write_timeout'). The timeouts the line gives that connection, applied as written.
+    // "Add 'timeout' => 2.0 and 'read_timeout' => 7.0 to database.redis.default in config/database.php ..." (predis:
+    // 'read_write_timeout'). The timeouts the line gives that connection, applied as written.
     if (preg_match('/^Add (.+?) to database\.redis\.default in config\/database\.php/', (string) $result->fix, $match) === 1) {
         preg_match_all("/'(\\w+)' => ([0-9.]+)/", $match[1], $entries, PREG_SET_ORDER);
 
@@ -215,4 +218,4 @@ it('never gives the Redis connection of a blocking queue a read timeout shorter 
         microtime(true) - $started,
         $error instanceof Throwable ? $error::class.': '.$error->getMessage() : '',
     ));
-})->with(['phpredis', 'predis'])->skip('Known issue #28: the Horizon Timeouts fix ignores block_for of the queue');
+})->with(['phpredis', 'predis']);

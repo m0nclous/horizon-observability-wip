@@ -110,6 +110,15 @@ final class InstallCommand extends Command
             return self::FAILURE;
         }
 
+        $this->components->info('Installing Horizon Observability.');
+
+        if ($this->text('app-url') === '' && EndpointUrl::parameterised($config)) {
+            $this->components->warn(sprintf(
+                'The endpoints answer on %s, one host per value of its route parameters: the setup below uses APP_URL, where they get a 404. Run the installer again with --app-url=<the app on one of those hosts>.',
+                EndpointUrl::root($config),
+            ));
+        }
+
         try {
             $app = $this->appUrl($config, $docker);
         } catch (InvalidArgumentException $e) {
@@ -117,8 +126,6 @@ final class InstallCommand extends Command
 
             return self::FAILURE;
         }
-
-        $this->components->info('Installing Horizon Observability.');
 
         $this->publishConfig($files);
         $token = $this->token($tokenOption === '' ? null : $tokenOption, $config);
@@ -129,12 +136,14 @@ final class InstallCommand extends Command
         $apiPath = RoutePath::apiPath($config);
         $alias = $docker ? $this->hostAlias($config, $app) : null;
 
+        $grafanaPort = $this->grafanaPort();
+
         if ($docker) {
             $prefix = $this->laravel->make(Config::class)->prefix();
-            $this->docker($files, new DockerStack($this->projectName($config), $job, $app, $apiPath, $grafana, $prefix, $alias), $token, $live);
+            $this->docker($files, new DockerStack($this->projectName($config), $job, $app, $apiPath, $grafana, $prefix, $alias, $grafanaPort), $token, $live);
         }
 
-        $grafanaUrl = $docker ? self::DEFAULT_GRAFANA_URL : $this->grafanaBase();
+        $grafanaUrl = $docker ? 'http://localhost:'.$grafanaPort : $this->grafanaBase();
         // Your own Prometheus reaches the app where the endpoints answer (or --app-url), not through Docker's host gateway.
         $own = $docker && $this->text('app-url') === '' ? $this->endpointsUrl($config) : $app;
         $this->guide(new SetupGuide($job, $own, $apiPath, $grafanaUrl, live: $live), $docker, $job);
@@ -596,10 +605,15 @@ final class InstallCommand extends Command
     }
 
     /**
-     * Where the endpoints answer: `APP_URL`, or the package domain with the scheme and port of `APP_URL`.
+     * Where the endpoints answer: `APP_URL`, or the package domain with the scheme and port of `APP_URL`; `APP_URL`
+     * for a domain with route parameters, which names no single host (handle() warns about it).
      */
     private function endpointsUrl(Repository $config): AppUrl
     {
+        if (EndpointUrl::parameterised($config)) {
+            return $this->configuredAppUrl($config);
+        }
+
         try {
             return AppUrl::parse(EndpointUrl::root($config));
         } catch (InvalidArgumentException) {
@@ -660,6 +674,24 @@ final class InstallCommand extends Command
         $slug = Str::slug(is_string($name) ? $name : '');
 
         return ($slug === '' ? 'app' : $slug).'-observability';
+    }
+
+    /**
+     * The host port of the Docker stack's Grafana: `GRAFANA_PORT` as docker compose reads it (the environment, else
+     * the `.env` file next to the compose file), else 3000.
+     */
+    private function grafanaPort(): int
+    {
+        $value = getenv('GRAFANA_PORT');
+
+        if (! is_string($value) || trim($value) === '') {
+            $env = $this->laravel->environmentFilePath();
+            $value = is_file($env) ? EnvFile::value((string) file_get_contents($env), 'GRAFANA_PORT') : null;
+        }
+
+        $port = is_string($value) && preg_match('/^\d{1,5}$/', trim($value)) === 1 ? (int) trim($value) : 0;
+
+        return $port >= 1 && $port <= 65535 ? $port : DockerStack::GRAFANA_PORT;
     }
 
     /**

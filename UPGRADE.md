@@ -143,8 +143,6 @@ mode of the failed-jobs list, the live settings, the log channel).
 - Add `php artisan horizon-observability:check` to the pipeline after the deploy. It exits 1 on errors (for example a
   production app without a token: every request would get 403) and prints one fix line per problem; `--strict` also
   fails on warnings, `--json` prints a machine-readable report.
-- If `check` suggests a `read_timeout` for the Horizon connection while the redis queue connection sets `block_for`, keep
-  `read_timeout` above `block_for` (known issue of 0.1, [#28]: the suggested 2 s makes longer blocking pops fail).
 
 ## 5. Prometheus
 
@@ -331,6 +329,3 @@ misses the attempts of the time in between:
 4. Grafana: provision the pilot's `queues.json` and `horizon.yml` again in place of the rendered files, and restore
    `HPG_PROMETHEUS_DATASOURCE_UID` and the home dashboard path. The rule uids are the same, so the history continues. The
    Infinity datasource can keep its bearer token: the pilot's endpoints ignore it.
-
-<!-- The issue links of this file, in one place: change the repository here when it moves. -->
-[#28]: https://github.com/m0nclous/horizon-observability-wip/issues/28

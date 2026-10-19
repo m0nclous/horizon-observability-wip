@@ -199,11 +199,13 @@ it('gates style, types and composer.json in the static job', function (): void {
     );
 });
 
-it('allows only the package files in the dist archive', function (): void {
+it('allows only the package files in the dist archive, and requires every one of them', function (): void {
     $run = implode("\n", array_column(workflow('tests.yml')['jobs']['dist']['steps'], 'run'));
 
     expect($run)->toContain('git archive HEAD')
-        ->toContain("allowed='^(src/|config/|routes/|resources/|composer\\.json$|LICENSE$|README\\.md$|CHANGELOG\\.md$|UPGRADE\\.md$)'");
+        ->toContain("allowed='^(src/|config/|routes/|resources/|composer\\.json$|LICENSE$|README\\.md$|CHANGELOG\\.md$|UPGRADE\\.md$)'")
+        // The runtime resources (Lua scripts, Grafana assets, views) and the upgrade guide too.
+        ->toContain('for required in src/ config/ routes/ resources/ resources/lua/ composer.json LICENSE README.md CHANGELOG.md UPGRADE.md; do');
 });
 
 it('pins every action to a major version', function (string $file): void {

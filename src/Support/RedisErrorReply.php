@@ -6,6 +6,7 @@ namespace DF\HorizonObservability\Support;
 
 use DF\HorizonObservability\Redis\RedisScriptFailed;
 use Predis\PredisException;
+use Predis\Response\ServerException;
 use RedisClusterException;
 use RedisException;
 use Throwable;
@@ -23,8 +24,14 @@ use Throwable;
  * - `NOPERM`, and `ERR ACL failure in script` (Redis 7+ and Valkey inside a script): an ACL refusal; the refused
  *   command (Redis 6.2 to 8 and Valkey word it alike) gets its `ACL SETUSER` rule, a refused key the key pattern of
  *   the connection's prefix;
- * - `NOAUTH`, `WRONGPASS` (and `ERR AUTH <password> called without any password configured`), `OOM`, `MISCONF`,
- *   `LOADING`, `BUSY`, `WRONGTYPE`, `CROSSSLOT` and `unknown command`.
+ * - `NOREPLICAS` (a primary with `min-replicas-to-write` and too few replicas), `NOAUTH`, `WRONGPASS` (and
+ *   `ERR AUTH <password> called without any password configured`), `OOM`, `MISCONF`, `LOADING`, `BUSY`, `WRONGTYPE`,
+ *   `CROSSSLOT`, `CLUSTERDOWN`, `TRYAGAIN`, `ERR max number of clients reached`, and `unknown command`, also inside a
+ *   script (Redis 7+ and Valkey 7.2 "Unknown Redis command called from script", Redis 6.2 "... from Lua script",
+ *   Valkey 8 "Unknown command called from script"), where the refused command is taken from the script line or the
+ *   script's own `ERR <COMMAND> failed:`;
+ * - any other error reply (the reply of a package script or of predis, or a message that starts with an upper-case
+ *   error code such as `ERR`): a generic fix that never sends the user to the connection settings.
  * A connection error (refused, timed out, reset) has no reply and gets the caller's connectivity fix.
  *
  * @internal
@@ -34,7 +41,7 @@ final readonly class RedisErrorReply
     /**
      * The codes this class has a fix for, as the first word of an error reply.
      */
-    private const CODES = 'READONLY|MASTERDOWN|NOPERM|NOAUTH|WRONGPASS|OOM|MISCONF|LOADING|BUSY|WRONGTYPE|CROSSSLOT';
+    private const CODES = 'READONLY|MASTERDOWN|NOREPLICAS|NOPERM|NOAUTH|WRONGPASS|OOM|MISCONF|LOADING|BUSY|WRONGTYPE|CROSSSLOT|CLUSTERDOWN|TRYAGAIN';
 
     /**
      * @param  string|null  $refused  the refused command when the reply does not name it (Redis 6.2 inside a script)
@@ -47,10 +54,12 @@ final readonly class RedisErrorReply
 
     /**
      * The error reply in the failure or its causes, when it comes from Redis; null otherwise (a connection error, a
-     * timeout, anything else).
+     * timeout, anything else). A reply with a fix of its own wins over a generic one of another cause.
      */
     public static function of(Throwable $e): ?self
     {
+        $other = null;
+
         for ($cause = $e; $cause instanceof Throwable; $cause = $cause->getPrevious()) {
             if (! self::fromRedis($cause)) {
                 continue;
@@ -60,6 +69,14 @@ final readonly class RedisErrorReply
 
             if (preg_match('/unknown command [`\'][^`\']+[`\']/i', $message, $match) === 1) {
                 return new self('UNKNOWN', $match[0]);
+            }
+
+            if (preg_match('/Unknown (?:Redis )?command called from (?:Lua )?script/i', $message, $match) === 1) {
+                return new self('UNKNOWN', $match[0], $cause instanceof RedisScriptFailed ? self::unknownInScript($cause) : null);
+            }
+
+            if (preg_match('/max(?:imum)? number of clients reached/i', $message, $match) === 1) {
+                return new self('MAXCLIENTS', 'ERR '.$match[0]);
             }
 
             // An ACL refusal inside a script is "ERR ACL failure in script: User ... has no permissions ..." on Redis 7+
@@ -85,9 +102,11 @@ final readonly class RedisErrorReply
             if (preg_match('/ERR (?:AUTH <password> called without any password configured|invalid password).*$/s', $message, $match) === 1) {
                 return new self('WRONGPASS', trim($match[0]));
             }
+
+            $other ??= self::other($cause);
         }
 
-        return null;
+        return $other;
     }
 
     /**
@@ -101,6 +120,7 @@ final readonly class RedisErrorReply
 
         return match ($this->code) {
             'READONLY', 'MASTERDOWN' => sprintf('Point %s at the writable primary: it answers as a read-only replica (or a primary a failover demoted), which refuses the package\'s writes.', $place),
+            'NOREPLICAS' => sprintf('Point %s at a primary with enough connected replicas, or lower its min-replicas-to-write: it refuses every write while fewer replicas acknowledge them (NOREPLICAS).', $place),
             'NOPERM' => $this->permission($place, $this->deniedUser() ?? $user, $prefix),
             'NOAUTH', 'WRONGPASS' => sprintf('Set the password (and username) Redis expects in %s (REDIS_PASSWORD, REDIS_USERNAME).', $place),
             'OOM' => sprintf('Free memory on the Redis of %s or raise its maxmemory: at maxmemory it refuses the package\'s writes (OOM).', $place),
@@ -109,6 +129,9 @@ final readonly class RedisErrorReply
             'BUSY' => sprintf('A script runs too long on the Redis of %s (BUSY): wait for it or stop it with SCRIPT KILL, then run the check again.', $place),
             'WRONGTYPE' => sprintf('A key it reads on %s holds another type, so another app writes the same key names: give each app its own prefix in config/database.php.', $place),
             'CROSSSLOT' => sprintf('Give the prefix of %s a hash tag with content, e.g. {app}: the keys of one command are in different slots of the cluster (see Storage, Prefix).', $place),
+            'CLUSTERDOWN', 'TRYAGAIN' => sprintf('Wait until the Redis Cluster of %s is healthy again (%s: %s), then run the check again; CLUSTER INFO shows its state.', $place, $this->code, $this->code === 'TRYAGAIN' ? 'a slot of the keys is being moved' : 'the cluster is down or a slot has no node'),
+            'MAXCLIENTS' => sprintf('Raise maxclients on the Redis of %s, or close idle clients (CLIENT LIST shows them): at its limit it refuses every new connection.', $place),
+            'ERROR' => sprintf('The Redis of %s answers with the error reply above, so the connection works: fix what the reply names on that server (see its log), then run the check again.', $place),
             default => sprintf('The Redis of %s does not offer %s (a proxy or a managed Redis that disables it): point the connection at a Redis that runs EVAL, TIME and INFO, which the package needs.', $place, $this->command() ?? 'that command'),
         };
     }
@@ -154,6 +177,38 @@ final readonly class RedisErrorReply
         }
 
         return sprintf('Allow the commands of the package for the Redis user %s of %s: ACL SETUSER %s +@read +@write +@scripting +time +info (Redis refused one without naming it).', $user, $place, $user);
+    }
+
+    /**
+     * The command a package script calls that the server does not offer: the command on the script line the reply
+     * names (Redis 6.2 always, Redis 7+ for a `redis.call()`), else the one in the script's own
+     * `ERR <COMMAND> failed:` (the `redis.pcall()` of `TIME` in new_series.lua); lower case.
+     */
+    private static function unknownInScript(RedisScriptFailed $e): ?string
+    {
+        $message = $e->getMessage();
+
+        if (preg_match('/@user_script:\s*(\d+)/', $message, $match) === 1 && ($command = self::scriptCommand($e->script, (int) $match[1])) !== null) {
+            return $command;
+        }
+
+        return preg_match('/\bERR ([A-Z]+) failed: /', $message, $match) === 1 ? strtolower($match[1]) : null;
+    }
+
+    /**
+     * An error reply without a fix of its own: the reason of a package script or a predis server error, or a message
+     * that starts with an upper-case error code (`ERR ...`, a code this class does not know); null for a connection
+     * error, whose message never does.
+     */
+    private static function other(Throwable $e): ?self
+    {
+        $message = trim($e instanceof RedisScriptFailed ? (string) preg_replace('/^Lua script \S+ failed: /', '', $e->getMessage()) : $e->getMessage());
+
+        if (preg_match('/^-?[A-Z][A-Z0-9_]+(?: |$)/', $message) === 1 || ($e instanceof ServerException && $message !== '')) {
+            return new self('ERROR', ltrim($message, '-'));
+        }
+
+        return null;
     }
 
     /**
