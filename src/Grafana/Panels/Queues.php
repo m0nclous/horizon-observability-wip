@@ -176,9 +176,9 @@ final readonly class Queues
         // inside it, keeps its rows and their attempts (the columns of now show dashes)
         $periodQueues = $this->selection->queues($range);
         // Each selected queue with every supervisor it was seen with within a day: a row per (queue, supervisor), so a
-        // queue that several supervisors work is in each of their tables
+        // queue that several supervisors work is in each of their tables, and each queue of a balance=false pool too
         $rows = Promql::andOn(
-            Promql::group($this->promql->over('last_over_time', Metric::SupervisorProcesses, Variables::KNOWN_FOR), 'queue', 'supervisor'),
+            Promql::group($this->promql->over('last_over_time', Metric::SupervisorQueues, Variables::KNOWN_FOR), 'queue', 'supervisor'),
             $periodQueues,
             'queue',
         );
@@ -200,9 +200,9 @@ final readonly class Queues
             // Running processes: 0 while Horizon is paused or stopped, as on the Supervisor Processes tile
             'D' => $this->selection->byJobSelection(
                 $this->orZero(Promql::binary(
-                    // The supervisors' processes per queue, which replaced the pilot's horizon_current_processes.
-                    // The Queue filter is explicit: the family is not one of the queue-filtered ones.
-                    Promql::sum($this->promql->selector(Metric::SupervisorProcesses, Promql::re('queue', '$queue')), 'queue'),
+                    // The processes of the pools that work each queue, which replaced the pilot's
+                    // horizon_current_processes: a balance=false pool counts for each of its queues
+                    $this->workers->queueProcesses(),
                     '*',
                     $this->workers->horizonRunning(),
                     on: [],

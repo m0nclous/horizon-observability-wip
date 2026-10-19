@@ -56,12 +56,28 @@ final class LiveShapes
         JSON;
 
     /**
-     * The changed properties of each live tile, by mode and panel id (`<A>` is the off-mode target A,
-     * unchanged; `<B scoped>` the off-mode target B for a Job or Batch filter only; `"<off>"` in a list the off-mode
+     * The changed properties of each live tile, by mode and panel id (`<A>` and `<B>` are the off-mode targets A
+     * and B, unchanged; `<B scoped>` the off-mode target B for a Job or Batch filter only; `"<off>"` in a list the off-mode
      * transformations). `"$unset"` lists the properties the live panel no longer has.
      */
     private const CHANGES = [
         'poll' => [
+            // Poll and stream #1 Horizon: the snapshot's status as the last point of the band, the Prometheus uptime B
+            1 => <<<'JSON'
+                { "datasource": { "type": "datasource", "uid": "-- Mixed --" },
+                  "interval": "$scrape_interval",
+                  "targets": [ "<A>", "<B>",
+                    { "target": "L", "root": "", "columns": [ { "selector": "generated_at", "text": "Time", "type": "timestamp_epoch" },
+                                                             { "selector": "horizon.status", "text": "Value", "type": "number" } ] } ],
+                  "transformations": [
+                    { "id": "merge", "filter": { "id": "byRefId", "options": "A|L" }, "options": {} },
+                    { "id": "configFromData", "options": { "configRefId": "B", "mappings": [
+                        { "fieldName": "status", "handlerKey": "mappings.value" },
+                        { "fieldName": "text", "handlerKey": "mappings.text" },
+                        { "fieldName": "color", "handlerKey": "mappings.color" },
+                        { "fieldName": "Time", "handlerKey": "__ignore" },
+                        { "fieldName": "Value", "handlerKey": "__ignore" } ] } } ] }
+                JSON,
             // Poll #3 Supervisor Processes
             3 => <<<'JSON'
                 { "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "${app_api}" },
@@ -114,6 +130,7 @@ final class LiveShapes
                 JSON,
         ],
         'stream' => [
+            1 => 'poll',
             // Stream #3 Supervisor Processes
             3 => <<<'JSON'
                 { "datasource": { "type": "datasource", "uid": "grafana" },
@@ -237,12 +254,12 @@ final class LiveShapes
      */
     private static function target(mixed $target, array $off): mixed
     {
-        if ($target === '<A>' || $target === '<B scoped>') {
+        if (in_array($target, ['<A>', '<B>', '<B scoped>'], true)) {
             $refId = $target === '<A>' ? 'A' : 'B';
 
             foreach ($off['targets'] as $offTarget) {
                 if ($offTarget['refId'] === $refId) {
-                    if ($refId === 'B') {
+                    if ($target === '<B scoped>') {
                         // Only with a Job or Batch filter: empty while Job and Batch are both "All"
                         $offTarget['expr'] = '('.$offTarget['expr'].') unless on () ((label_replace(vector(1), "filter", "${job_class:text}", "", "") and on (filter) label_replace(vector(1), "filter", "All", "", ""))'
                             .' and on () (label_replace(vector(1), "filter", "${batch_kind:text}", "", "") and on (filter) label_replace(vector(1), "filter", "All", "", "")))';

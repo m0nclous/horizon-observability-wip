@@ -162,6 +162,7 @@ it('captions Supervisor Processes in the off mode as Captions does', function (s
         'input_series' => [
             ['series' => 'ho_horizon_status{job="app", instance="app:8080"}', 'values' => '1x10'],
             ['series' => 'ho_horizon_supervisor_processes{'.$labels.', queue="default"}', 'values' => '2x10'],
+            ['series' => 'ho_horizon_supervisor_queues{'.$labels.', queue="default", pool="default"}', 'values' => '1x10'],
             ['series' => 'ho_horizon_supervisor_max_processes{'.$labels.'}', 'values' => '3x10'],
         ],
         'promql_expr_test' => [[

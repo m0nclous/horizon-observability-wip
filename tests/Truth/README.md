@@ -204,8 +204,9 @@ balance), both masters' pools work the common queues: the map then has a series 
 (`mail` in `mail,sms` and in `mail,sms,push`), so the processes per queue add up over both (before a fix, only the
 first master's pool was mapped and `mail` read 2 processes instead of 5).
 
-The dashboard does not join through the map yet (known issue #32, listed in the main README's known limitations):
-balance=false pools are left out of the off-mode Supervisor Processes tile and of the queue tables under Queue = All.
+The dashboard joins through the map (#32): the Supervisor Processes tile, the queue tables (rows, processes,
+utilisation), the Queue filter and the queue table titles count a balance=false pool for each of its queues
+(`tests/Grafana/SupervisorProcessesTest.php`).
 
 ### Known limits
 

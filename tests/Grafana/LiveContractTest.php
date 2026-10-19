@@ -134,8 +134,8 @@ it('reads only fields of the snapshot JSON with their types (schema v1)', functi
 
     expect(array_keys($read))->toBe(match ($mode) {
         // The tiles, and the queue source's workload rows (delayed, oldest_cell, pending, processes, queue, utilization)
-        LiveMode::Poll => ['caption', 'color', 'delayed', 'delayed.value', 'generated_at', 'key', 'oldest_cell', 'pending', 'pending.caption', 'pending.color', 'pending.value', 'processes', 'queue', 'throughput.caption', 'tile', 'utilization', 'value'],
-        LiveMode::Stream => ['delayed', 'oldest_cell', 'pending', 'processes', 'queue', 'throughput.caption', 'utilization'],
+        LiveMode::Poll => ['caption', 'color', 'delayed', 'delayed.value', 'generated_at', 'horizon.status', 'key', 'oldest_cell', 'pending', 'pending.caption', 'pending.color', 'pending.value', 'processes', 'queue', 'throughput.caption', 'tile', 'utilization', 'value'],
+        LiveMode::Stream => ['delayed', 'generated_at', 'horizon.status', 'oldest_cell', 'pending', 'processes', 'queue', 'throughput.caption', 'utilization'],
         LiveMode::Off => [],
     });
 })->with(Rendered::modes());
@@ -280,10 +280,10 @@ it('reads the Prometheus targets of the off render unchanged', function (LiveMod
 
     expect($prometheus)->toBe(match ($mode) {
         LiveMode::Off => $offPrometheus,
-        // Without #3 A and B, #2 B and C (#8 B stays, for a Job or Batch filter), and the queue source's columns of
-        // now (#24 A, B, D, F, G), which read the snapshot
-        LiveMode::Poll => $offPrometheus - 4 - 5,
+        // Without #1 N, #3 A and B, #2 B and C (#8 B stays, for a Job or Batch filter), and the queue source's
+        // columns of now (#24 A, B, D, F, G), which read the snapshot
+        LiveMode::Poll => $offPrometheus - 5 - 5,
         // and without #2 A, #9 A
-        LiveMode::Stream => $offPrometheus - 6 - 5,
+        LiveMode::Stream => $offPrometheus - 7 - 5,
     });
 })->with(Rendered::modes());

@@ -134,6 +134,11 @@ final class SyntheticModel
                 $processes = max($settings['min'], min($mx, $busy));
                 yield ['horizon_supervisor_processes', $this->labels(['supervisor' => $supervisor, 'queue' => $queue]), $processes];
 
+                if (! $legacy) {
+                    // A balanced pool per queue: the pool label is the queue
+                    yield ['horizon_supervisor_queues', $this->labels(['supervisor' => $supervisor, 'queue' => $queue, 'pool' => $queue]), 1];
+                }
+
                 if ($legacy) {
                     yield ['horizon_current_processes', $this->labels(['queue' => $queue]), $processes];
                 }

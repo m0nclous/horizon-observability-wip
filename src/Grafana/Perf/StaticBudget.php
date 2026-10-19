@@ -22,7 +22,7 @@ use DF\HorizonObservability\Metrics\MetricType;
  * does for a one-hour range at the reference scrape interval.
  *
  * The budget of 12 requests is the `--live=off` dashboard's; the live modes add the snapshot calls of their Infinity
- * targets (`${api_path}/live`), at most 5 per refresh, each served from the snapshot cache, which {@see liveRequests()}
+ * targets (`${api_path}/live`), at most 7 per refresh, each served from the snapshot cache, which {@see liveRequests()}
  * counts apart.
  *
  * @internal
@@ -32,10 +32,10 @@ final readonly class StaticBudget
     public const MAX_REQUESTS = 12;
 
     /**
-     * Poll mode's extra cost per refresh: calls of the live snapshot endpoint: the five live tile
+     * Poll mode's extra cost per refresh: calls of the live snapshot endpoint: the six live tile
      * queries and the queue source's columns of now. The endpoint serves them from its 1-second cache.
      */
-    public const MAX_LIVE_REQUESTS = 6;
+    public const MAX_LIVE_REQUESTS = 7;
 
     public const MAX_VARIABLE_REQUESTS = 2;
 

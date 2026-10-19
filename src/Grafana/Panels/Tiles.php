@@ -15,6 +15,7 @@ use DF\HorizonObservability\Grafana\Queries\Waits;
 use DF\HorizonObservability\Grafana\Queries\Workers;
 use DF\HorizonObservability\Grafana\Thresholds;
 use DF\HorizonObservability\Metrics\Metric;
+use stdClass;
 
 /**
  * The stat tiles of the Overview row.
@@ -55,6 +56,11 @@ final readonly class Tiles
     private const STATUS_INACTIVE = '-1';
 
     private const STATUS_NO_METRICS = '-2';
+
+    /**
+     * The Horizon tile's query of the current status, merged into its band; the live renders replace it.
+     */
+    public const HORIZON_CURRENT_REF = 'N';
 
     /**
      * Supervisor Processes: colours per zone, keyed by the text of n + zone / 64.
@@ -109,45 +115,58 @@ final readonly class Tiles
      * status band over time: max is far above 1, so UP draws a narrow band at the edge and values <= 0 fall
      * off the scale. The worst value per step keeps a short restart visible on long periods.
      *
+     * The shown value is the current status, not the worst of the last step: the instant query N (the last status
+     * within Prometheus' lookback) is merged into the band A as its last point, so the tile turns green with the
+     * first scrape after a restart. The live renders merge the snapshot's status instead (Live\LivePanels).
+     *
      * Stat shows the text of a value mapping, so the mappings come from query B (Config from query results,
      * one row per status): the percent and green or yellow for running, the percent and red for paused and
      * inactive, "No metrics" without metrics. count_values turns the percent into text, truncated to tenths.
+     *
+     * The uptime counts only the steps with a status in Prometheus: the time before the first scrape (a new install,
+     * a range that starts before it) and scrape gaps are unknown, not down. A failed scrape shows in the band and
+     * fires "No queue metrics" instead. Without any status in the period the percent is a dash.
      *
      * @param  array{h: int, w: int, x: int, y: int}  $gridPos
      * @return array<string, mixed>
      */
     private function horizon(array $gridPos): array
     {
+        $noMetrics = 'vector('.self::STATUS_NO_METRICS.')';
         $band = Promql::either(
             Promql::min($this->promql->over('min_over_time', Metric::HorizonStatus, Promql::INTERVAL)),
             Promql::min($this->promql->selector(Metric::HorizonStatus)),
-            'vector('.self::STATUS_NO_METRICS.')',
+            $noMetrics,
         );
+        $current = Promql::either(Promql::min($this->promql->selector(Metric::HorizonStatus)), $noMetrics);
 
         $uptime = Promql::call(
             'floor',
-            '1000 * '.Promql::range('avg_over_time', Promql::paren(Promql::either($this->workers->horizonRunning(), 'vector(0)')), Promql::RANGE.':'.Promql::INTERVAL),
+            '1000 * '.Promql::range('avg_over_time', $this->workers->horizonRunning(), Promql::RANGE.':'.Promql::INTERVAL),
         ).' / 10';
-        $uptimeText = Promql::labelReplace(
-            Promql::labelReplace(Promql::countValues('text', $uptime), 'text', '$1%', 'text', '([0-9]+[.][0-9])'),
-            'text',
-            '$1.0%',
-            'text',
-            '([0-9]+)',
+        $uptimeText = Promql::orOn(
+            Promql::labelReplace(
+                Promql::labelReplace(Promql::countValues('text', $uptime), 'text', '$1%', 'text', '([0-9]+[.][0-9])'),
+                'text',
+                '$1.0%',
+                'text',
+                '([0-9]+)',
+            ),
+            Promql::withLabel('vector(1)', 'text', Glyph::DASH),
         );
+        // An unknown uptime does not make a running Horizon yellow
+        $uptimeOrFull = Promql::paren(Promql::either($uptime, 'vector(100)'));
         $warning = (string) Thresholds::UPTIME_WARNING_PERCENT;
         $rows = [];
 
         foreach ([
-            [self::STATUS_RUNNING, 'green', ' >= '.$warning],
-            [self::STATUS_RUNNING, 'yellow', ' < '.$warning],
-            [self::STATUS_PAUSED, 'red', ''],
-            [self::STATUS_INACTIVE, 'red', ''],
+            [self::STATUS_RUNNING, 'green', $uptimeOrFull.' >= '.$warning],
+            [self::STATUS_RUNNING, 'yellow', $uptimeOrFull.' < '.$warning],
+            [self::STATUS_PAUSED, 'red', null],
+            [self::STATUS_INACTIVE, 'red', null],
         ] as [$value, $color, $condition]) {
-            $rows[] = Promql::paren(Promql::andOn(
-                Promql::withLabel(Promql::withLabel($uptimeText, 'status', $value), 'color', $color),
-                Promql::paren($uptime.$condition),
-            ));
+            $row = Promql::withLabel(Promql::withLabel($uptimeText, 'status', $value), 'color', $color);
+            $rows[] = Promql::paren($condition === null ? $row : Promql::andOn($row, Promql::paren($condition)));
         }
 
         $rows[] = Promql::withLabel(
@@ -162,6 +181,7 @@ final readonly class Tiles
             $gridPos,
             [
                 $this->common->target('A', $band, instant: false),
+                $this->common->target(self::HORIZON_CURRENT_REF, $current),
                 $this->common->target('B', Promql::either(...$rows), format: 'table'),
             ],
             thresholds: Common::thresholds('red'),
@@ -170,14 +190,31 @@ final readonly class Tiles
             valueRange: [0, 10],
             displayName: 'Uptime',
             withName: true,
-            transformations: [Common::configFromData('B', [
-                Common::handler('status', 'mappings.value'),
-                Common::handler('text', 'mappings.text'),
-                Common::handler('color', 'mappings.color'),
-                Common::handler('Time', '__ignore'),
-                Common::handler('Value', '__ignore'),
-            ])],
+            transformations: self::horizonTransformations(self::HORIZON_CURRENT_REF),
         );
+    }
+
+    /**
+     * The Horizon tile's transformations: the current status $current merged into the band A as its last point, and
+     * the mappings of B for the merged frame (no `applyTo`: a merged frame has no refId of its own).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function horizonTransformations(string $current): array
+    {
+        return [
+            ['id' => 'merge', 'filter' => Common::byRefId('A|'.$current), 'options' => new stdClass],
+            ['id' => 'configFromData', 'options' => [
+                'configRefId' => 'B',
+                'mappings' => [
+                    Common::handler('status', 'mappings.value'),
+                    Common::handler('text', 'mappings.text'),
+                    Common::handler('color', 'mappings.color'),
+                    Common::handler('Time', '__ignore'),
+                    Common::handler('Value', '__ignore'),
+                ],
+            ]],
+        ];
     }
 
     /**

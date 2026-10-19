@@ -79,8 +79,8 @@ it('reads every Infinity target from a job list or the live snapshot, with the j
 
     expect($live)->toBe(match ($mode) {
         LiveMode::Off => [],
-        LiveMode::Poll => ['24 W', '3 S', '2 L', '2 C', '8 C', '9 L'],
-        LiveMode::Stream => ['24 W', '8 C'],
+        LiveMode::Poll => ['24 W', '1 L', '3 S', '2 L', '2 C', '8 C', '9 L'],
+        LiveMode::Stream => ['24 W', '1 L', '8 C'],
     });
 })->with(Rendered::modes());
 

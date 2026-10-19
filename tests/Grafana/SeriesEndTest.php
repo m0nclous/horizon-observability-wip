@@ -68,6 +68,7 @@ function seriesEndApplication(string $job, array $values): array
     return [
         ['series' => 'ho_horizon_status{'.$labels.'}', 'values' => $other],
         ['series' => 'ho_horizon_supervisor_processes{'.$labels.', supervisor="supervisor-1", queue="default"}', 'values' => $other],
+        ['series' => 'ho_horizon_supervisor_queues{'.$labels.', supervisor="supervisor-1", queue="default", pool="default"}', 'values' => $other],
         ['series' => 'ho_queue_pending_jobs{'.$labels.', connection="redis", queue="default"}', 'values' => $other],
         ['series' => 'ho_queue_batch_created_timestamp_seconds{'.$labels.', batch="Import", name="Import 1"}', 'values' => $other],
         ['series' => 'ho_queue_batch_job_classes{'.$labels.', batch="Import", queue="default", job_class="App\\\\Jobs\\\\Import"}', 'values' => $other],

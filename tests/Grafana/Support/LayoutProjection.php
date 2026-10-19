@@ -30,6 +30,8 @@ final class LayoutProjection
 
     private const ALERT_SOUND = 23;
 
+    private const HORIZON = 1;
+
     private const QUEUES = 5;
 
     private const JOBS = 6;
@@ -86,6 +88,8 @@ final class LayoutProjection
      * - One attempts query per table: the attempts columns of #5 and #6 come from one query by status, which their
      *   transformations pivot and combine; they are taken from $dashboard after checking that they show the legacy
      *   columns in the legacy order ({@see columns()}). Field config and options stay the legacy ones.
+     * - The current Horizon status: #1 merges its current status N into the band A as its last point (`merge` of A|N
+     *   first) and applies the mappings of B to the merged frame, so its "Config from query results" has no `applyTo`.
      *
      * @param  list<array<string, mixed>>  $frozen
      * @param  array<array-key, mixed>  $dashboard  the render under test, decoded
@@ -116,6 +120,18 @@ final class LayoutProjection
                 $expected[] = $source;
 
                 continue;
+            }
+
+            if ($id === self::HORIZON && is_array($panel['transformations'] ?? null)) {
+                $config = $panel['transformations'][0] ?? null;
+
+                if (count($panel['transformations']) !== 1 || ! is_array($config) || ($config['id'] ?? null) !== 'configFromData'
+                    || ! is_array($config['options'] ?? null) || ($config['options']['applyTo'] ?? null) !== ['id' => 'byFrameRefID', 'options' => 'A']) {
+                    throw new RuntimeException('The frozen Horizon tile #1 has other transformations than one configFromData of A.');
+                }
+
+                unset($config['options']['applyTo']);
+                $panel['transformations'] = [['id' => 'merge', 'filter' => ['id' => 'byRefId', 'options' => 'A|N'], 'options' => []], $config];
             }
 
             if (($id === self::QUEUES || $id === self::JOBS) && is_array($panel['transformations'] ?? null)) {

@@ -14,8 +14,13 @@ use DF\HorizonObservability\Metrics\Metric;
  * Utilisation is per supervisor pool, not per queue: the busy workers of all its queues (averaged over the busy
  * window) over its maxProcesses. Otherwise two queues of one supervisor at 50% each would look half idle while
  * together they hit the ceiling. The reserved series of a class exists only while the class runs, so the
- * average is the sum of samples over the number of scrapes, counted on the processes series that always exists.
+ * average is the sum of samples over the number of scrapes, counted on the supervisors' queue series that always
+ * exist.
  * The filters do not apply (`queue=~".+"`, no job filter): a selected queue still counts its whole pool.
+ *
+ * Which queues a supervisor works comes from `horizon_supervisor_queues` (supervisor, queue, pool), not from the
+ * `queue` label of `horizon_supervisor_processes`: that label is the pool label, the comma-joined queue list of a
+ * balance=false supervisor (`mail,sms`), which matches neither a queue name nor the Queue filter.
  *
  * @internal
  */
@@ -58,9 +63,9 @@ final readonly class Workers
 
     /**
      * Busy share of the workers of each queue over the busy window (legacy `QUEUE_BUSY`): the reserved jobs summed
-     * over the window, divided by the number of scrapes in it, counted on the supervisors' processes series of the
-     * queue. That series replaces the pilot's `horizon_current_processes`: both come from the supervisors' process
-     * maps with the same pooled queue label, so the sample count is the same.
+     * over the window, divided by the number of scrapes in it, counted on the supervisors' queue series of the queue,
+     * which exist for every queue a running supervisor works (the pilot counted `horizon_current_processes`, whose
+     * pooled queue label left out the queues of a balance=false pool).
      */
     public function queueBusy(): string
     {
@@ -69,17 +74,65 @@ final readonly class Workers
         return Promql::paren(Promql::binary(
             Promql::sum($this->promql->over('sum_over_time', Metric::QueueJobsReserved, $this->busyWindow, [$anyQueue]), 'queue'),
             '/',
-            Promql::max($this->promql->over('count_over_time', Metric::SupervisorProcesses, $this->busyWindow, [$anyQueue]), 'queue'),
+            Promql::max($this->promql->over('count_over_time', Metric::SupervisorQueues, $this->busyWindow, [$anyQueue]), 'queue'),
             on: ['queue'],
         ));
     }
 
     /**
-     * Which queues each supervisor works (legacy `SUPERVISOR_QUEUES`).
+     * Which queues each supervisor works, one series per (supervisor, queue name) (legacy `SUPERVISOR_QUEUES`).
      */
     public function supervisorQueues(): string
     {
-        return Promql::group($this->promql->selector(Metric::SupervisorProcesses), 'supervisor', 'queue');
+        return Promql::group($this->promql->selector(Metric::SupervisorQueues), 'supervisor', 'queue');
+    }
+
+    /**
+     * The selected queues of each selected supervisor (Supervisor and Queue filters), one series per (supervisor,
+     * queue name).
+     */
+    public function selectedSupervisorQueues(): string
+    {
+        return Promql::group($this->promql->selector(
+            Metric::SupervisorQueues,
+            Promql::re('supervisor', '$supervisor'),
+            Promql::re('queue', '$queue'),
+        ), 'supervisor', 'queue');
+    }
+
+    /**
+     * The processes of the selected supervisors' pools that work a selected queue, per (supervisor, pool label): a
+     * balance=false pool `mail,sms` counts once when mail or sms or both are selected.
+     */
+    public function selectedProcesses(): string
+    {
+        $supervisor = Promql::re('supervisor', '$supervisor');
+        $pools = Promql::labelReplace(
+            Promql::group($this->promql->selector(Metric::SupervisorQueues, $supervisor, Promql::re('queue', '$queue')), 'supervisor', 'pool'),
+            'queue',
+            '$1',
+            'pool',
+            '(.*)',
+        );
+
+        return Promql::andOn($this->promql->selector(Metric::SupervisorProcesses, $supervisor), $pools, 'supervisor', 'queue');
+    }
+
+    /**
+     * The running processes that work each selected queue (Queue filter), over every supervisor: the processes of
+     * every pool whose queues include it, so each queue of a balance=false pool counts the whole pool, as the live
+     * snapshot's `workload` does.
+     */
+    public function queueProcesses(): string
+    {
+        $pools = Promql::group($this->promql->selector(Metric::SupervisorQueues, Promql::re('queue', '$queue')), 'supervisor', 'queue', 'pool');
+        $processes = Promql::sum(
+            Promql::labelReplace($this->promql->selector(Metric::SupervisorProcesses), 'pool', '$1', 'queue', '(.*)'),
+            'supervisor',
+            'pool',
+        );
+
+        return Promql::sum(Promql::binary($pools, '*', $processes, on: ['supervisor', 'pool'], groupLeft: []), 'queue');
     }
 
     /**
@@ -142,14 +195,13 @@ final readonly class Workers
     }
 
     /**
-     * Processes tile value per supervisor: the running processes (0 while Horizon is paused or stopped), or with
-     * a batch or jobs selected the workers busy with their jobs, plus the zone in the fraction
-     * (legacy `PROCESSES_VALUE`).
+     * Processes tile value per supervisor: the running processes of its pools that work a selected queue (0 while
+     * Horizon is paused or stopped), or with a batch or jobs selected the workers busy with their jobs in the selected
+     * queues, 0 for a supervisor without such workers; plus the zone in the fraction (legacy `PROCESSES_VALUE`).
      */
     public function processesValue(): string
     {
-        $selected = [Promql::re('supervisor', '$supervisor'), Promql::re('queue', '$queue')];
-        $processes = $this->promql->selector(Metric::SupervisorProcesses, ...$selected);
+        $queues = $this->selectedSupervisorQueues();
         // The panel keeps the Job filter out of its other values, so the selected jobs and their batch scope are
         // explicit here
         $reserved = Promql::sum($this->promql->batchScoped(
@@ -157,8 +209,14 @@ final readonly class Workers
         ), 'queue');
 
         $value = $this->selection->byJobSelection(
-            Promql::sum($processes, 'supervisor'),
-            Promql::sum(Promql::binary(Promql::group($processes, 'supervisor', 'queue'), '*', $reserved, on: ['queue'], groupLeft: []), 'supervisor'),
+            Promql::sum($this->selectedProcesses(), 'supervisor'),
+            // queue_jobs_reserved exists only for classes with reserved jobs: without the zero a supervisor that runs
+            // none of the selected jobs would have no value, a dash
+            Promql::orOn(
+                Promql::sum(Promql::binary($queues, '*', $reserved, on: ['queue'], groupLeft: []), 'supervisor'),
+                '0 * '.Promql::group($queues, 'supervisor'),
+                'supervisor',
+            ),
         );
 
         return Promql::binary(
@@ -175,7 +233,7 @@ final readonly class Workers
      */
     public function workerLimit(): string
     {
-        $queues = Promql::group($this->promql->selector(Metric::SupervisorProcesses, Promql::re('queue', '$queue')), 'supervisor');
+        $queues = Promql::group($this->promql->selector(Metric::SupervisorQueues, Promql::re('queue', '$queue')), 'supervisor');
 
         return Promql::max(Promql::binary($this->promql->selector(Metric::SupervisorMaxProcesses), '*', $queues, on: ['supervisor'], groupLeft: []));
     }

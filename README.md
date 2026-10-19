@@ -60,8 +60,9 @@ Expected on a new app:
 - The installer's checks report two warnings. "Timeouts, Horizon connection": its fix line is safe while the `redis`
   queue connection's `block_for` is null, as in a new app (see [Setup and operations](#setup-and-operations)).
   "Horizon, Status: not running": until you start `php artisan horizon`.
-- The Horizon tile is yellow at first: its Uptime is the share of the dashboard range (the last hour) in which Horizon
-  ran, and a running Horizon below 99 % is yellow.
+- The Horizon tile is red until you start Horizon, and yellow for a while after that: its Uptime is the share of the
+  dashboard range (the last hour) in which Horizon ran, counted from the first scrape, and a running Horizon below
+  99 % is yellow.
 - The alert "High failure rate" is pending, and fires 5 minutes later, because the demo fails 10 % of its jobs on
   purpose. A firing rule makes the dashboard ring (a browser may need a click on the page first). The alert resolves
   about 15 minutes after the burst.
@@ -335,14 +336,44 @@ A render deletes the optional rules it leaves out, so switching modes leaves no 
 otherwise set the base URL of a Piper HTTP server (`POST {url}/synthesize`, which must allow CORS from Grafana's
 origin).
 
+### Several applications
+
+One Grafana can show the queues of several applications: one dashboard per application, each rendered by that
+application from the package version it runs, so it upgrades with the application. For each application:
+
+1. A Prometheus scrape job of its own, for example `shop-horizon` and `crm-horizon` (see [Prometheus](#prometheus)).
+2. An Infinity datasource of its own, with the application's URL and API token, for example named `Shop API`.
+3. A render with its own uid, job and title, and its own Infinity datasource:
+
+   ```bash
+   php artisan horizon-observability:grafana grafana --uid=shop --job=shop-horizon --title=Shop \
+     --infinity-datasource='Shop API'
+   ```
+
+   `--uid` keeps the dashboards and the alert rule uids apart, and `--job` scopes every query and rule to the
+   application's scrape job. `--infinity-datasource` is a name regex that Grafana anchors at both ends; without it
+   the dashboard takes the first Infinity datasource, which may be another application's, and its job lists and live
+   tiles would show that application.
+4. Provisioning: every render writes the same file names (`dashboards/horizon-observability.json`,
+   `alerting/horizon-observability.json`), so give each application's files their own name or directory in the
+   mounts, for example `alerting/shop.json`. The dashboards can share one folder, and the alert rules too
+   (`--folder`): their uids differ.
+5. `HORIZON_OBSERVABILITY_GRAFANA_URL` of each application points at its own dashboard. In stream mode, give each
+   application its own `HORIZON_OBSERVABILITY_LIVE_STREAM_ID` (and render with it), or the applications push into the
+   same Grafana Live channel.
+
+Every render carries the tag `horizon-observability` besides `horizon` and `queue`, and an **Apps** dropdown in its
+links that lists the other dashboards with that tag, keeping the time range. Reset and the Horizon link stay on the
+current application.
+
 ## Live Overview modes
 
 The top row shows the current load without scrape lag. Its live tiles are Supervisor Processes, Pending and Delayed,
-plus the caption "RPM: n" of Completed. Every other tile, and the numbers of Completed and Failed, read Prometheus in
-every mode. The Current Workload tables follow the same mode for their columns of now (Utilization, Processes,
-Pending, Delayed and Oldest wait, read from the `workload` rows of `{base}/live`); their totals of the period (Wait
-p95, Completed, Failed, Timeouts, Retries, Success rate) always come from Prometheus. Pick the mode when you render
-the dashboard:
+plus the caption "RPM: n" of Completed and the status of the Horizon tile. Every other tile, the numbers of Completed
+and Failed, and the Uptime of the Horizon tile read Prometheus in every mode. The Current Workload tables follow the
+same mode for their columns of now (Utilization, Processes, Pending, Delayed and Oldest wait, read from the `workload`
+rows of `{base}/live`); their totals of the period (Wait p95, Completed, Failed, Timeouts, Retries, Success rate)
+always come from Prometheus. Pick the mode when you render the dashboard:
 
 | | `off` | `poll` (default) | `stream` |
 |---|---|---|---|
@@ -360,9 +391,12 @@ Look and caveats:
 - In poll and stream modes, Supervisor Processes has no per-supervisor sparkline.
 - In stream mode, Pending has no sparkline, and Delayed shows the last 15 minutes whatever the dashboard range.
 - In both live modes the Current Workload tables read `{base}/live` at each dashboard refresh (stream mode too: a table
-  cannot carry a stream). A balance=false pool counts its processes for each of its queues there.
+  cannot carry a stream).
 - In both live modes, the Completed caption "RPM: n" counts the last complete 60 s instead of the 5-minute average.
   In stream mode it still reads `{base}/live` through Infinity, at each dashboard refresh.
+- In both live modes, the Horizon tile takes its colour from the live status at each dashboard refresh (in stream mode
+  too), so it turns green with the first refresh after a restart; with `off`, with the first scrape. Its band below
+  keeps the worst status of each graph step, so a short restart stays visible on long ranges.
 - In poll mode, the whole dashboard refreshes every 5 s, and every viewer re-runs all of its Prometheus queries at
   each refresh. Faster polling needs a lower `GF_DASHBOARDS_MIN_REFRESH_INTERVAL`, `--live-poll-interval` and a
   re-provisioned dashboard.
@@ -694,6 +728,10 @@ Known deviations from the exact values, accepted for this release:
 
 By design:
 
+- **Uptime counts the time with metrics.** The Uptime of the Horizon tile is the share of the range in which Prometheus
+  has a Horizon status that is running. The time before the first scrape (a new install) and scrape gaps (the
+  application unreachable) are unknown, not down: the band below shows them, and "No queue metrics" fires for a gap
+  longer than 5 minutes.
 - **New series are held at 0 for 90 s.** A new (connection, queue, job class) exports 0 for its first 90 s, then every
   attempt since it appeared, so Prometheus and the dashboard count its first attempts too. The waits of a new queue
   work the same way. The cost:
@@ -705,11 +743,6 @@ By design:
   - for up to 90 s, a queue may show more waits than attempts.
 
   The hold needs successful scrapes less than 90 s apart, which every supported interval meets.
-
-Known issue, to be fixed:
-
-- **balance=false pools** are left out of the off-mode Supervisor Processes tile and of the queue tables under
-  Queue = All ([#32]).
 
 ### Setup and operations
 
@@ -775,4 +808,3 @@ history breaks once, because the `job` label and the counter keys change. [UPGRA
 [#28]: https://github.com/m0nclous/horizon-observability-wip/issues/28
 [#29]: https://github.com/m0nclous/horizon-observability-wip/issues/29
 [#30]: https://github.com/m0nclous/horizon-observability-wip/issues/30
-[#32]: https://github.com/m0nclous/horizon-observability-wip/issues/32
