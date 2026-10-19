@@ -8,6 +8,7 @@ parameters:
     tmpDir: build/phpstan
     treatPhpDocTypesAsCertain: false
     checkMissingCallableSignature: true
-    # The package's own config file is a config directory for Larastan (env() is allowed there, Arch 8.4).
+    # The package's own config file is a config directory for Larastan (env() is allowed there; the arch tests allow
+    # it nowhere else).
     configDirectories:
         - config

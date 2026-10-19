@@ -8,7 +8,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Events\Dispatchable;
 
 /**
- * Discovery fixture (Arch 8.2): an event marked as queued but without handle(); it is never pushed itself. Skipped.
+ * Discovery fixture: an event marked as queued but without handle(); it is never pushed itself. Skipped.
  */
 final readonly class PodcastPublished implements ShouldQueue
 {

@@ -1,4 +1,4 @@
--- extremes_read.lua: the duration extremes of the last 150 seconds, merged inside Redis (Addendum R3.4, D').
+-- extremes_read.lua: the duration extremes of the last 150 seconds, merged inside Redis.
 --
 -- KEYS[1..n]      the min hashes: the current 15-second bucket first, then the previous ones (n = #KEYS / 2, 10)
 -- KEYS[n+1..2n]   the max hashes of the same buckets, in the same order

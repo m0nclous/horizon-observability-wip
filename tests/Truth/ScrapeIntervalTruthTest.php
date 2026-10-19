@@ -10,11 +10,11 @@ use DF\HorizonObservability\Tests\Truth\Support\Scenario;
 use DF\HorizonObservability\Tests\Truth\Support\Scenarios;
 
 /*
-| Exporter truth (T16): the counters are absolute (C3) and the same whatever the scrape interval. Ten minutes of
-| steady load (Scenarios::timeline) are scraped every 5, 10 and 60 s (the supported range, Addendum R3), each in a
-| run of its own: every scrape equals the model at its time, the scrapes on the 60 s grid are identical across the
-| intervals, so increase() over any window between them is too, every series starts at 0 and never decreases, and
-| the invariants hold at every scrape.
+| Exporter truth: the counters are absolute (the stored totals, never increments per scrape) and the same whatever
+| the scrape interval. Ten minutes of steady load (Scenarios::timeline) are scraped every 5, 10 and 60 s (the
+| supported range), each in a run of its own: every scrape equals the model at its time, the scrapes on the 60 s grid
+| are identical across the intervals, so increase() over any window between them is too, every series starts at 0 and
+| never decreases, and the invariants hold at every scrape.
 */
 
 pest()->group('redis', 'truth');

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Metrics;
 
 /**
- * Histogram buckets between the storage and the exposition (Arch Q1.1, Q1.2).
+ * Histogram buckets between the storage and the exposition.
  *
  * Storage is non-cumulative: an observation increments only the smallest bucket whose bound it does not exceed
  * ({@see self::bucket()}), keyed by the `le` spelling of {@see self::label()}. The exposition is cumulative over the

@@ -13,10 +13,10 @@ use DF\HorizonObservability\Tests\Truth\Support\Scenarios;
 use DF\HorizonObservability\Tests\Truth\Support\TruthJob;
 
 /*
-| Exporter truth (T16): the queue gauges equal the queue the scenario left behind, and an independent read of it in
-| Redis (plain LLEN, ZCARD, ZCOUNT and json_decode, see RedisState): pending (ready plus due delayed), delayed, due,
-| the oldest wait of a first attempt (C8), ready jobs per class with "(unscanned)" beyond the scan limit, and
-| reserved jobs per class while a real worker holds one.
+| Exporter truth: the queue gauges equal the queue the scenario left behind, and an independent read of it in Redis
+| (plain LLEN, ZCARD, ZCOUNT and json_decode, see RedisState): pending (ready plus due delayed), delayed, due, the
+| oldest wait of a first attempt, ready jobs per class with "(unscanned)" beyond the scan limit, and reserved jobs
+| per class while a real worker holds one.
 */
 
 pest()->group('redis', 'truth');
@@ -127,7 +127,7 @@ it('exports a job reserved by a real worker under its class and not as pending',
         ->and($seen['pending'])->toBe(0);
 });
 
-it('omits the oldest wait when jobs are ready but none is a first attempt and nothing is due (C8 unknown)', function (): void {
+it('omits the oldest wait when jobs are ready but none is a first attempt and nothing is due', function (): void {
     $scenario = Scenario::start($this);
     // A retried payload at the head of the list (attempts 2), as a worker's migration leaves it.
     QueuePayloads::push($scenario->queueRedis(), 'sms', QueuePayloads::job('Truth\\Retried', ['attempts' => 2, 'pushedAt' => (string) ($scenario->unix() - 50)]));

@@ -21,8 +21,8 @@ use DF\HorizonObservability\Tests\Support\RedisKeys;
 use DF\HorizonObservability\Tests\TestCase;
 
 /*
-| The queues collector (Arch Q1.3, Q4, Q6.3, C8, C9): one series set per workbench queue (redis: default, slow,
-| reports, mail, sms), the class breakdown with its sentinels, and isolation per queue and against the budget.
+| The queues collector: one series set per workbench queue (redis: default, slow, reports, mail, sms), the class
+| breakdown with its sentinels, and isolation per queue and against the budget.
 */
 
 pest()->group('redis');
@@ -100,7 +100,7 @@ it('exports the counts, the classes with their sentinels and the oldest age', fu
         ->and($samples->failures)->toBe([]);
 });
 
-it('keeps the top 100 classes per queue and folds the rest into (other) (C9)', function (): void {
+it('keeps the top 100 classes per queue and folds the rest into (other)', function (): void {
     $redis = app('redis')->connection('default');
     $reserved = [];
 
@@ -130,7 +130,7 @@ it('keeps the top 100 classes per queue and folds the rest into (other) (C9)', f
         ->and(array_sum($reservedSeries))->toBe(105);
 });
 
-it('omits the oldest age when no fresh job was scanned and nothing is due (C8)', function (): void {
+it('omits the oldest age when no fresh job was scanned and nothing is due', function (): void {
     $redis = app('redis')->connection('default');
     QueuePayloads::push($redis, 'slow', queueCollectorJob('App\\Jobs\\Export', 900, ['attempts' => 2]));
 

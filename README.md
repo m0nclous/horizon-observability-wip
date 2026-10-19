@@ -675,6 +675,8 @@ Times depend on the hardware: an earlier render measured a 1-hour p50 of 0.72 s 
 
 ## Known limitations
 
+The known issues below link to their GitHub issue; [all open ones][backlog] carry the `backlog` label.
+
 ### Dashboard numbers
 
 Known deviations from the exact values, accepted for this release:
@@ -706,7 +708,7 @@ By design:
 Known issue, to be fixed:
 
 - **balance=false pools** are left out of the off-mode Supervisor Processes tile and of the queue tables under
-  Queue = All.
+  Queue = All ([#32]).
 
 ### Setup and operations
 
@@ -714,19 +716,19 @@ Known issue, to be fixed:
   Redis connection, its fix line suggests `'read_timeout' => 2.0` (predis: `'read_write_timeout'`). That suggestion
   ignores the `block_for` of a `redis` queue connection on the same Redis connection. With `block_for` 5 and a 2 s read
   timeout, every idle blocking pop fails. Set the read timeout above `block_for`, for example 7 s for `block_for` 5.
-  With `block_for` null, as in a new Laravel app, the suggestion is safe.
+  With `block_for` null, as in a new Laravel app, the suggestion is safe ([#28]).
 - `check` answers some Redis error replies with "Check that Redis is reachable", although its Storage line reports Redis
   as reachable. This happens for `NOREPLICAS` (min-replicas-to-write), "max number of clients reached",
   `CLUSTERDOWN`/`TRYAGAIN`, and a server without `TIME` ("Unknown (Redis) command called from (Lua) script"). Act on
-  the error text instead.
+  the error text instead ([#27]).
 - `install` writes the token in place of one `HORIZON_OBSERVABILITY_TOKEN=null` line. When a later line sets the key
   again, such as a commented `HORIZON_OBSERVABILITY_TOKEN=null # ...`, the app reads that later line, and `install`
-  exits 1. Keep one line per key.
+  exits 1. Keep one line per key ([#29]).
 - With predis, a `timeout` in the query string of a Redis connection `url` overrides the timeouts of the package's own
-  clients (`redis.worker_timeout`, `redis.scrape_timeout`).
+  clients (`redis.worker_timeout`, `redis.scrape_timeout`) ([#30]).
 - Some other `check` messages are imprecise in edge cases: the fix line for a `url` query with a non-positive timeout
   has no effect, an ACL refusal of the job-class or last-push read is reported as a storage problem, `cache_ttl` 0
-  reads "shared for 0 s", and the last push can read 1 s low.
+  reads "shared for 0 s", and the last push can read 1 s low ([#30]).
 - **Batches.** The Batch filter and the batch families read at most the 10 000 most recently seen links between batch
   kinds and job classes, from the last 7 days. Beyond 100 batch kinds, the rest are folded into `(other)` in the
   per-kind families; `(other)` matches no job class, so it does not work as a filter.
@@ -765,3 +767,11 @@ history breaks once, because the `job` label and the counter keys change. [UPGRA
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - [CHANGELOG.md](CHANGELOG.md)
 - License: MIT, see [LICENSE](LICENSE).
+
+<!-- The issue links of this file, in one place: change the repository here when it moves. -->
+[backlog]: https://github.com/m0nclous/horizon-observability-wip/issues?q=label%3Abacklog
+[#27]: https://github.com/m0nclous/horizon-observability-wip/issues/27
+[#28]: https://github.com/m0nclous/horizon-observability-wip/issues/28
+[#29]: https://github.com/m0nclous/horizon-observability-wip/issues/29
+[#30]: https://github.com/m0nclous/horizon-observability-wip/issues/30
+[#32]: https://github.com/m0nclous/horizon-observability-wip/issues/32

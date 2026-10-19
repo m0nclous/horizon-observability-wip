@@ -1,16 +1,16 @@
 #!/usr/bin/env node
-// Screenshots of the Grafana dashboard for the look review (Arch 8.3). Export-ignored dev tool.
+// Screenshots of the Grafana dashboard for the look review (before and after a visual change). Export-ignored dev tool.
 //
 //   node bin/screenshot.mjs [--url <dashboard url>] [--grafana http://localhost:3000] [--uid horizon-observability]
 //                           [--from now-1h] [--out build/screenshots] [--name dashboard] [--width 1920] [--height 3600]
 //                           [--wait 8]
 //
 // Headless Chromium (Playwright) with locale en-US (otherwise Grafana fails with "Invalid language tag") and timezone
-// UTC, viewport 1920x3600, kiosk mode. After network idle plus --wait seconds it writes <out>/<name>-overview.png
-// (the dashboard down to the collapsed Details rows), then expands "Details · Jobs" and "Details · Batches", waits
-// again and writes <name>-details.png (the viewport from the first Details row) and <name>-full.png (the expanded
-// dashboard from the top): the views of planning/baseline/dashboard-*.png. Run the load simulation for at least
-// 15 minutes first. Exits 1 when the dashboard shows an error or no panel.
+// UTC, viewport 1920x3600, kiosk mode. After network idle plus --wait seconds it writes <out>/<name>-overview.png (the
+// dashboard down to the collapsed Details rows), then expands "Details · Jobs" and "Details · Batches", waits again and
+// writes <name>-details.png (the viewport from the first Details row) and <name>-full.png (the expanded dashboard from
+// the top): the three views a look review compares. Run the load simulation for at least 15 minutes first. Exits 1 when
+// the dashboard shows an error or no panel.
 // Needs `npm i --no-save playwright@1.56.1 && npx playwright install chromium`.
 import { mkdirSync } from 'node:fs';
 

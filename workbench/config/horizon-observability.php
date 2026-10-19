@@ -5,7 +5,7 @@ declare(strict_types=1);
 use function Orchestra\Testbench\workbench_path;
 
 /*
-| Workbench overrides of the package config (Arch 8.2); everything else comes from the package defaults and the
+| Workbench overrides of the package config; everything else comes from the package defaults and the
 | testbench.yaml environment.
 */
 

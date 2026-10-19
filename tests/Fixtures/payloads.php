@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 /*
-| Readiness parity fixtures (Arch Q6.3, C8, C19): raw queue payloads exactly as stored in Redis, with the readiness
-| PayloadClock::readyAt() computes from the decoded payload and that queue_state.lua must compute from the raw
-| string, and whether the payload is a first attempt (attempts == 0). Shared by tests/Unit/Queues/PayloadClockTest
-| (T02) and tests/Contract/ReadinessParityTest (T05).
+| Readiness parity fixtures: raw queue payloads exactly as stored in Redis, with the readiness PayloadClock::readyAt()
+| computes from the decoded payload and that queue_state.lua must compute from the raw string (the PHP and Lua
+| readers must agree on when a job is ready and whether it is a first attempt), and whether the payload is a first
+| attempt (attempts == 0). Shared by tests/Unit/Queues/PayloadClockTest and tests/Contract/ReadinessParityTest.
 |
 | Each case: payload (raw JSON), ready_at (Unix seconds or null), first_attempt, display_name (decoded).
 | The payloads are nowdocs, so every byte (escapes, key order) is literal.

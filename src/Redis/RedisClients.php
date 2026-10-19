@@ -11,7 +11,7 @@ use Illuminate\Redis\Connections\Connection;
 use Illuminate\Redis\RedisManager;
 
 /**
- * Private Redis clients of the package (Arch Q6.6), held by a container singleton.
+ * Private Redis clients of the package, held by a container singleton.
  *
  * A private {@see RedisManager} is built lazily on first use from a filtered copy of `database.redis`; the global
  * config is never mutated, so provider order does not matter. Every private connection:
@@ -54,7 +54,7 @@ final class RedisClients
 
     /**
      * The storage connection with `redis.worker_timeout`, for the worker-side writes; the scrape, job-list and live
-     * paths read the package keys through {@see self::reader()} of {@see self::storageConnection()} (Arch Q1.3).
+     * paths read the package keys through {@see self::reader()} of {@see self::storageConnection()}.
      */
     public function storage(): Connection
     {

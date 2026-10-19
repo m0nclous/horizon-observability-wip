@@ -7,8 +7,8 @@ use DF\HorizonObservability\Grafana\Render;
 use Illuminate\Support\Facades\Artisan;
 
 /*
- * T13 QA round 1 (adversarial): render options outside the defaults.
- * - The namespace is free ([A-Za-z_][A-Za-z0-9_]* or empty, Arch Q4), and Promql::filtered() finds the package
+ * Render options outside the defaults.
+ * - The namespace is free ([A-Za-z_][A-Za-z0-9_]* or empty), and Promql::filtered() finds the package
  *   families by the prefix: a prefix that is a word of PromQL or of the dashboard (`sum_`, `by_`, `le_`, `job_`,
  *   `queue_`) or no prefix at all must give the default render with only the metric names changed.
  * - The command help lists every option with its whole description.

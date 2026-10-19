@@ -12,9 +12,8 @@ use DF\HorizonObservability\Tests\Support\LogRecorder;
 use DF\HorizonObservability\Tests\Support\RedisCommands;
 
 /*
-| Horizon's pending, completed and failed jobs (Arch Q2.1, Q8.4 "JobStore"), seeded through Horizon's own
-| JobRepository: newest first, the period filter, expired hashes, filters, chunked and bounded scans, and the
-| failed-job details from job_details.lua.
+| Horizon's pending, completed and failed jobs, seeded through Horizon's own JobRepository: newest first, the period
+| filter, expired hashes, filters, chunked and bounded scans, and the failed-job details from job_details.lua.
 */
 
 pest()->group('redis');

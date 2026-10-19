@@ -15,7 +15,7 @@ it('scrubs invalid UTF-8', function (): void {
         ->and(mb_check_encoding(Labels::sanitize("\xFF\xFE"), 'UTF-8'))->toBeTrue();
 });
 
-it('strips control characters including the field separator (C9)', function (): void {
+it('strips control characters including the field separator', function (): void {
     expect(Labels::sanitize("a\x1fb\nc\td\re\x00f\x7fg\u{0085}h"))->toBe('abcdefgh');
 });
 

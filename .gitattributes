@@ -8,10 +8,7 @@
 /bin export-ignore
 /docker export-ignore
 /docs export-ignore
-/legacy export-ignore
-/planning export-ignore
 /tests export-ignore
-/tools export-ignore
 /workbench export-ignore
 /.editorconfig export-ignore
 /.gitattributes export-ignore

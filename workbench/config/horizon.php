@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 /*
-| Workbench Horizon topology (Arch 8.2), merged over Horizon's defaults: three supervisors in local and testing.
-| supervisor-pool runs balance=false, so its pooled queue label is "mail,sms" (C14).
+| Workbench Horizon topology, merged over Horizon's defaults: three supervisors in local and testing.
+| supervisor-pool runs balance=false, so its pooled queue label is "mail,sms".
 */
 
 $environment = [

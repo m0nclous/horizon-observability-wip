@@ -1,7 +1,0 @@
-global: {scrape_interval: 15s, scrape_timeout: 10s, evaluation_interval: 15s}
-scrape_configs:
-  - job_name: office-horizon
-    metrics_path: /metrics
-    static_configs: [{targets: ['127.0.0.1:8391'], labels: {}}]
-    relabel_configs:
-      - {target_label: instance, replacement: 'app:8080'}

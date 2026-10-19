@@ -6,7 +6,7 @@ use DF\HorizonObservability\Config\ExceptionMode;
 use DF\HorizonObservability\Http\ExceptionSummary;
 
 /*
-| The exception column of the failed-jobs list (Arch Q2.1, Q8.4, C4): the first line Horizon stores, shortened like
+| The exception column of the failed-jobs list: the first line Horizon stores, shortened like
 | a job name, in the three `exceptions` modes.
 */
 

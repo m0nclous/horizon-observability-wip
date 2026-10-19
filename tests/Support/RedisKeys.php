@@ -36,7 +36,7 @@ final class RedisKeys
 
     /**
      * An integer environment variable, or the default when it is not set. `?:` would also replace "0", so
-     * REDIS_CACHE_DB=0 read as database 1 and the cache keys in database 0 outlived the test (T18 QA round 2).
+     * REDIS_CACHE_DB=0 read as database 1 and the cache keys in database 0 outlived the test.
      */
     private static function env(string $name, int $default): int
     {

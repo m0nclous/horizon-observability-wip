@@ -21,10 +21,10 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Schema;
 
 /*
-| The collector dry run of horizon-observability:check (owner decision 13: a number check prints must equal the
-| scrape): per collector, the families and samples it reports are those GET {base}/metrics renders (TextFormat leaves
-| out the empty families), with Horizon running and without, with and without recorded attempts and batches. The
-| dry run fails a collector the scrape would drop, and warns when it takes longer than the budget of a 5 s scrape.
+| The collector dry run of horizon-observability:check (a number check prints must equal the scrape): per collector,
+| the families and samples it reports are those GET {base}/metrics renders (TextFormat leaves out the empty
+| families), with Horizon running and without, with and without recorded attempts and batches. The dry run fails a
+| collector the scrape would drop, and warns when it takes longer than the budget of a 5 s scrape.
 */
 
 pest()->group('redis');

@@ -21,10 +21,10 @@ use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Queue\Worker;
 
 /*
-| SIGALRM races (C20). (a) The worker keeps the alarm armed while JobAttempted listeners run, so a late JobTimedOut
-| can follow JobAttempted; on 13.33+ with killOnTimeout=false JobAttempted follows JobTimedOut. The pilot counted
-| such an attempt twice. (b) JobTimedOut fires from the signal handler, possibly while the job is half-way through a
-| Redis pipeline: the pilot's record ran exec() on the job's own phpredis client and committed the job's commands.
+| SIGALRM races. (a) The worker keeps the alarm armed while JobAttempted listeners run, so a late JobTimedOut can follow
+| JobAttempted; on 13.33+ with killOnTimeout=false JobAttempted follows JobTimedOut. The pilot counted such an attempt
+| twice. (b) JobTimedOut fires from the signal handler, possibly while the job is half-way through a Redis pipeline: the
+| pilot's record ran exec() on the job's own phpredis client and committed the job's commands.
 */
 
 pest()->group('redis');
@@ -37,7 +37,7 @@ beforeEach(function (): void {
     $this->job = static fn (): FakeRedisJob => FakeRedisJob::make(QueuePayloads::job('App\\Jobs\\SendInvoice', ['timeout' => 60]));
 });
 
-it('counts a late JobTimedOut after JobAttempted once (C20)', function (): void {
+it('counts a late JobTimedOut after JobAttempted once', function (): void {
     $job = ($this->job)();
 
     event(new JobProcessing('redis', $job));
@@ -47,7 +47,7 @@ it('counts a late JobTimedOut after JobAttempted once (C20)', function (): void 
     expect(Storage::hash($this->keys->attempts()))->toBe(['redis|default|App\\Jobs\\SendInvoice|completed' => '1']);
 });
 
-it('counts a JobAttempted after JobTimedOut once, as timed out (C20, killOnTimeout=false)', function (): void {
+it('counts a JobAttempted after JobTimedOut once, as timed out (killOnTimeout=false)', function (): void {
     $job = ($this->job)();
 
     event(new JobProcessing('redis', $job));
@@ -60,7 +60,7 @@ it('counts a JobAttempted after JobTimedOut once, as timed out (C20, killOnTimeo
         ->and(Storage::hash($this->keys->durationBuckets()))->toBe(['redis|default|App\\Jobs\\SendInvoice|0.05' => '1']);
 });
 
-it('records a timeout through the private storage client only (C20)', function (): void {
+it('records a timeout through the private storage client only', function (): void {
     $commands = RedisCommands::start($this->app);
     $job = ($this->job)();
 
@@ -71,7 +71,7 @@ it('records a timeout through the private storage client only (C20)', function (
         ->and(array_diff(array_column($commands->commands(), 'connection'), [RedisClients::STORAGE]))->toBe([]);
 });
 
-it('leaves the half-built pipeline of the job untouched (C20)', function (): void {
+it('leaves the half-built pipeline of the job untouched', function (): void {
     $client = app('redis')->connection('horizon')->client();
 
     if (! $client instanceof Redis) {
@@ -96,7 +96,7 @@ it('leaves the half-built pipeline of the job untouched (C20)', function (): voi
     expect(RedisKeys::all($prefixed))->toBe([$prefixed]);
 });
 
-it('records a real worker timeout once when the worker is not killed (C20, Laravel 13.33+)', function (): void {
+it('records a real worker timeout once when the worker is not killed (Laravel 13.33+)', function (): void {
     if (! property_exists(Worker::class, 'killOnTimeout') || ! extension_loaded('pcntl')) {
         $this->markTestSkipped('Worker::$killOnTimeout needs Laravel 13.33+ and pcntl.');
     }

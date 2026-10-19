@@ -12,10 +12,9 @@ use DF\HorizonObservability\Tests\TestCase;
 use Illuminate\Support\Facades\Date;
 
 /*
-| Honest numbers (owner decision 13), T12 QA round 1: on one Redis state, GET {base}/live must show the numbers the
-| exporter exports for it and the off-mode tiles compute from them: Horizon status, pending, delayed and due,
-| reserved, the oldest age and its level per queue, the wait thresholds, and per supervisor the processes and the
-| maximum.
+| Honest numbers: on one Redis state, GET {base}/live must show the numbers the exporter exports for it and the
+| off-mode tiles compute from them: Horizon status, pending, delayed and due, reserved, the oldest age and its level
+| per queue, the wait thresholds, and per supervisor the processes and the maximum.
 */
 
 pest()->group('redis');
@@ -158,7 +157,7 @@ it('reads the time from Laravel\'s clock like the exporter, so Date handlers and
 });
 
 it('counts in the ring exactly the attempts the counters count', function (): void {
-    // The counters of a new series read 0 for their first seconds (T16, AttemptsCollector::NEW_SERIES_HOLD_SECONDS);
+    // The counters of a new series read 0 for their first seconds (AttemptsCollector::NEW_SERIES_HOLD_SECONDS);
     // the ring is read from its keys, so only the scrape moves past the hold.
     LiveState::freeze(LiveState::now()->addSeconds(AttemptsCollector::NEW_SERIES_HOLD_SECONDS));
     $metrics = Exposition::parse((string) $this->get('/horizon/observability/metrics')->assertOk()->getContent());

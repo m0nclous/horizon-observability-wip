@@ -6,12 +6,12 @@ use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * T13 QA round 1 (adversarial): the hidden api_path, horizon_url and tts_url variables read horizon_info with a
- * 7-day lookback (Arch Q5.2), so they still have a value while the application is not scraped. When the application
- * changes one of them (horizon.path, horizon-observability.path, the Horizon URL or the speech URL), the old series
- * stays in that window for 7 days, the variable gets two values and Grafana takes the first one it is given: the four
- * job-list panels then read `<old api_path>/jobs/<list>` (404) and the links open the old Horizon URL. A variable must
- * give the value the application exports now, and fall back to the lookback only when there is none.
+ * The hidden api_path, horizon_url and tts_url variables read horizon_info with a 7-day lookback, so they still have a
+ * value while the application is not scraped. When the application changes one of them (horizon.path,
+ * horizon-observability.path, the Horizon URL or the speech URL), the old series stays in that window for 7 days, the
+ * variable gets two values and Grafana takes the first one it is given: the four job-list panels then read
+ * `<old api_path>/jobs/<list>` (404) and the links open the old Horizon URL. A variable must give the value the
+ * application exports now, and fall back to the lookback only when there is none.
  */
 
 pest()->group('grafana');

@@ -16,7 +16,7 @@ use Predis\Connection\NodeConnectionInterface;
 use Predis\Connection\ParametersInterface;
 
 /*
-| horizon-observability:check judges the Redis client Laravel really builds (T14 QA round 3): its Timeouts block, its
+| horizon-observability:check judges the Redis client Laravel really builds: its Timeouts block, its
 | Persistent warnings and the Storage prefix come from what each connector hands its client, and every fix line names a
 | place that client reads. The ground truth is always the client itself, built by Laravel's RedisManager from the
 | config as RedisServiceProvider builds it (the same code on every Laravel leg of CI, 11.23 to 13, predis 2 and 3):

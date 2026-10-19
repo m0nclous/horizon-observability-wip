@@ -21,7 +21,7 @@ use RedisCluster;
 use UnexpectedValueException;
 
 /**
- * One `queue_state.lua` call per queue on a reader client (Arch Q6.3, Q6.6, Q6.11, C8, C12; Addendum D').
+ * One `queue_state.lua` call per queue on a reader client.
  *
  * - **Connection.** The queue connection's Redis connection comes from {@see Topology::redisConnection()} and is read
  *   through {@see RedisClients::reader()} (`redis.scrape_timeout`, never persistent); the keys are Laravel's
@@ -34,7 +34,7 @@ use UnexpectedValueException;
  * - **Full mode** ({@see self::inspect()}, the queues collector): counts, the class breakdown of the first
  *   `queue_scan_limit` head payloads (at most {@see self::MAX_BYTES}), the reserved breakdown of at most
  *   {@see self::RESERVED_SCAN_LIMIT} payloads (at most {@see self::RESERVED_MAX_BYTES}), and the readiness of the first
- *   first-attempt payload (C8).
+ *   first-attempt payload.
  * - **Live mode** ({@see self::live()}, the live snapshot): the same counts and readiness, but the head scan stops
  *   at the first fresh payload, at {@see self::LIVE_SCAN_LIMIT} payloads and at {@see self::LIVE_MAX_BYTES}; no pending
  *   breakdown; the reserved breakdown only when asked (a Job or Batch filter is active).
@@ -50,17 +50,17 @@ final readonly class QueueInspector
     public const SCRIPT = 'queue_state';
 
     /**
-     * Reserved payloads counted by class per queue (Arch Q3 internal constants).
+     * Reserved payloads counted by class per queue (an internal constant).
      */
     public const RESERVED_SCAN_LIMIT = 1000;
 
     /**
-     * Byte cap of the reserved scan in both modes (applied by the script), like the head scan's in full mode (C12).
+     * Byte cap of the reserved scan in both modes (applied by the script), like the head scan's in full mode.
      */
     public const RESERVED_MAX_BYTES = 16777216;
 
     /**
-     * Byte cap of the head scan in full mode (Arch Q3 internal constants).
+     * Byte cap of the head scan in full mode (an internal constant).
      */
     public const MAX_BYTES = 16777216;
 
@@ -70,7 +70,7 @@ final readonly class QueueInspector
     public const LIVE_SCAN_LIMIT = 20;
 
     /**
-     * Byte cap of the head scan in live mode (Addendum D').
+     * Byte cap of the head scan in live mode.
      */
     public const LIVE_MAX_BYTES = 1048576;
 

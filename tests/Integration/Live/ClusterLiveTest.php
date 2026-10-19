@@ -20,9 +20,9 @@ use Illuminate\Support\Facades\Http;
 use Predis\Client;
 
 /*
-| The live keys on a Redis Cluster storage connection (Addendum E'): the ring read, the snapshot cache (MGET of the
-| fresh and stale copies, the build lock), the leader lease, the delayed window and the meta fields all live under
-| the {horizon-observability} hash tag, so every command and script touches one slot.
+| The live keys on a Redis Cluster storage connection: the ring read, the snapshot cache (MGET of the fresh and stale
+| copies, the build lock), the leader lease, the delayed window and the meta fields all live under the
+| {horizon-observability} hash tag, so every command and script touches one slot.
 |
 | Needs a cluster node: REDIS_CLUSTER_HOST (127.0.0.1) and REDIS_CLUSTER_PORT (7000), see ClusterStorageTest.
 */

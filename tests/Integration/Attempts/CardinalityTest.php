@@ -13,9 +13,9 @@ use DF\HorizonObservability\Tests\Fixtures\Attempts\Storage;
 use DF\HorizonObservability\Tests\Support\LogRecorder;
 
 /*
-| Cardinality guards of the attempts (Arch Q4 guard 1, C9). The pilot labelled attempts by any displayName and kept
-| every field forever: about 25 series per distinct name, exported on every scrape. Now: a class set capped at
-| max_job_classes inside the record EVAL, overflow as (other), a 30-day idle prune and lazy HDEL of gone classes.
+| Cardinality guards of the attempts. The pilot labelled attempts by any displayName and kept every field forever: about
+| 25 series per distinct name, exported on every scrape. Now: a class set capped at max_job_classes inside the record
+| EVAL, overflow as (other), a 30-day idle prune and lazy HDEL of gone classes.
 */
 
 pest()->group('redis');
@@ -47,7 +47,7 @@ beforeEach(function (): void {
     };
 });
 
-it('records classes beyond max_job_classes as (other) and warns once (C9)', function (): void {
+it('records classes beyond max_job_classes as (other) and warns once', function (): void {
     Storage::record(jobClass: 'App\\Jobs\\A', now: $this->now);
     Storage::record(jobClass: 'App\\Jobs\\B', now: $this->now);
     Storage::record(jobClass: 'App\\Jobs\\C', now: $this->now);

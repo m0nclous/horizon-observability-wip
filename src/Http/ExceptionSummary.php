@@ -7,7 +7,7 @@ namespace DF\HorizonObservability\Http;
 use DF\HorizonObservability\Config\ExceptionMode;
 
 /**
- * The `exception` field of the failed-jobs list (Arch Q2.1, C4), from the exception Horizon stores for a failed job
+ * The `exception` field of the failed-jobs list, from the exception Horizon stores for a failed job
  * (`(string) $exception`: `Class: message in /path/File.php:12`, then the stack trace) or its first line as
  * `job_details.lua` returns it:
  *

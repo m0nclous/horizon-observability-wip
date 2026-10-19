@@ -13,7 +13,7 @@ use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 /**
- * Base test case (Arch 8.4).
+ * Base test case.
  *
  * - Redis host, port and client come from the environment (`REDIS_HOST`, `REDIS_PORT`, `REDIS_CLIENT`; phpunit.xml
  *   defaults to phpredis on 127.0.0.1:6379), so `REDIS_CLIENT=predis vendor/bin/pest --group=redis` runs every

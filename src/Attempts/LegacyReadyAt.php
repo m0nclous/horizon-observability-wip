@@ -18,12 +18,12 @@ use Throwable;
 
 /**
  * `JobQueued` listener of legacy stacks (no payload `delay`): stores the readiness of delayed Redis jobs for the
- * record `EVAL` (Arch Q6.8, C18, A01). Registered only when `Versions::payloadCarriesDelay()` is false.
+ * record `EVAL`. Registered only when `Versions::payloadCarriesDelay()` is false.
  *
  * For a job on a `redis` queue connection with a delay of more than 0 seconds and a non-empty id, it writes
  * `ready_at:<id>` = the Unix second the job becomes due, with the TTL delay + 1 day, through the circuit breaker.
  * The delay (seconds, `DateTimeInterface` or `DateInterval`) is normalised like `InteractsWithTime::secondsUntil()`
- * inside the guarded block (A01), so a Carbon delay never throws into the code that dispatches. The worker's
+ * inside the guarded block, so a Carbon delay never throws into the code that dispatches. The worker's
  * `record_attempt.lua` reads and deletes the key in the same `EVAL` (no extra round trip).
  *
  * @internal

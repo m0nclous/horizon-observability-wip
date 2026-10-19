@@ -3,9 +3,9 @@
 declare(strict_types=1);
 
 /*
-| The T01 probe model (planning/reference/addendum-probes/probe/synth.py, Python 3.13, glibc 2.39): exposition(t)
-| of the medium profile, written by the probe's own code. SyntheticModel (legacy schema) must reproduce it byte for
-| byte; synth-medium-1792201716.txt.gz is the full text at one of these times for readable diffs.
+| The original Python model of the performance profile (synth.py, Python 3.13, glibc 2.39): exposition(t) of the
+| medium profile, written by that model's own code. SyntheticModel (legacy schema) must reproduce it byte for byte;
+| synth-medium-1792201716.txt.gz is the full text at one of these times for readable diffs.
 */
 
 return [

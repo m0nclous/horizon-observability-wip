@@ -21,7 +21,7 @@ use Throwable;
 use WeakMap;
 
 /**
- * Event subscriber that records the attempts of `RedisJob`s that passed `JobProcessing` (Arch Q6.2, C6, C20, A05).
+ * Event subscriber that records the attempts of `RedisJob`s that passed `JobProcessing`.
  *
  * State machine, per job object (a `WeakMap`, so nothing outlives the job):
  * - `JobProcessing`: only a `RedisJob` (what Horizon and Laravel's Redis queue pop) while `collectors.attempts` is

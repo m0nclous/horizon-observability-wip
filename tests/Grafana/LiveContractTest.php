@@ -14,7 +14,7 @@ use DF\HorizonObservability\Live\Stream\LineProtocol;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * Q9' WP8D and Arch Q5.7 item 3: what the live tiles read exists where they read it.
+ * What the live tiles read exists where they read it.
  * - Every column of an Infinity target of `${api_path}/live` is a field of the snapshot JSON (schema v1,
  *   LiveSnapshot::toArray(); the `tiles` root: LiveSnapshot::tiles()) with the column's type, in every snapshot shape
  *   the endpoint answers (a seeded one, a Job filter, nothing running, an unavailable build).
@@ -141,7 +141,7 @@ it('reads only fields of the snapshot JSON with their types (schema v1)', functi
 })->with(Rendered::modes());
 
 it('names the merged live columns as the Prometheus frame: Time and Value', function (): void {
-    // merge appends the live row to the Prometheus series only when the field names agree (ADDENDUM R4.8)
+    // merge appends the live row to the Prometheus series only when the field names agree
     foreach (snapshotTargets(LiveMode::Poll) as [$id, $target]) {
         if ($target['refId'] === 'L') {
             expect(array_column($target['columns'], 'text'))->toBe(['Time', 'Value'], 'panel '.$id)
@@ -260,13 +260,13 @@ it('reads the Prometheus targets of the off render unchanged', function (LiveMod
                 $prometheus++;
                 $expected = $off[$panel['id'].' '.$target['refId']] ?? null;
 
-                // The Alerts tile and the alert sound also watch the stall rule in stream mode (ADDENDUM R4.11)
+                // The Alerts tile and the alert sound also watch the stall rule in stream mode
                 if ($mode === LiveMode::Stream && is_array($expected)) {
                     $expected['expr'] = str_replace('-(no-metrics|down|long-wait|failures)"', '-(no-metrics|down|long-wait|failures|live)"', $expected['expr']);
                 }
 
                 // The Completed RPM of the off render serves only a Job or Batch filter, whose snapshot has no
-                // throughput (ADDENDUM R4.8 as amended in T13 QA round 2)
+                // throughput
                 if ($mode !== LiveMode::Off && $panel['id'] === PanelRegistry::COMPLETED && $target['refId'] === 'B' && is_array($expected)) {
                     $expected['expr'] = Promql::unlessOn(Promql::paren($expected['expr']), Selection::allJobsSelected());
                 }

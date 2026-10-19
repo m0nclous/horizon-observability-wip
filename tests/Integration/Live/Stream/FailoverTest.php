@@ -14,9 +14,9 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 
 /*
-| Real stream processes on one Redis, in real time (Addendum R4.6): two `horizon-observability:stream` processes
-| elect one pusher; killing the leader (SIGKILL, no release) makes the follower push within 7 s (lease 5 s + retry
-| 2 s); SIGTERM finishes the tick, releases the lease at once and exits 0.
+| Real stream processes on one Redis, in real time: two `horizon-observability:stream` processes elect one pusher;
+| killing the leader (SIGKILL, no release) makes the follower push within 7 s (lease 5 s + retry 2 s); SIGTERM finishes
+| the tick, releases the lease at once and exits 0.
 */
 
 pest()->group('redis');

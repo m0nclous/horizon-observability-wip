@@ -8,19 +8,19 @@ use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * T13 QA round 4 finding 1, owner decision 13: every table and caption that counts the attempts of the period ends
- * each series at its last value inside the period, so a series that stops anywhere inside it keeps its attempts. The
- * end was the instant value at the period end (Prometheus' 5-minute lookback, nothing after a staleness marker), so a
- * series without one lost every attempt of the period: one failed scrape at the end left the tables at 0 while the
- * tiles counted 2,043 (AdversarialRound4StopTest and SpecRound4Test hold the moved, renamed and decommissioned cases).
- * The rows of the period tables are the queues and the batch kinds' classes of the period for the same reason: a
- * failed scrape of the only application also took its queues (the pending-jobs gauge) and its kinds' classes away.
+ * Every table and caption that counts the attempts of the period ends each series at its last value inside the period,
+ * so a series that stops anywhere inside it keeps its attempts. The end was the instant value at the period end
+ * (Prometheus' 5-minute lookback, nothing after a staleness marker), so a series without one lost every attempt of the
+ * period: one failed scrape at the end left the tables at 0 while the tiles counted 2,043 (AdversarialRound4StopTest
+ * and SpecRound4Test hold the moved, renamed and decommissioned cases). The rows of the period tables are the queues
+ * and the batch kinds' classes of the period for the same reason: a failed scrape of the only application also took its
+ * queues (the pending-jobs gauge) and its kinds' classes away.
  *
  * Every panel as rendered, with the variables as Grafana sends them (Promtool), samples every 10 seconds. Grafana's
  * range queries (the tiles #8 A and #4 A, the graph #14) are emulated by a subquery at the graph step (1 minute) whose
  * points are Grafana's (multiples of the step, `end()` the last of them), summed. The expected values are the raw
  * samples' truth: per series, the last value inside the period minus the last one at or before its start, which the
- * tiles already show; after a counter reset the tables count the value after the reset (owner decision 2026-10-19).
+ * tiles already show; after a counter reset the tables count the value after the reset (README, "Dashboard numbers").
  */
 
 pest()->group('grafana');

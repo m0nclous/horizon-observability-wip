@@ -36,7 +36,7 @@ it('adds the queue filter to queue families without a queue matcher of their own
         ->and($promql->filtered('office_horizon_status', true))->toBe('office_horizon_status');
 });
 
-it('adds the job filter and the batch scope to job families only when asked (ADDENDUM R2.4 O2)', function (): void {
+it('adds the job filter and the batch scope to job families only when asked', function (): void {
     $promql = new Promql('office_');
     $expr = 'office_queue_jobs_total{status=~"failed"} / office_queue_delayed_jobs';
     $scope = ' unless on (job_class) '.$promql->batchExcluded().')';

@@ -8,7 +8,7 @@ use Illuminate\Support\Env;
 
 /*
 | The .env editing of horizon-observability:install: one line, never a value that is already set. A line Laravel's
-| env() reads as no value (null, (null), empty, (empty) in any case, bare or quoted: T14 QA round 3) is not set.
+| env() reads as no value (null, (null), empty, (empty) in any case, bare or quoted) is not set.
 */
 
 it('reads a value', function (string $contents, ?string $value): void {

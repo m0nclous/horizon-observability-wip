@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Replica clocks probe with the real exporter (T16 QA round 2): one scrape target in front of two exporter replicas
+# Replica clocks probe with the real exporter: one scrape target in front of two exporter replicas
 # whose clocks are 15 s apart (replica A on the real time, B 15 s ahead; lb.py alternates A, B, ...), a worker whose
 # clock is 120 s ahead, 3 attempts of a class no series exists for (truth: 3). Runs the same timeline against two
 # checkouts, each with its own key prefix, export loops, load balancer and Prometheus v3.15.0 (scrape interval 5 s):

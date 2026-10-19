@@ -9,8 +9,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Parsed request of a job list (Arch Q2.1); the `var-*` filter parsing is shared with `GET {base}/live`
- * (Addendum C').
+ * Parsed request of a job list; the `var-*` filter parsing is shared with `GET {base}/live`.
  *
  * - `limit`: integer 1-1000, default 500; `from` and `to`: optional Unix milliseconds, `from <= to`; delayed ignores
  *   them.

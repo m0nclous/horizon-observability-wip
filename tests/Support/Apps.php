@@ -19,8 +19,9 @@ use Orchestra\Testbench\Foundation\Application as Testbench;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
- * Boots separate applications with providers in a fixed order and without package discovery, for the provider
- * order tests (Arch Q2.2): the test's own application is restored as the container and facade root afterwards.
+ * Boots separate applications with providers in a fixed order and without package discovery, for the provider order
+ * tests (Horizon's provider first or the package's): the test's own application is restored as the container and
+ * facade root afterwards.
  * Static state (hooks, maintenance exceptions) is reset before and after, so the test's own application does not
  * leak into the inspected one.
  */

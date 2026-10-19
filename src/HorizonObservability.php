@@ -9,7 +9,7 @@ use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
 use Illuminate\Http\Request;
 
 /**
- * PUBLIC static hooks of the package (Arch Q7, Appendix C), called from the app's `HorizonServiceProvider::boot()`
+ * PUBLIC static hooks of the package, called from the app's `HorizonServiceProvider::boot()`
  * like `Horizon::auth()`.
  */
 final class HorizonObservability

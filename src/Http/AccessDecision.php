@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Http;
 
 /**
- * Result of the access policy (Arch Q2.3): 200, 401 with `WWW-Authenticate: Bearer`, or 403.
+ * Result of the access policy: 200, 401 with `WWW-Authenticate: Bearer`, or 403.
  *
  * @internal
  */

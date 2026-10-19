@@ -13,9 +13,8 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
 /*
-| Adversarial probes of the stream loop (T12 QA round 2): the tick-start timing of the round 1 fix, and the lease and
-| the follower retry against the whole configurable `live.stream.interval` range (Appendix A': 0.5 to 10 s), with
-| the lease lifetime of 5 s and the follower retry of 2 s of Addendum R4.6.
+| Adversarial probes of the stream loop: the leader lease and the follower retry against the whole configurable
+| `live.stream.interval` range (0.5 to 10 s), with a lease lifetime of 5 s and a follower retry every 2 s.
 */
 
 pest()->group('redis');
@@ -54,10 +53,10 @@ it('keeps the leader lease between ticks at an interval of 5.5 s (real clock, re
     // usage, which passes 128 MB, so the run does not stop after the first tick)
     $streamer->run(static fn (): bool => false, 5, 4096, false);
 
-    // Before T12 round 3 the lease (PX 5000) was renewed only at a tick start and before a push, so it expired 0.5 s
-    // before the second tick: the leader "lost" it to nobody, pushed nothing in that tick and led again one tick
-    // later, so a single replica pushed every 11 s and two replicas handed the lease back and forth. Now the leader
-    // renews it every second while it waits.
+    // Earlier the lease (PX 5000) was renewed only at a tick start and before a push, so it expired 0.5 s before the
+    // second tick: the leader "lost" it to nobody, pushed nothing in that tick and led again one tick later, so a
+    // single replica pushed every 11 s and two replicas handed the lease back and forth. Now the leader renews it every
+    // second while it waits.
     expect($this->pushes)->toHaveCount(2)
         ->and($streamer->lastOutcome())->toBe(LiveStreamer::PUSHED);
 });
@@ -87,9 +86,9 @@ it('lets a follower retry every 2 s whatever the push interval, so a failover ta
     $time->advance(0.1);
     $follower->run(static fn (): bool => false, 9, 4096, false);
 
-    // Addendum R4.6: "Followers retry every 2 s, so failover takes at most about 7 s" (5 s lease + 2 s retry). Before
-    // T12 round 3 the follower retried only on its own ticks (0.1, 4.1, 8.1 s), so it took over at 8.1 s, and in
-    // general up to 5 s + interval after the leader's last renew; now it retries at 0.1, 2.1, 4.1 and 6.1 s.
+    // Followers retry every 2 s, so a failover takes at most about 7 s (5 s lease + 2 s retry). Earlier the follower
+    // retried only on its own ticks (0.1, 4.1, 8.1 s), so it took over at 8.1 s, and in general up to 5 s + interval
+    // after the leader's last renew; now it retries at 0.1, 2.1, 4.1 and 6.1 s.
     expect($expired)->toBeTrue()
         ->and($this->pushes[0])->toBe(0.0)
         ->and($this->pushes[1] ?? null)->not->toBeNull()

@@ -5,7 +5,7 @@ declare(strict_types=1);
 use DF\HorizonObservability\Metrics\HistogramSnapshot;
 
 /*
-| HistogramSnapshot (Arch Q1.1, Q1.2, 8.4): non-cumulative storage to cumulative buckets of the configured bounds.
+| HistogramSnapshot: non-cumulative storage to cumulative buckets of the configured bounds.
 */
 
 it('makes the stored buckets cumulative with every configured bound and +Inf as the count', function (): void {

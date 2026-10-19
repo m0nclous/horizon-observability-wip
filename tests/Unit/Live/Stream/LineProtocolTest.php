@@ -7,8 +7,9 @@ use DF\HorizonObservability\Live\LiveSnapshot;
 use DF\HorizonObservability\Live\Stream\LineProtocol;
 
 /*
-| The Influx line protocol of a push (Addendum R4.7): tagless tiles rows 1 ms apart in R4.7 order, floats without
-| the i suffix, -1 for null, escaped string fields, the delayed window and the "unavailable" frame.
+| The Influx line protocol of a push: tagless tiles rows 1 ms apart (pending, delayed, supervisors by display name,
+| throughput), floats without the i suffix, -1 for null, escaped string fields, the delayed window and the
+| "unavailable" frame.
 */
 
 const LINE_PROTOCOL_T = 1792201716123000000;

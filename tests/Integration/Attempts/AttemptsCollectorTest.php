@@ -17,8 +17,8 @@ use DF\HorizonObservability\Tests\Fixtures\Attempts\Storage;
 use DF\HorizonObservability\Tests\Support\RedisCommands;
 
 /*
-| AttemptsCollector reads (Arch 8.4 "Reads"): zero-fill, cumulative buckets, a bucket change, the merged extremes,
-| meta, stale-field HDEL and the cost per scrape, on both Redis clients. Values are absolute on every scrape (C3).
+| AttemptsCollector reads: zero-fill, cumulative buckets, a bucket change, the merged extremes, meta, stale-field HDEL
+| and the cost per scrape, on both Redis clients. Values are absolute on every scrape.
 */
 
 pest()->group('redis');
@@ -26,7 +26,7 @@ pest()->group('redis');
 beforeEach(function (): void {
     $this->keys = new Keys;
     $this->now = CarbonImmutable::createFromTimestamp(1_700_000_012.5);
-    // New series are exported as 0 for their first seconds (T16); the value tests scrape after that.
+    // New series are exported as 0 for their first seconds; the value tests scrape after that.
     $this->later = $this->now->addSeconds(AttemptsCollector::NEW_SERIES_HOLD_SECONDS);
     $this->series = 'connection=redis,queue=default,job_class=App\\Jobs\\SendInvoice';
 });
@@ -60,7 +60,7 @@ it('zero-fills all five statuses of every known series', function (): void {
     ]);
 });
 
-it('exports absolute values on every scrape (C3)', function (): void {
+it('exports absolute values on every scrape', function (): void {
     Storage::record(now: $this->now);
 
     $first = Storage::scrape($this->later)['samples']['queue_jobs_total'][$this->series.',status=completed'];
@@ -121,7 +121,7 @@ it('exports the wait histogram per queue', function (): void {
         ->and($samples['queue_job_wait_seconds_count']['connection=redis,queue=default'])->toBe(2);
 });
 
-it('exports the min and max of the last 10 extremes buckets (Addendum R3.4)', function (): void {
+it('exports the min and max of the last 10 extremes buckets', function (): void {
     $at = static fn (float $seconds): CarbonImmutable => CarbonImmutable::createFromTimestamp($seconds);
 
     Storage::record(duration: 4.0, now: $at(1_700_000_012.0));
@@ -164,8 +164,8 @@ it('reads on the short-timeout reader with a bounded number of commands', functi
 
     Storage::scrape($this->now);
 
-    // The guard, 5 counter hashes, the new-series hold (T16), the extremes, meta and the class set; the scrape path
-    // never prunes the class set.
+    // The guard, 5 counter hashes, the new-series hold, the extremes, meta and the class set; the scrape path never
+    // prunes the class set.
     expect($commands->names(RedisClients::READER.'horizon'))->toBe(['EVAL', 'HGETALL', 'HGETALL', 'HGETALL', 'HGETALL', 'HGETALL', 'EVAL', 'EVAL', 'HGETALL', 'ZRANGE'])
         ->and($commands->count())->toBe(10);
 });
@@ -222,7 +222,7 @@ it('keeps the data and reports a partial failure when the reset guard fails', fu
     }
 });
 
-it('holds every series with a creation time and reports a partial failure when the hold script fails (T16)', function (): void {
+it('holds every series with a creation time and reports a partial failure when the hold script fails', function (): void {
     // E.g. TIME refused by an ACL (tests/Truth/FirstValueTruthTest): the data stays, nothing is released, so no
     // exported counter drops back to 0 when the script works again.
     $directory = sys_get_temp_dir().'/ho-attempts-lua-hold-'.getmypid();
@@ -267,6 +267,6 @@ it('fails the collector when the storage cannot be read', function (): void {
         $thrown = $e;
     }
 
-    // The exporter turns this into exporter_collector_success{collector="attempts"} 0 (Arch Q1.3).
+    // The exporter turns this into exporter_collector_success{collector="attempts"} 0.
     expect($thrown)->toBeInstanceOf(Throwable::class);
 });

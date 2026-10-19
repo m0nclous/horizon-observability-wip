@@ -26,7 +26,7 @@ it('runs writes while closed', function (): void {
         ->and($this->log->records)->toBe([]);
 });
 
-it('opens on a failure, warns once and skips writes for the cooldown (C11)', function (): void {
+it('opens on a failure, warns once and skips writes for the cooldown', function (): void {
     $runs = 0;
     $fail = function () use (&$runs): never {
         $runs++;

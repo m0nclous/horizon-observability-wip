@@ -19,12 +19,13 @@ use Illuminate\Contracts\Container\Container;
 use Illuminate\Redis\Connections\Connection;
 
 /**
- * Storage of the attempts (Arch Q6.2, Q6.6, Appendix D and E; Addendum R3.4, R4.5).
+ * Storage of the attempts.
  *
  * Writes: {@see self::record()} runs exactly one `record_attempt.lua` `EVAL` per attempt on the private storage
- * client (`redis.worker_timeout`, never the app's or the job's connection object, C20b) through the per-process
- * circuit breaker (C11), so an unreachable storage costs at most one timeout per cooldown and nothing reaches the
- * worker. The `EVAL` goes through Laravel's normalised `Connection::eval()` on phpredis and predis alike (C2).
+ * client (`redis.worker_timeout`, never the app's or the job's connection object, so a timeout handler cannot flush
+ * a pipeline the job was building) through the per-process circuit breaker, so an unreachable storage costs at most
+ * one timeout per cooldown and nothing reaches the worker. The `EVAL` goes through Laravel's normalised
+ * `Connection::eval()` on phpredis and predis alike.
  *
  * Reads (for the attempts collector): the counter hashes, the series inside the new-series hold (`new_series.lua`,
  * which also releases the others), the job-class set, the merged extremes of the last 150 seconds
@@ -42,7 +43,7 @@ use Illuminate\Redis\Connections\Connection;
 final readonly class AttemptStore
 {
     /**
-     * TTL of an extremes bucket (Addendum R3.4): longer than the 150 s read window.
+     * TTL of an extremes bucket: longer than the 150 s read window.
      */
     public const EXTREMES_TTL_SECONDS = 300;
 
@@ -53,7 +54,7 @@ final readonly class AttemptStore
 
     /**
      * Job classes idle for longer than this leave the class set when it is full and a new class needs the room
-     * (Arch Q4: 30 days); their series stop.
+     * (30 days); their series stop.
      */
     public const CLASS_IDLE_SECONDS = 2592000;
 
@@ -206,7 +207,7 @@ final readonly class AttemptStore
      * The admitted job classes.
      *
      * Read only: classes idle for {@see self::CLASS_IDLE_SECONDS} leave the set inside `record_attempt.lua`, and only
-     * when the set is full and a new class needs the room (Arch Q4 guard 1). Pruning idle classes on every scrape
+     * when the set is full (`max_job_classes`) and a new class needs the room. Pruning idle classes on every scrape
      * instead would delete the counters of a job that runs less often than every 30 days (a monthly job), so each
      * run would start a new series at 1 that `increase()` and the dashboard never count.
      *
@@ -221,7 +222,7 @@ final readonly class AttemptStore
 
     /**
      * Duration extremes of the 15-second bucket of `$now` and the 9 before it, merged per field (min of the minima,
-     * max of the maxima): every attempt stays visible for more than 135 s (Addendum R3.4).
+     * max of the maxima): every attempt stays visible for more than 135 s.
      *
      * @return array{min: array<string, string>, max: array<string, string>} field => seconds
      */

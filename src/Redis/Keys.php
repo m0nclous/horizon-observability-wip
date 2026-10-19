@@ -8,7 +8,7 @@ use DF\HorizonObservability\Metrics\Labels;
 use InvalidArgumentException;
 
 /**
- * Names of the package's storage keys (Arch Q6.5 and Appendix E, Addendum E').
+ * Names of the package's storage keys.
  *
  * Every key starts with the hash tag `{horizon-observability}`, so all of them share one Redis Cluster slot, and with
  * the schema version `v1`. The storage connection adds its own prefix (e.g. `laravel_horizon:`) to `KEYS[]`; Lua
@@ -27,12 +27,12 @@ final readonly class Keys
     public const SEPARATOR = "\x1f";
 
     /**
-     * Width of a duration extremes bucket (Addendum R3.4): `extremes:<unix div 15>:min|max`.
+     * Width of a duration extremes bucket: `extremes:<unix div 15>:min|max`.
      */
     public const EXTREMES_BUCKET_SECONDS = 15;
 
     /**
-     * Width of a live ring buffer bucket (Addendum R4.5): `live:ring:<unix div 5>`.
+     * Width of a live ring buffer bucket: `live:ring:<unix div 5>`.
      */
     public const RING_BUCKET_SECONDS = 5;
 
@@ -88,7 +88,7 @@ final readonly class Keys
      * `conn\x1fqueue\x1fclass` for the attempt series of a (connection, queue, job class), `conn\x1fqueue` for the
      * wait histogram of a queue. Written by `record_attempt.lua` with the first count of a series; the attempts
      * collector exports a series as 0 for its first seconds, so Prometheus sees it start at 0 and `increase()` counts
-     * its first attempts (T16). `new_series.lua` deletes a field when it releases its series.
+     * its first attempts. `new_series.lua` deletes a field when it releases its series.
      */
     public function created(): string
     {

@@ -14,7 +14,7 @@ use InvalidArgumentException;
 use RuntimeException;
 
 /**
- * A sample job of `horizon-observability:demo` (owner decision 12): it sleeps for its duration, then completes, fails,
+ * A sample job of `horizon-observability:demo`: it sleeps for its duration, then completes, fails,
  * fails once and succeeds on the retry, or releases itself once. It touches nothing else, so a demo run is safe to
  * repeat. Horizon and the dashboard show it as `Demo\<name>`.
  *

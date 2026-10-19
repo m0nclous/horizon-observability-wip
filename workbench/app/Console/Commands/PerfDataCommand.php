@@ -10,7 +10,7 @@ use Workbench\App\Perf\SyntheticModel;
 
 /**
  * Writes the synthetic history of the performance profile as OpenMetrics chunks for
- * `promtool tsdb create-blocks-from openmetrics` (ADDENDUM R2.2 step 1). One chunk per 2-hour block window, aligned
+ * `promtool tsdb create-blocks-from openmetrics`. One chunk per 2-hour block window, aligned
  * like Prometheus blocks, plus `info.om` with 7 days of `horizon_info` at 60 s (the dashboard reads it with a 7-day
  * lookback).
  *

@@ -10,12 +10,12 @@ use DF\HorizonObservability\Tests\Truth\Support\Samples;
 use DF\HorizonObservability\Tests\Truth\Support\Scenario;
 
 /*
-| Exporter truth (T16): the horizon families equal what Horizon's own repositories hold (HorizonTruth restates the
-| rules from MasterSupervisorRepository and SupervisorRepository): the status, the processes per supervisor and pool
-| summed over every master, the largest minimum and maximum, the settings, every queue a supervisor works with the
-| pool that works it (horizon_supervisor_queues, the fix of the pilot's balance=false bug in #5), the wait thresholds
-| and the links. The records are written exactly as Horizon writes them (HorizonState); a real Horizon is in
-| HorizonProcessTruthTest.
+| Exporter truth: the horizon families equal what Horizon's own repositories hold (HorizonTruth restates the rules
+| from MasterSupervisorRepository and SupervisorRepository): the status, the processes per supervisor and pool summed
+| over every master, the largest minimum and maximum, the settings, every queue a supervisor works with the pool that
+| works it (horizon_supervisor_queues: PromQL cannot split the pool label of a balance=false pool into its queues),
+| the wait thresholds and the links. The records are written exactly as Horizon writes them (HorizonState); a real
+| Horizon is in HorizonProcessTruthTest.
 */
 
 pest()->group('redis', 'truth');

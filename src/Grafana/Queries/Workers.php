@@ -59,8 +59,8 @@ final readonly class Workers
     /**
      * Busy share of the workers of each queue over the busy window (legacy `QUEUE_BUSY`): the reserved jobs summed
      * over the window, divided by the number of scrapes in it, counted on the supervisors' processes series of the
-     * queue. That series replaces the pilot's `horizon_current_processes` (Arch Q5.2, Q5.6 step 3): both come
-     * from the supervisors' process maps with the same pooled queue label, so the sample count is the same.
+     * queue. That series replaces the pilot's `horizon_current_processes`: both come from the supervisors' process
+     * maps with the same pooled queue label, so the sample count is the same.
      */
     public function queueBusy(): string
     {

@@ -14,8 +14,8 @@ use Workbench\App\Simulation\SimulatedFailure;
 use Workbench\App\Simulation\SimulatedJob;
 
 /*
-| The simulated outcomes on a real Redis queue with an in-process worker (T11): each outcome produces the attempt
-| sequence the dashboard counts. Timed-out jobs kill their worker, so they are covered by the unit test only.
+| The simulated outcomes on a real Redis queue with an in-process worker: each outcome produces the attempt sequence the
+| dashboard counts. Timed-out jobs kill their worker, so they are covered by the unit test only.
 |
 | The worker runs inside the test process, whose memory grows over a whole suite: with queue:work's default
 | --memory=128 it would stop at once with exit code 12 (Worker::EXIT_MEMORY_LIMIT), so the tests raise it.

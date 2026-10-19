@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Http;
 use Symfony\Component\Process\Process;
 
 /*
- * Q9' WP8D acceptance (e2e) on Grafana 12.4.13 and 13.2.4: the committed poll render shows the live value of its tiles
+ * End to end on Grafana 12.4.13 and 13.2.4: the committed poll render shows the live value of its tiles
  * within one dashboard refresh, the committed stream render within 2 s while horizon-observability:stream pushes, and
  * neither shows a duplicate field across the refreshes (tests/Grafana/Support/live-e2e.mjs compares the tiles with
  * GET /live four times a second). Runs against the stack of the CI e2e job: GRAFANA_URL (admin access through

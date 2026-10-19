@@ -12,7 +12,7 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Route middleware `Authorize:metrics` / `Authorize:api` (Arch Q2.3): the {@see AccessPolicy} decides before any
+ * Route middleware `Authorize:metrics` / `Authorize:api`: the {@see AccessPolicy} decides before any
  * Redis or DB work, and before the configured middleware (e.g. a throttle), which runs after it.
  *
  * - 401 `Unauthorized.` with `WWW-Authenticate: Bearer realm="horizon-observability"` when a token is required and

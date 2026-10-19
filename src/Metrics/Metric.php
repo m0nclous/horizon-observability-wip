@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Metrics;
 
 /**
- * The single catalog of metric families (Arch Q1.2 and Appendix B, Addendum R1 and B'), in exposition order.
+ * The single catalog of metric families, in exposition order.
  *
  * The value is the family name without the namespace; the exporter prefixes it with `<namespace>_`. Family names,
- * types, label names and label value sets are the public metric contract (Arch Q4); HELP texts are English, ASCII-only
+ * types, label names and label value sets are the public metric contract; HELP texts are English, ASCII-only
  * and never contain the namespace. Collectors, the Grafana renderer, the README metric table and the contract tests
  * read this enum. The exposed names are SemVer-covered; the PHP enum itself is not.
  *

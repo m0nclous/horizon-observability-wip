@@ -28,7 +28,7 @@ final readonly class JobLists
 
     /**
      * The job list URL, relative to the Infinity datasource URL: the API path the application exports
-     * (`horizon_info{api_path}`, the hidden `api_path` variable) and the list (Arch Q5.2, Q5.6 step 5).
+     * (`horizon_info{api_path}`, the hidden `api_path` variable) and the list.
      */
     public const URL = '${api_path}/jobs/{list}';
 

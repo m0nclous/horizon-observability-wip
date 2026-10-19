@@ -11,8 +11,8 @@ use DF\HorizonObservability\Tests\TestCase;
 use Illuminate\Redis\Connections\Connection;
 
 /*
-| lock.lua and the lease commands of LiveRedis (Addendum R4.2, R4.6, D'): SET NX PX takes a lease, lock.lua renews
-| (compare-and-PEXPIRE) and releases (compare-and-DEL) it only while it holds the caller's token. Both clients.
+| lock.lua and the lease commands of LiveRedis: SET NX PX takes a lease, lock.lua renews (compare-and-PEXPIRE) and
+| releases (compare-and-DEL) it only while it holds the caller's token. Both clients.
 */
 
 pest()->group('redis');

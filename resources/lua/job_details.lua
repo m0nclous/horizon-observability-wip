@@ -1,6 +1,6 @@
 --[[
 job_details.lua: the attempts and the first exception line of Horizon job hashes, for the final page of the
-failed-jobs list only (Arch Q2.1, C13; Appendix D). The payload and the stack trace stay in Redis.
+failed-jobs list only. The payload and the stack trace stay in Redis.
 
 KEYS[1..n]  Horizon job hashes (n <= 100), as the job ids of the page
 

@@ -12,8 +12,8 @@ use DF\HorizonObservability\Tests\Integration\Batches\Support\BatchTable;
 use DF\HorizonObservability\Tests\Integration\Batches\Support\Families;
 
 /*
-| C9 (batches): the pilot's batch labels grew without bound: hex tokens survived the kind normaliser as letter
-| fragments, every kind was exported and every batch carried size and created labels. Now kinds fold into (other)
+| Batch label cardinality: the pilot's batch labels grew without bound: hex tokens survived the kind normaliser as
+| letter fragments, every kind was exported and every batch carried size and created labels. Now kinds fold into (other)
 | after 100, per-batch series are capped at 200 per kind and 2000 per scrape, and hex tokens are stripped.
 */
 

@@ -8,7 +8,7 @@ use DF\HorizonObservability\Grafana\Render;
 
 /*
  * The render is a pure function of the options: the same bytes on every run and whatever the float ini settings,
- * and the JSON printer reads its own output back byte for byte (Arch Q5.1).
+ * and the JSON printer reads its own output back byte for byte.
  */
 
 pest()->group('grafana');

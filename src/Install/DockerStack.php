@@ -7,10 +7,9 @@ namespace DF\HorizonObservability\Install;
 use InvalidArgumentException;
 
 /**
- * The files of `horizon-observability:install --docker` (owner decision 12): a small local stack with Prometheus
- * (scraping the app every 10 s with the bearer token, Addendum R3.2) and Grafana (Infinity and Business Text plugins,
- * both datasources, the rendered dashboard, which becomes the organisation's home dashboard, and the alert rules),
- * pointed at the app.
+ * The files of `horizon-observability:install --docker`: a small local stack with Prometheus (scraping the app every
+ * 10 s with the bearer token) and Grafana (Infinity and Business Text plugins, both datasources, the rendered
+ * dashboard, which becomes the organisation's home dashboard, and the alert rules), pointed at the app.
  *
  * Nothing secret is written: Docker Compose reads `HORIZON_OBSERVABILITY_TOKEN` (and an optional
  * `HORIZON_OBSERVABILITY_API_TOKEN`) from the `.env` file next to the compose file, which is the application's own.
@@ -38,7 +37,7 @@ final readonly class DockerStack
     public const PROMETHEUS_IMAGE = 'quay.io/prometheus/prometheus:v3.15.0';
 
     /**
-     * Supported Grafana majors => image (owner decision 4).
+     * Supported Grafana majors => image.
      *
      * @var array<int, string>
      */

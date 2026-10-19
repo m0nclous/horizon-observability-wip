@@ -8,12 +8,12 @@ use DF\HorizonObservability\Queues\QueueInspector;
 use DF\HorizonObservability\Tests\Support\QueuePayloads;
 
 /*
-| T18 QA round 3 (adversarial): 03e291d made PayloadClock::isFirstAttempt() read a non-finite attempts as a first
-| attempt, like first_attempt() in queue_state.lua. The shared fixtures cover the plain string-extraction path with
-| six out-of-range values. These cases probe the other paths of the Lua twin and the edges of the new float rule:
-| the cjson path (a key that occurs twice, so the script decodes the payload), the boundaries of the double range
-| and of |attempts| < 1, numeric strings with surrounding whitespace and long exponents. Both sides must agree on
-| every case, or the queue wait (Lua) and the wait samples of the attempt tracker (PHP) read the payload differently.
+| Adversarial probes: 03e291d made PayloadClock::isFirstAttempt() read a non-finite attempts as a first attempt, like
+| first_attempt() in queue_state.lua. The shared fixtures cover the plain string-extraction path with six out-of-range
+| values. These cases probe the other paths of the Lua twin and the edges of the new float rule: the cjson path (a
+| key that occurs twice, so the script decodes the payload), the boundaries of the double range and of |attempts| < 1,
+| numeric strings with surrounding whitespace and long exponents. Both sides must agree on every case, or the queue
+| wait (Lua) and the wait samples of the attempt tracker (PHP) read the payload differently.
 */
 
 pest()->group('redis');
@@ -68,7 +68,7 @@ dataset('attempts edges', [
     '"0x10" is not numeric' => [plainAttemptsPayload('"0x10"', '1700000068.5'), true],
 ]);
 
-it('reads the attempts edges of the float rule like PayloadClock in full and live mode (T18 QA round 3)', function (string $payload, bool $firstAttempt): void {
+it('reads the attempts edges of the float rule like PayloadClock in full and live mode', function (string $payload, bool $firstAttempt): void {
     QueuePayloads::push(app('redis')->connection('default'), 'default', $payload);
     $decoded = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
     $now = CarbonImmutable::createFromTimestamp(1700100000);

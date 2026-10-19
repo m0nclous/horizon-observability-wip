@@ -83,7 +83,7 @@ it('logs with the null cache store, throttled in the process only', function ():
 });
 
 it('reports locally without touching the cache, throttled in the process', function (): void {
-    // The cache may sit on the Redis that failed: reportLocally() must not wait for it (the breaker, C11).
+    // The cache may sit on the Redis that failed: reportLocally() must not wait for it (the circuit breaker uses it).
     $this->app->instance('cache', new class
     {
         public int $calls = 0;

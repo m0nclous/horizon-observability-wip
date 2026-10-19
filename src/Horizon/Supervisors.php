@@ -10,7 +10,7 @@ use Laravel\Horizon\Contracts\SupervisorRepository;
 
 /**
  * Running Horizon supervisors and the Horizon status from Horizon's own (container-bound) repositories, which read
- * through the app's `horizon` connection (Arch Q6.6). Callers memoise the results per scrape via
+ * through the app's `horizon` connection. Callers memoise the results per scrape via
  * {@see ScrapeContext::remember()}. Repository errors propagate.
  *
  * @internal
@@ -110,7 +110,7 @@ final readonly class Supervisors
     }
 
     /**
-     * `auto` and `simple` stay; `false`, `off` and anything unknown become `off` (Arch Q4).
+     * `auto` and `simple` stay; `false`, `off` and anything unknown become `off`.
      */
     public static function balance(mixed $balance): string
     {

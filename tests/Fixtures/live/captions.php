@@ -3,9 +3,9 @@
 declare(strict_types=1);
 
 /*
-| Caption, level and colour cases of the Overview tiles (Addendum R4.2, R4.4), shared by tests/Unit/Live/CaptionsTest
-| (T02) and the Grafana renderer tests (T13), so the poll/stream captions and the PromQL captions of the off mode
-| agree. Each case is [arguments, expected]. Glyphs are escapes: U+00B7 MIDDLE DOT, U+2014 EM DASH.
+| Caption, level and colour cases of the Overview tiles and the queue tables' live cells, shared by
+| tests/Unit/Live/CaptionsTest and the Grafana renderer tests, so the poll/stream captions and the PromQL captions of
+| the off mode agree. Each case is [arguments, expected]. Glyphs are escapes: U+00B7 MIDDLE DOT, U+2014 EM DASH.
 */
 
 $dot = "\u{00B7}";

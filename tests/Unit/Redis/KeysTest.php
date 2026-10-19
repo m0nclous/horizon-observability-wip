@@ -32,7 +32,7 @@ function hashSlot(string $key): int
     return $crc % 16384;
 }
 
-it('names the storage keys as Appendix E and E-prime', function (): void {
+it('names every storage key under the {horizon-observability}:v1 root', function (): void {
     $keys = new Keys;
 
     expect([
@@ -66,7 +66,7 @@ it('names the storage keys as Appendix E and E-prime', function (): void {
     ]);
 });
 
-it('puts every key in one cluster slot (C10 "single slot")', function (): void {
+it('puts every key in one cluster slot', function (): void {
     $keys = new Keys;
     $all = [
         ...$keys->all(), $keys->extremes(1, 'min'), $keys->extremes(2, 'max'), $keys->readyAt('uuid'),

@@ -18,13 +18,13 @@ use Workbench\App\Discovery\Jobs\ProcessPodcast;
 use Workbench\App\Discovery\Jobs\PruneUploads;
 
 /*
-| Exporter truth (T16): queue_job_classes lists the job_class values the application's queueable classes produce,
-| checked against PHP's own reflection of the configured directories (workbench/app/Discovery and Simulation):
+| Exporter truth: queue_job_classes lists the job_class values the application's queueable classes produce, checked
+| against PHP's own reflection of the configured directories (workbench/app/Discovery and Simulation):
 | - no false positive: every listed class exists, is instantiable, implements ShouldQueue, is what a queue pushes (a
 |   job or listener with handle() or __invoke(), a mailable, a notification) and has no displayName(), so a dispatch
 |   labels it with its class name (dispatched here for the jobs that take no arguments);
 | - no false negative: every such class of a plain PSR-4 file (one class, no functions or constants, as the
-|   discovery's safety rules require, C22) is listed.
+|   discovery's safety rules require: no other file is ever handed to the autoloader) is listed.
 */
 
 pest()->group('redis', 'truth');

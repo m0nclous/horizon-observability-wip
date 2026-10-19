@@ -1,6 +1,5 @@
 --[[
-delayed_jobs.lua: not-yet-due delayed jobs of one Laravel Redis queue as light rows, so the payloads stay in Redis
-(Arch Q2.1, C13; Appendix D).
+delayed_jobs.lua: not-yet-due delayed jobs of one Laravel Redis queue as light rows, so the payloads stay in Redis.
 
 KEYS[1]  queues:<q>:delayed   zset of delayed payloads, score = the time the job becomes available (Unix seconds)
 

@@ -43,7 +43,7 @@ use Illuminate\Support\ServiceProvider;
 use Laravel\Horizon\Horizon;
 
 /**
- * Wiring of the package (Arch Q2.2, Q7). PUBLIC as a class name only (package discovery).
+ * Wiring of the package. PUBLIC as a class name only (package discovery).
  *
  * Nothing in `register()` or `boot()` touches Redis or the DB or resolves a collector, and the boot path reads only
  * `enabled`, `collectors.*`, `grafana.url`, `path`, `domain`, `middleware`, `available_during_maintenance` and
@@ -68,7 +68,7 @@ final class HorizonObservabilityServiceProvider extends ServiceProvider
 
         $this->app->singleton(Config::class, static fn (Application $app): Config => Config::fromRepository(self::repository($app)));
         // In the console (commands, workers) only: an HTTP request resolves the snapshot before Authorize decides, and
-        // the throttled warning's cache round trip must not be paid by denied requests (Arch Q2.4). An authorised
+        // the throttled warning's cache round trip must not be paid by denied requests. An authorised
         // scrape logs the problems instead (Exporter::scrape()).
         $this->app->afterResolving(Config::class, static function (Config $config, Application $app): void {
             if ($config->problems !== [] && $app->runningInConsole()) {
@@ -162,7 +162,7 @@ final class HorizonObservabilityServiceProvider extends ServiceProvider
     }
 
     /**
-     * The package commands: the seven of Arch Q7 in its order, then `demo` (owner decision 12).
+     * The package commands: the seven core commands, then `demo`.
      *
      * @return list<class-string>
      */
@@ -181,7 +181,7 @@ final class HorizonObservabilityServiceProvider extends ServiceProvider
     }
 
     /**
-     * Paths `PreventRequestsDuringMaintenance` lets through (Arch Q2.4, Addendum R4.3). The four job lists are named,
+     * Paths `PreventRequestsDuringMaintenance` lets through. The four job lists are named,
      * not `jobs/*`, so an unknown list name still answers 503 instead of reaching Horizon's catch-all.
      *
      * @return list<string>
@@ -199,7 +199,7 @@ final class HorizonObservabilityServiceProvider extends ServiceProvider
     }
 
     /**
-     * The booting callback (Arch Q2.2): menu middleware, then the routes unless they are cached.
+     * The booting callback: menu middleware, then the routes unless they are cached.
      */
     private function beforeProvidersBoot(bool $late = false): void
     {
@@ -232,8 +232,9 @@ final class HorizonObservabilityServiceProvider extends ServiceProvider
     }
 
     /**
-     * C16: append the menu-link middleware to `horizon.middleware`, idempotently and always as an array (Horizon
-     * 5.45+ spreads it), only when `grafana.url` is set. Horizon reads the value in its own `boot()`.
+     * Append the menu-link middleware to `horizon.middleware`, idempotently and always as an array (Horizon 5.45+
+     * spreads it), only when `grafana.url` is set. It runs after every provider's `register()`, so Horizon has merged
+     * its default (`web`) and it is kept. Horizon reads the value in its own `boot()`.
      */
     private function appendHorizonMenuMiddleware(Repository $config): void
     {

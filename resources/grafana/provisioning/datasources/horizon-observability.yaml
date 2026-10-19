@@ -1,7 +1,7 @@
-# The Infinity datasource of the dashboard's job lists (Arch Q2.5, Q5.5): Grafana calls the application server-side
-# with the API bearer token, so there is no CORS and the token never reaches a browser. Set the environment variables
-# in Grafana's environment (or replace them). The panels append ${api_path}/jobs/<list> to the URL; adapt the health
-# check URL when horizon-observability.path or horizon.path differ from the defaults.
+# The Infinity datasource of the dashboard's job lists: Grafana calls the application server-side with the API bearer
+# token, so there is no CORS and the token never reaches a browser. Set the environment variables in Grafana's
+# environment (or replace them). The panels append ${api_path}/jobs/<list> to the URL; adapt the health check URL when
+# horizon-observability.path or horizon.path differ from the defaults.
 apiVersion: 1
 
 datasources:

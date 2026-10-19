@@ -20,7 +20,7 @@ use Throwable;
 use UnexpectedValueException;
 
 /**
- * PUBLIC `horizon-observability:flush` (Arch Q7, Appendix E, Addendum E'): deletes every package storage key, and
+ * PUBLIC `horizon-observability:flush`: deletes every package storage key, and
  * nothing else: the counters, histograms, extremes, `job_classes`, `batch_links`, `meta`, `ready_at:*` and `live:*`,
  * found with `SCAN MATCH <connection prefix>{horizon-observability}:v1:*` on the storage connection (on a Redis
  * Cluster on every master; the keys share one slot).

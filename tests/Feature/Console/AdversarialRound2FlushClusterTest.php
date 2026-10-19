@@ -10,14 +10,15 @@ use Illuminate\Support\Facades\Artisan;
 use Predis\Client;
 
 /*
-| T14 QA round 2 (adversarial): horizon-observability:flush on a Redis Cluster with any number of masters.
+| Adversarial probes of horizon-observability:flush on a Redis Cluster with any number of masters.
 |
 | FlushClusterTest seeds its keys through a plain client of one node, so it only runs on the single-node cluster of the
-| CI leg (on a 3-master cluster its setup gets MOVED). The page-by-page rewrite of round 1 changed the cluster path
-| (SCAN per master, DEL one key per call), so these cases seed through a cluster-aware client and run on 1 or more
-| masters: the package keys of the slot of `{horizon-observability}` (or of a connection prefix with its own hash tag),
-| more than one SCAN page of them, the other keys kept, and the count without --force equal to what is deleted.
-| Probed on a 3-master cluster (REDIS_CLUSTER_PORT=17001) and the 1-node leg. Skipped when no cluster answers.
+| CI leg (on a 3-master cluster its setup gets MOVED). The page-by-page rewrite (AdversarialRound1FlushTest) changed
+| the cluster path (SCAN per master, DEL one key per call), so these cases seed through a cluster-aware client and run
+| on 1 or more masters: the package keys of the slot of `{horizon-observability}` (or of a connection prefix with its
+| own hash tag), more than one SCAN page of them, the other keys kept, and the count without --force equal to what is
+| deleted. Probed on a 3-master cluster (REDIS_CLUSTER_PORT=17001) and the 1-node leg. Skipped when no cluster
+| answers.
 */
 
 pest()->group('cluster');

@@ -12,7 +12,7 @@ use Workbench\App\Discovery\Mail\WelcomeMail;
 use Workbench\App\Discovery\Notifications\InvoicePaid;
 
 /**
- * The workbench discovery fixtures (`workbench/app/Discovery`, Arch 8.2) and what discovery must find in them.
+ * The workbench discovery fixtures (`workbench/app/Discovery`) and what discovery must find in them.
  */
 final class DiscoveryFixtures
 {

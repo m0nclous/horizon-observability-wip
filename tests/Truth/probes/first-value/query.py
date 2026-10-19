@@ -1,9 +1,9 @@
-"""First-value probe queries (T16): usage python3 -I query.py <prometheus port> <unix time>.
+"""First-value probe queries: usage python3 -I query.py <prometheus port> <unix time>.
 
 Evaluates, per scrape job, over the 140 s window before <unix time>: the samples per series, Prometheus' increase(),
-the dashboard's exact delta() of T13 (Queries\\Attempts: the last value before the window, else the first value in
-it; replica dedupe max by (job, ...)) and "count-first", a dashboard-only alternative that counts a new series' first
-value.
+the dashboard's exact delta() when the probe ran (Queries\\Attempts: the last value before the window, else the first
+value in it; replica dedupe max by (job, ...)) and "count-first", a dashboard-only alternative that counts a new
+series' first value.
 """
 import json, sys, urllib.parse, urllib.request
 port, at = sys.argv[1], sys.argv[2]
@@ -27,5 +27,5 @@ for job in ['ho', 'late']:
     print('job=%s' % job)
     print('  samples       ', q('count_over_time(%s[140s])' % x))
     print('  increase()    ', q('increase(%s[140s])' % x))
-    print('  T13 delta()   ', q(delta))
+    print('  delta()       ', q(delta))
     print('  count-first   ', q(first))

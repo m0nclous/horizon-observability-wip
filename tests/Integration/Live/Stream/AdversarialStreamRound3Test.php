@@ -20,11 +20,11 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 
 /*
-| Adversarial probes of the stream loop (T12 QA round 3) against the round 3 changes: the leader's keep-alive renew
-| while it waits for the next tick, and the follower's 2 s retry that ends the wait early (Addendum R4.6 steps 1, 2
-| and 6), at the longest interval of Appendix A' (10 s): a keep-alive that hits a Redis error, a leader that backs
-| off for 60 s, the command cost of the keep-alive and of the retry, the outage frame cadence whatever the interval,
-| and real `horizon-observability:stream` processes on the real clock with real lease expiry.
+| Adversarial probes of the stream loop against the leader's keep-alive renew while it waits for the next tick (at least
+| every second, also during a backoff), and the follower's 2 s retry that ends its wait early, at the longest
+| `live.stream.interval` (10 s): a keep-alive that hits a Redis error, a leader that backs off for 60 s, the command
+| cost of the keep-alive and of the retry, the outage frame cadence whatever the interval, and real
+| `horizon-observability:stream` processes on the real clock with real lease expiry.
 */
 
 pest()->group('redis');
@@ -368,4 +368,4 @@ it('sends no "Live unavailable" frame after a healthy replica took over from a l
     } finally {
         $admin->executeRaw(['ACL', 'DELUSER', $user]);
     }
-})->skip('T12 QA round 3 follow-up (not blocking, present since round 1): in a partial partition the former leader pushes its second "Live unavailable" frame 6 s after its first failed retry (9 s), after a healthy replica took the expired lease (6 s), so the tiles read "Live unavailable" until that replica\'s next push; ending the frame window at the lease expiry (last kept renew + 5 s) would keep the frame from interleaving with a healthy leader.');
+})->skip('Known limitation (not blocking): in a partial partition the former leader pushes its second "Live unavailable" frame 6 s after its first failed retry (9 s), after a healthy replica took the expired lease (6 s), so the tiles read "Live unavailable" until that replica\'s next push; ending the frame window at the lease expiry (last kept renew + 5 s) would keep the frame from interleaving with a healthy leader.');

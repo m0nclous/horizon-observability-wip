@@ -8,16 +8,16 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 use Workbench\App\Perf\SyntheticModel;
 
 /*
- * The static performance gates of the committed render (ADDENDUM R2.2 step 6, R2.3, Q9' WP8C), computed from the JSON
- * with every filter at "All": no Prometheus needed, so the CI grafana job runs them on every change. The wall-time
- * budget is measured with bin/perf.mjs on the reference profile (docker/perf/README.md). Every committed render (off,
- * poll, stream) meets them; the live modes add at most 5 snapshot calls per refresh (ADDENDUM R2.3).
+ * The static performance gates of the committed render, computed from the JSON with every filter at "All": no
+ * Prometheus needed, so the CI grafana job runs them on every change. The wall-time budget is measured with
+ * bin/perf.mjs on the reference profile (docker/perf/README.md). Every committed render (off, poll, stream) meets them;
+ * the live modes add at most 5 snapshot calls per refresh.
  */
 
 pest()->group('grafana');
 
 /**
- * The options of the multi-value filters without an allValue on the reference profile (ADDENDUM R2.2, medium):
+ * The options of the multi-value filters without an allValue on the reference profile (medium):
  * Grafana's "All" of those is the regex of every option.
  *
  * @return array<string, list<string>>
@@ -71,15 +71,15 @@ function budgetPanel(int $id, array $exprs, string $datasource = '${datasource}'
     ];
 }
 
-it('looks back at most max(10m, 10 x S) from the start of a period on every counter (O1)', function (): void {
+it('looks back at most max(10m, 10 x S) from the start of a period on every counter', function (): void {
     expect(committedBudget()->counterLookbacks())->toBe([]);
 });
 
-it('evaluates no operand twice for the Batch switch: the scope sits in the selectors (O2)', function (): void {
+it('evaluates no operand twice for the Batch switch: the scope sits in the selectors', function (): void {
     expect(committedBudget()->duplicateBranches())->toBe([]);
 });
 
-it('refreshes only the batch variables with the time range (O3)', function (): void {
+it('refreshes only the batch variables with the time range', function (): void {
     $budget = committedBudget();
 
     expect($budget->variablePolicy())->toBe([])
@@ -87,7 +87,7 @@ it('refreshes only the batch variables with the time range (O3)', function (): v
         ->and($budget->variableRequests())->toBeLessThanOrEqual(StaticBudget::MAX_VARIABLE_REQUESTS);
 });
 
-it('sends at most 12 requests per refresh: the queue tables read the hidden source #24 (O5)', function (LiveMode $mode, int $requests, int $live): void {
+it('sends at most 12 requests per refresh: the queue tables read the hidden source #24', function (LiveMode $mode, int $requests, int $live): void {
     $budget = committedBudget($mode);
     $source = array_values(array_filter(Rendered::dashboard($mode)['panels'], static fn (array $panel): bool => $panel['id'] === StaticBudget::QUEUE_SOURCE));
 
@@ -106,7 +106,7 @@ it('sends at most 12 requests per refresh: the queue tables read the hidden sour
     'stream' => [LiveMode::Stream, 9, 2],
 ]);
 
-it('meets every static gate of the budget (ADDENDUM R2.3) with one attempts query per table (O6)', function (LiveMode $mode): void {
+it('meets every static gate of the budget with one attempts query per table', function (LiveMode $mode): void {
     $budget = committedBudget($mode);
 
     expect($budget->violations())->toBe([])
@@ -183,7 +183,7 @@ it('counts requests and interpolated bytes per refresh as Grafana sends them', f
         ->and($budget->interpolatedBytes())->toBe(array_sum($budget->panelBytes()) + strlen('query_result(s[3600s])'));
 });
 
-it('finds variables outside the refresh policy (O3)', function (): void {
+it('finds variables outside the refresh policy', function (): void {
     $budget = new StaticBudget(budgetDashboard([], [
         ['type' => 'query', 'name' => 'queue', 'refresh' => 2, 'query' => 'q'],
         ['type' => 'query', 'name' => 'batch_kind', 'refresh' => 1, 'query' => 'b'],
@@ -215,7 +215,7 @@ it('finds an operand that the Batch switch evaluates twice (the legacy batch_fil
         ->and($budget->duplicateBranches()[0])->toStartWith('panel 1 A: ');
 });
 
-it('requires maxDataPoints on the hidden queue source (O5)', function (): void {
+it('requires maxDataPoints on the hidden queue source', function (): void {
     $source = static fn (array $extra): StaticBudget => new StaticBudget(budgetDashboard([budgetPanel(StaticBudget::QUEUE_SOURCE, ['x'], extra: $extra)]));
 
     expect($source([])->queueSource())->toBe(['panel 24: the hidden queue source has no maxDataPoints'])

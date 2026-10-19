@@ -1,5 +1,5 @@
 {
-  "description": "Dashboard performance budget (ADDENDUM R2.3): reference stack, medium profile, --live=off, all filters All. Times in ms are p50 over refresh cycles 2-4 unless the name says otherwise; bin/perf.mjs report --budget exits 1 when a value exceeds its limit.",
+  "description": "Dashboard performance budget: reference stack, medium profile, --live=off, all filters All. Times in ms are p50 over refresh cycles 2-4 unless the name says otherwise; bin/perf.mjs report --budget exits 1 when a value exceeds its limit.",
   "overviewPanels": [1, 3, 2, 8, 9, 4, 21],
   "ranges": {
     "1h": {

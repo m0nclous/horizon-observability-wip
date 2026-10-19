@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
-# First-value probe (T16): how many attempts of a brand-new job class does Prometheus count?
+# First-value probe: how many attempts of a brand-new job class does Prometheus count?
 #
 # Runs the same timeline against two checkouts of the package, each with its own key prefix, exporter and
-# Prometheus v3.15.0 (scrape interval 5 s): BEFORE (a checkout without the T16 fix, e.g. the integration branch
-# before the merge) and AFTER (this checkout). At t=20 s three CompletingJob attempts of a class no series exists for
-# complete, at t=50 s two more; at t=150 s the probe evaluates over the window [t=10 s, t=150 s] (truth: 5):
+# Prometheus v3.15.0 (scrape interval 5 s): BEFORE (a checkout without the exporter's hold of new series) and AFTER
+# (this checkout). At t=20 s three CompletingJob attempts of a class no series exists for complete, at t=50 s two
+# more; at t=150 s the probe evaluates over the window [t=10 s, t=150 s] (truth: 5):
 # - increase(): Prometheus' own extrapolated increase;
-# - delta(): the dashboard's exact difference (T13 Queries\Attempts::delta(): the last value before the window,
-#   else the first value inside it).
+# - delta(): the dashboard's exact difference (Queries\Attempts::delta() when the probe ran: the last value before
+#   the window, else the first value inside it).
 #
 # Usage: tests/Truth/probes/first-value/run.sh <before checkout> <after checkout> [results file]
 # Needs Docker (host network), Redis on 127.0.0.1:6379, PHP with the redis extension. Uses ports 18181/18281 and

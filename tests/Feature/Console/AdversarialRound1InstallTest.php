@@ -13,7 +13,7 @@ use Symfony\Component\Process\Process;
 use Symfony\Component\Yaml\Yaml;
 
 /*
-| T14 QA round 1 (adversarial): horizon-observability:install.
+| Adversarial probes of horizon-observability:install.
 |
 | - A --token that dotenv cannot read back: written unquoted, "abcd efgh ijkl mnop" makes .env unparseable (the next
 |   boot of the app dies with Dotenv\Exception\InvalidFileException), "abcdefgh #ijklmnopqrst" is read back as

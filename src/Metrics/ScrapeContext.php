@@ -9,7 +9,7 @@ use Closure;
 use Throwable;
 
 /**
- * State of one scrape (Arch Q1.3): the request time, the deadline of the scrape budget, shared reads and the partial
+ * State of one scrape: the request time, the deadline of the scrape budget, shared reads and the partial
  * failures collectors report. One instance per request; nothing is static.
  *
  * @internal

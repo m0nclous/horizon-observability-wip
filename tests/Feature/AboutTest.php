@@ -8,9 +8,9 @@ use DF\HorizonObservability\Support\Versions;
 use Illuminate\Support\Facades\Artisan;
 
 /*
-| The `about` section (Arch Q7): endpoints and access mode, namespace, storage connection, client and cluster flag,
-| collectors, payload-delay mode, batching driver, job-class cache state and config problems, from the configuration
-| only: no Redis and no database, and never a secret.
+| The `about` section: endpoints and access mode, namespace, storage connection, client and cluster flag, collectors,
+| payload-delay mode, batching driver, job-class cache state and config problems, from the configuration only: no
+| Redis and no database, and never a secret.
 */
 
 /**

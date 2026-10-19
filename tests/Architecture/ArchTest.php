@@ -11,7 +11,7 @@ use Workbench\App\Discovery\Jobs\NamedJob;
 use Workbench\App\Discovery\Jobs\QueuedJob;
 
 /*
-| Architecture rules (Arch 8.4), and since WP8B (T13) "no office in src/ or resources/".
+| Architecture rules, including "no office in src/ or resources/": nothing shipped names the pilot installation.
 */
 
 /**
@@ -65,8 +65,8 @@ arch('all package classes are final')
     ->toBeFinal()
     ->ignoring('DF\HorizonObservability\Tests');
 
-// The discovery fixtures model application code, which includes abstract base jobs (T08, Arch 8.2): only those two
-// are exempt; Pint's final_class keeps every concrete fixture final.
+// The discovery fixtures model application code, which includes abstract base jobs: only those two are exempt;
+// Pint's final_class keeps every concrete fixture final.
 arch('all workbench classes are final')
     ->expect('Workbench\App')
     ->classes()
@@ -96,7 +96,7 @@ arch('collectors do not depend on Http')
     ->not->toUse('DF\HorizonObservability\Http');
 
 it('names no pilot installation in src or resources', function (): void {
-    // Arch Q5.6: the package render replaced the pilot's office_ prefix, uid, tag and paths (T13)
+    // The package render replaced the pilot's office_ prefix, uid, tag and paths
     $files = repositoryFiles(['src', 'resources'], '*');
     $office = array_keys(array_filter($files, static fn (string $contents): bool => stripos($contents, 'office') !== false));
 

@@ -37,7 +37,7 @@ function exampleSnapshot(): LiveSnapshot
     return LiveSnapshot::compose(exampleScope(), 1792201716123, 1000, 1, $supervisors, $queues, ['completed' => 42, 'failed' => 1, 'retried' => 0])->withAge(140);
 }
 
-it('matches the Addendum R4.4 example document', function () use ($dot): void {
+it('matches the example document of schema v1', function () use ($dot): void {
     expect(exampleSnapshot()->toArray())->toBe([
         'v' => 1,
         'generated_at' => 1792201716123,
@@ -133,7 +133,7 @@ it('picks the worst queue by wait ratio, then age, then name', function () use (
         ->and($snapshot->queues[2]['level'])->toBe(1);
 });
 
-it('levels the wait from the exact age and shows it rounded (Addendum R4.2 step 5)', function (float $age, int $seconds, int $level, float $ratio) use ($dot): void {
+it('levels the wait from the exact age and shows it rounded', function (float $age, int $seconds, int $level, float $ratio) use ($dot): void {
     $snapshot = LiveSnapshot::compose(exampleScope(), 0, 1000, 1, [], [[
         'connection' => 'redis', 'queue' => 'default', 'pending' => 1, 'reserved' => 0, 'delayed' => 0, 'delayed_due' => 0,
         'oldest_seconds' => $age, 'wait_threshold_seconds' => 10, 'completed_per_minute' => null, 'failed_per_minute' => null, 'supervisors' => [],
@@ -151,7 +151,7 @@ it('levels the wait from the exact age and shows it rounded (Addendum R4.2 step 
     'just over twice the limit' => [20.4, 20, 2, 2.04],
 ]);
 
-it('captions the worst wait from the exact age, rounded once, like the off-mode tile (Addendum R4.4)', function (float $age, int $seconds, string $caption) use ($dot): void {
+it('captions the worst wait from the exact age, rounded once, like the off-mode tile', function (float $age, int $seconds, string $caption) use ($dot): void {
     $snapshot = LiveSnapshot::compose(exampleScope(), 0, 1000, 1, [], [[
         'connection' => 'redis', 'queue' => 'default', 'pending' => 1, 'reserved' => 0, 'delayed' => 0, 'delayed_due' => 0,
         'oldest_seconds' => $age, 'wait_threshold_seconds' => null, 'completed_per_minute' => null, 'failed_per_minute' => null, 'supervisors' => [],
@@ -298,7 +298,7 @@ it('never reports a negative age', function (): void {
     expect(exampleSnapshot()->withAge(-5)->ageMs)->toBe(0);
 });
 
-it('shows the busy workers of the selected classes on the supervisor tiles under a job filter (T12)', function (?int $status, array $expected): void {
+it('shows the busy workers of the selected classes on the supervisor tiles under a job filter', function (?int $status, array $expected): void {
     [$supervisors, $queues] = exampleInputs();
     $snapshot = LiveSnapshot::compose(exampleScope(jobFilter: true), 0, 1000, $status, $supervisors, $queues, null);
     $values = array_column(array_filter($snapshot->tiles(), static fn (array $row): bool => $row['tile'] === 'supervisor'), 'value', 'key');
@@ -311,7 +311,7 @@ it('shows the busy workers of the selected classes on the supervisor tiles under
     'state unknown: 0' => [null, ['supervisor-default' => 0.0]],
 ]);
 
-it('lists only the supervisors busy with the selected classes under a job filter, as the off-mode tile (T13 QA round 2)', function (): void {
+it('lists only the supervisors busy with the selected classes under a job filter, as the off-mode tile', function (): void {
     $supervisor = static fn (string $name, int $busy): array => ['name' => $name, 'connection' => 'redis', 'balance' => 'auto', 'processes' => 3, 'min_processes' => 1, 'max_processes' => 3, 'busy' => $busy, 'queues' => ['default']];
     $supervisors = [$supervisor('supervisor-default', 2), $supervisor('supervisor-slow', 0)];
     $keys = static fn (LiveSnapshot $snapshot): array => array_column(array_filter($snapshot->tiles(), static fn (array $row): bool => $row['tile'] === 'supervisor'), 'key');
@@ -323,7 +323,7 @@ it('lists only the supervisors busy with the selected classes under a job filter
         ->and($keys(LiveSnapshot::compose(exampleScope(), 0, 1000, 1, $supervisors, [], null)))->toBe(['supervisor-default', 'supervisor-slow']);
 });
 
-it('tells snapshots with live data from failed builds (T12)', function (): void {
+it('tells snapshots with live data from failed builds', function (): void {
     [$supervisors, $queues] = exampleInputs();
     $scope = exampleScope();
 
@@ -335,7 +335,7 @@ it('tells snapshots with live data from failed builds (T12)', function (): void 
         ->and(LiveSnapshot::unavailable($scope, 0, 1000, [])->isAvailable())->toBeFalse();
 });
 
-it('keeps Horizon, the supervisors and the throughput when the queues are unknown (T12)', function (): void {
+it('keeps Horizon, the supervisors and the throughput when the queues are unknown', function (): void {
     [$supervisors] = exampleInputs();
     $errors = [['source' => 'queue:redis:default', 'message' => 'RedisException: Connection refused']];
     $snapshot = LiveSnapshot::compose(exampleScope(), 7, 1000, 1, $supervisors, [], ['completed' => 6, 'failed' => 0, 'retried' => 0], $errors)
@@ -352,7 +352,7 @@ it('keeps Horizon, the supervisors and the throughput when the queues are unknow
         ->and(LiveSnapshot::fromArray(json_decode($snapshot->toJson(), true))->toArray())->toBe($snapshot->toArray());
 });
 
-it('keeps the red supervisors of a stopped Horizon when the queues are unknown (T12)', function (): void {
+it('keeps the red supervisors of a stopped Horizon when the queues are unknown', function (): void {
     [$supervisors] = exampleInputs();
 
     $snapshot = LiveSnapshot::compose(exampleScope(), 0, 1000, -1, $supervisors, [], null)->withQueuesUnavailable();

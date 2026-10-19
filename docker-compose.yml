@@ -1,4 +1,4 @@
-# Development stack (Arch 8.3, ADDENDUM R2.2 and R4.9). Export-ignored; never part of the package.
+# Development stack (Redis, Prometheus, Grafana and optional profiles). Export-ignored; never part of the package.
 #
 # Daily loop, with PHP on the host:
 #   docker compose up -d          Redis, Prometheus (10 s scrape of host.docker.internal:8000), Grafana
@@ -23,8 +23,8 @@
 # examples), so the dev stack tests what users mount. After a renderer change: composer test:grafana fails, then
 # `vendor/bin/testbench horizon-observability:grafana "$PWD/resources/grafana" --defaults --recording-rules` updates
 # the files (a relative path is relative to testbench's skeleton) and Grafana picks the dashboard up within 10 s (alert
-# rules on a restart). GRAFANA_DASHBOARDS mounts another dashboards directory, e.g. the pilot dashboard for the perf
-# legacy row (docker/perf/README.md).
+# rules on a restart). GRAFANA_DASHBOARDS mounts another dashboards directory, e.g. the pilot dashboard for its perf
+# reference measurement (docker/perf/README.md).
 
 name: horizon-observability
 
@@ -74,7 +74,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_AUTH_ANONYMOUS_ENABLED: 'true'
       GF_PLUGINS_PREINSTALL_SYNC: yesoreyeram-infinity-datasource@4.1.1,marcusolsson-dynamictext-panel@6.3.0
-      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: 1s             # live poll faster than 5 s (ADDENDUM R2.5, R4.9)
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: 1s             # allows a live poll faster than Grafana's 5 s minimum
       GF_UNIFIED_ALERTING_STATE_HISTORY_ENABLED: 'true'
       GF_UNIFIED_ALERTING_STATE_HISTORY_BACKEND: multiple
       GF_UNIFIED_ALERTING_STATE_HISTORY_PRIMARY: annotations
@@ -136,7 +136,7 @@ services:
     profiles: [screenshots]
     image: grafana/grafana-image-renderer:v5.12.7
 
-  # Performance profile (ADDENDUM R2.2, docker/perf/README.md).
+  # Performance profile (docker/perf/README.md).
   perf-prometheus:
     profiles: [perf]
     image: ${PROMETHEUS_IMAGE:-quay.io/prometheus/prometheus:v3.15.0}

@@ -9,11 +9,12 @@ use DF\HorizonObservability\Tests\Grafana\Support\ProfileSeries;
 use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 
 /*
- * The attempts of a window (Attempts::delta(), the tables, captions and alerts' sibling): the counter difference
- * from the last value within LOOKBACK before the window, with the full-range fallback min_over_time(sel[$__range])
- * for a series without one (ADDENDUM R2.4 O7: kept, not bounded), to the last value inside the window, and the value
- * after a reset where the difference is negative. The start is evaluated once (`(end - start) >= 0 or end`); where
- * every series has a value at the end of the window (the medium profile), it must equal the legacy
+ * The attempts of a window (Attempts::delta(), the tables, captions and alerts' sibling): the counter difference from
+ * the last value within LOOKBACK before the window, with the full-range fallback min_over_time(sel[$__range]) for a
+ * series without one (kept over the whole range: a fallback bounded to the first LOOKBACK would count a series' whole
+ * value after a Prometheus outage longer than LOOKBACK over the start), to the last value inside the window, and the
+ * value after a reset where the difference is negative. The start is evaluated once (`(end - start) >= 0 or end`);
+ * where every series has a value at the end of the window (the medium profile), it must equal the legacy
  * `(now - start) >= 0 or (now < start)`, which evaluated it twice. SeriesEndTest holds the series without one.
  */
 
@@ -64,7 +65,7 @@ it('equals the legacy form on the medium profile', function (string $window): vo
     expect($status)->toBe(0, substr($output, 0, 3000));
 })->with(['the dashboard range' => ['$__range'], 'the RPM window' => ['5m']]);
 
-it('counts the value after a reset and starts after an outage over the start of the window (O7)', function (): void {
+it('counts the value after a reset and starts after an outage over the start of the window', function (): void {
     $series = static fn (string $class): string => 'ho_queue_jobs_total{job="app", instance="app:8080", connection="redis", queue="default", job_class="App\\\\Jobs\\\\'.$class.'", status="completed"}';
     $window = ProfileSeries::interpolate(deltaOf(Attempts::COMPLETED, Promql::RANGE), null, '.+');
     $labels = static fn (string $class): string => '{job_class="App\\\\Jobs\\\\'.$class.'", queue="default", status="completed"}';

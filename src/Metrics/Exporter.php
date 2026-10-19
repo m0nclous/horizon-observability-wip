@@ -20,10 +20,10 @@ use Illuminate\Http\Request;
 use Throwable;
 
 /**
- * Ordered, isolated, budgeted run of the collectors plus the self-metrics and the namespace prefix (Arch Q1.3, Q1.4).
+ * Ordered, isolated, budgeted run of the collectors plus the self-metrics and the namespace prefix.
  *
  * One scrape per request; nothing is resolved at boot and nothing is memoised between scrapes, so every value is
- * read and rendered afresh (C3: counters are absolute, there is no registry).
+ * read and rendered afresh (counters are absolute, there is no registry).
  *
  * - **Order.** `horizon`, `queues`, `attempts`, `job_classes`, `batches` ({@see Config::COLLECTORS}): when the budget
  *   runs out, the least valuable data is dropped first.
@@ -39,9 +39,9 @@ use Throwable;
  *   the catalog assigns to it ({@see Metric::collector()}), each once.
  * - **Self-metrics**, rendered last: `exporter_collector_success` and `exporter_collector_duration_seconds` per run
  *   or skipped collector, `exporter_build_info` and `exporter_config_problems`. The live push series belong to the
- *   `attempts` collector (Addendum B', R4.11).
+ *   `attempts` collector.
  *
- * The response is 200 whatever happens here (Arch Q1.3): `up` means "reachable and authorised", data health is in the
+ * The response is 200 whatever happens here: `up` means "reachable and authorised", data health is in the
  * self-metrics.
  *
  * @internal
@@ -49,7 +49,7 @@ use Throwable;
 final readonly class Exporter
 {
     /**
-     * Upper bound of the scrape budget, seconds (Arch Q3 internal constants).
+     * Upper bound of the scrape budget, seconds (an internal constant, deliberately not config).
      */
     public const BUDGET = 8.0;
 
@@ -118,7 +118,8 @@ final readonly class Exporter
         $config = $this->container->make(Config::class);
         /** @var FailureReporter $reporter */
         $reporter = $this->container->make(FailureReporter::class);
-        // The provider logs config problems in the console only; over HTTP this authorised scrape does (Arch Q2.4).
+        // The provider logs config problems in the console only; over HTTP this authorised scrape does, so a
+        // denied request never pays for the throttled warning.
         $reporter->configProblems($config);
 
         $budget = self::budget($request);

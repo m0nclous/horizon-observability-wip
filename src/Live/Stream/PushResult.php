@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Live\Stream;
 
 /**
- * Outcome of one Grafana Live push (Addendum R4.6).
+ * Outcome of one Grafana Live push.
  *
  * @internal
  */

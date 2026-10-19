@@ -10,14 +10,13 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 use Illuminate\Support\Facades\Artisan;
 
 /*
- * T13 QA round 2 (adversarial): failure isolation of the live tiles. The package render polls `${api_path}/live`
- * (owner decision 9), so the Overview row now depends on the application API, which the --live=off render needed only
- * for the collapsed job lists.
+ * Failure isolation of the live tiles. The package render polls `${api_path}/live` (--live=poll), so the Overview row
+ * now depends on the application API, which the --live=off render needed only for the collapsed job lists.
  *
  * - When the snapshot call fails (the route is absent with live.enabled = false, the Infinity datasource is missing or
  *   the application is unreachable, a token without access), "Config from query results" has no caption frame and
  *   Grafana names the Pending (#2) and Completed (#8) values after their query: both tiles show the whole PromQL
- *   expression as their caption (seen on Grafana 12.4.13 and 13.2.4 in the T13 QA round 2 stack). The off render
+ *   expression as their caption (seen on Grafana 12.4.13 and 13.2.4). The off render
  *   guards #8 against this (renameByRegex '^-1$'); a live caption needs a fallback name too, e.g. a
  *   fieldConfig.defaults.displayName that configFromData overrides.
  * - horizon-observability:grafana renders --live=poll for an application whose live endpoint is disabled.

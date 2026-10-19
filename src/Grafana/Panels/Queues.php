@@ -23,10 +23,10 @@ use stdClass;
  * Left to right: pool utilisation, workers now (processes), the queue now (pending, delayed, oldest wait over
  * the limit), totals of the period (wait p95, completed, failed, of which timeouts, retries, success rate).
  *
- * The queries run once for all supervisors in the hidden queue source #24 (ADDENDUM R2.4 O5): query M lists the
- * (queue, supervisor) rows and the other queries the values per queue; each copy of the table reads #24 through the
- * `-- Dashboard --` datasource, merges the values into the rows and keeps the rows of its own supervisor. Without it
- * each copy ran every query for all queues and then dropped the other supervisors' rows: N supervisors cost N times.
+ * The queries run once for all supervisors in the hidden queue source #24: query M lists the (queue, supervisor) rows
+ * and the other queries the values per queue; each copy of the table reads #24 through the `-- Dashboard --`
+ * datasource, merges the values into the rows and keeps the rows of its own supervisor. Without it each copy ran every
+ * query for all queues and then dropped the other supervisors' rows: N supervisors cost N times.
  *
  * @internal
  */
@@ -36,8 +36,8 @@ final readonly class Queues
 
     /**
      * Any explicit value makes Grafana run the hidden source: without one, a panel hidden before its first render
-     * never runs its queries and every copy of the table stays empty (verified on 12 and 13, ADDENDUM R2.4 O5). Its
-     * queries are instant, so the value changes nothing else.
+     * never runs its queries and every copy of the table stays empty (verified on Grafana 12 and 13). Its queries
+     * are instant, so the value changes nothing else.
      */
     private const SOURCE_MAX_DATA_POINTS = 100;
 
@@ -100,8 +100,8 @@ final readonly class Queues
                 ['id' => 'labelsToFields', 'options' => ['valueLabel' => 'status']],
                 // The values of each queue join every (queue, supervisor) row of M, whose frames are the first:
                 // Grafana's merge adds a frame's values to each earlier row of the same key (Time and queue), but
-                // a row that a frame without supervisor started takes only one supervisor (T13 QA round 2, a queue
-                // of two supervisors)
+                // a row that a frame without supervisor started takes only the first supervisor of its queue, and a
+                // queue of two supervisors would have its full row in one copy only
                 Common::merge(),
                 // The rows of this copy's supervisor; the dash of the table without supervisors keeps the stub row
                 ['id' => 'filterByValue', 'options' => ['filters' => [
@@ -142,8 +142,8 @@ final readonly class Queues
     }
 
     /**
-     * The hidden queue source #24 (ADDENDUM R2.4 O5): the table queries for every supervisor at once, in the hidden
-     * top grid row next to the alert sound panel, whose script hides both.
+     * The hidden queue source #24: the table queries for every supervisor at once, in the hidden top grid row next
+     * to the alert sound panel, whose script hides both.
      *
      * @return array<string, mixed>
      */
@@ -163,9 +163,8 @@ final readonly class Queues
 
     /**
      * The table rows come from query M, every (queue, supervisor) pair, and the values from per-queue queries; the
-     * table's merge joins them (ADDENDUM R2.4 O5 as amended in T13 QA round 2). Joining each query with the supervisors
-     * in PromQL read a day of the supervisors' processes series once per query, four times for C: about 100 ms of the
-     * 1-hour refresh on the reference profile.
+     * table's merge joins them. Joining each query with the supervisors in PromQL read a day of the supervisors'
+     * processes series once per query, four times for C: about 100 ms of the 1-hour refresh on the reference profile.
      *
      * @return list<array<string, mixed>>
      */
@@ -174,7 +173,7 @@ final readonly class Queues
         $queues = $this->selection->queues();
         $range = Promql::RANGE;
         // The queues of the period: an application whose scrape failed at the end of the period, or that stopped
-        // inside it, keeps its rows and their attempts (the columns of now show dashes; T13 QA round 4)
+        // inside it, keeps its rows and their attempts (the columns of now show dashes)
         $periodQueues = $this->selection->queues($range);
         // Each selected queue with every supervisor it was seen with within a day: a row per (queue, supervisor), so a
         // queue that several supervisors work is in each of their tables
@@ -201,8 +200,8 @@ final readonly class Queues
             // Running processes: 0 while Horizon is paused or stopped, as on the Supervisor Processes tile
             'D' => $this->selection->byJobSelection(
                 $this->orZero(Promql::binary(
-                    // The supervisors' processes per queue, which replaced the pilot's horizon_current_processes
-                    // (Arch Q5.2). The Queue filter is explicit: the family is not one of the queue-filtered ones.
+                    // The supervisors' processes per queue, which replaced the pilot's horizon_current_processes.
+                    // The Queue filter is explicit: the family is not one of the queue-filtered ones.
                     Promql::sum($this->promql->selector(Metric::SupervisorProcesses, Promql::re('queue', '$queue')), 'queue'),
                     '*',
                     $this->workers->horizonRunning(),
@@ -233,10 +232,10 @@ final readonly class Queues
             $targets[] = Common::rawTarget($refId, $this->promql->filtered($expr, true), format: 'table');
         }
 
-        // Completed, Failed, Timeouts, Retries and Success rate from one attempts query by status (ADDENDUM R2.4 O6;
-        // the legacy table evaluated attempts_delta six times): one series per (queue, status), 0 for the queues of
-        // the period without attempts. A series per status, not a table: the table pivots the statuses into columns
-        // with "Labels to fields" and computes Failed and Success rate.
+        // Completed, Failed, Timeouts, Retries and Success rate from one attempts query by status (the legacy table
+        // evaluated attempts_delta six times): one series per (queue, status), 0 for the queues of the period without
+        // attempts. A series per status, not a table: the table pivots the statuses into columns with
+        // "Labels to fields" and computes Failed and Success rate.
         $statuses = explode('|', Attempts::COUNTED);
         $targets[] = Common::rawTarget('C', $this->promql->filtered(Promql::either(
             Promql::andOn(Promql::sum($this->attempts->delta(Attempts::COUNTED, $range), 'queue', 'status'), $periodQueues, 'queue'),

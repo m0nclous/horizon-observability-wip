@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Cache;
 
 pest()->group('redis');
 
-it('cleans the keys of the redis cache store, which live in the cache database (T18 QA)', function (): void {
+it('cleans the keys of the redis cache store, which live in the cache database', function (): void {
     // The cache connection writes to REDIS_CACHE_DB (1), not REDIS_DB (0): a scan marker (TTL 1 h) left there made a
     // second run with the same pid (always 1 in a container) fail within the hour.
     // The databases follow REDIS_DB and REDIS_CACHE_DB as the app config does (0 and 1 by default).
@@ -31,7 +31,7 @@ it('cleans the keys of the redis cache store, which live in the cache database (
         ->and(RedisKeys::all(TestCase::redisPrefix()))->toBe([]);
 });
 
-it('reads REDIS_DB and REDIS_CACHE_DB set to 0 as database 0 (T18 QA round 2)', function (): void {
+it('reads REDIS_DB and REDIS_CACHE_DB set to 0 as database 0', function (): void {
     // `getenv() ?: 1` read REDIS_CACHE_DB=0 as 1: with REDIS_DB=2 the cache keys in database 0 were never cleaned.
     $saved = ['REDIS_DB' => getenv('REDIS_DB'), 'REDIS_CACHE_DB' => getenv('REDIS_CACHE_DB')];
 

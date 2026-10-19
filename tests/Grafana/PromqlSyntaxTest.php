@@ -11,8 +11,8 @@ use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Yaml\Yaml;
 
 /*
- * Arch Q5.7 item 5: every PromQL expression of the committed dashboards and alert rules (off, poll, stream; and of the
- * opt-in health rules), with Grafana's macros and the dashboard variables substituted, parses. The test writes them as recording
+ * Every PromQL expression of the committed dashboards and alert rules (off, poll, stream; and of the opt-in health
+ * rules), with Grafana's macros and the dashboard variables substituted, parses. The test writes them as recording
  * rules to build/grafana-rules.yml, which the CI grafana job checks with promtool, and runs promtool itself when
  * PROMTOOL is set (e.g. "docker run --rm -i --entrypoint promtool quay.io/prometheus/prometheus:v3.15.0") or
  * promtool is on the PATH.

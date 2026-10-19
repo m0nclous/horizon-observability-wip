@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Queues;
 
 /**
- * State of one queue read by `queue_state.lua` (Arch Q6.3, Appendix D, C8).
+ * State of one queue read by `queue_state.lua`.
  *
  * @internal
  */
@@ -76,7 +76,7 @@ final readonly class QueueSnapshot
     }
 
     /**
-     * C8: seconds the oldest ready first-attempt job has waited, `now - min(first fresh readiness, earliest due)`;
+     * Seconds the oldest ready first-attempt job has waited, `now - min(first fresh readiness, earliest due)`;
      * 0 when nothing is ready; null (unknown) when jobs are ready but neither time is known within the scan window.
      */
     public function oldestAgeSeconds(float $now): ?float

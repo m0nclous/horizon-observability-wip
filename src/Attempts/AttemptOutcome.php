@@ -8,10 +8,10 @@ use Illuminate\Contracts\Queue\Job;
 use Illuminate\Queue\Events\JobAttempted;
 
 /**
- * Laravel 11.23 / 12 / 13 shim of the attempt events (Arch Q6.2, A05). Properties are read by name, so one build
- * runs on every supported version.
+ * Laravel 11.23 / 12 / 13 shim of the attempt events. Properties are read by name, so one build runs on every
+ * supported version.
  *
- * The code is Arch Q6.2 verbatim; its tests (both event shapes, with and without `timeout`) are owned by T04 (WP2).
+ * Its tests (`AttemptOutcomeTest`) cover both event shapes, with and without `timeout`.
  *
  * @internal
  */

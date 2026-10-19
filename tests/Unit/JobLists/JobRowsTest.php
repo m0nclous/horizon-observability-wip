@@ -7,8 +7,8 @@ use DF\HorizonObservability\Http\JobList;
 use DF\HorizonObservability\Http\JobRows;
 
 /*
-| Row formatting of the job lists (Arch Q2.1): the pilot's fields and units, from
-| legacy/src/Http/Resources/Horizon{Pending,Completed,Failed,Delayed}JobResource.php.
+| Row formatting of the job lists: the pilot's field names and units, unchanged (times in epoch ms, runtime in
+| seconds rounded to 3 decimals).
 */
 
 /**
@@ -116,7 +116,7 @@ it('rounds milliseconds and runtimes like the pilot', function (): void {
         ->and(JobRows::runtime(1.0, null))->toBeNull();
 });
 
-it('gives no milliseconds for a time past the integer range instead of a wrapped one (PHP 8.5, T18)', function (): void {
+it('gives no milliseconds for a time past the integer range instead of a wrapped one (PHP 8.5)', function (): void {
     // 2^63 ms is the first value (int) cannot hold: it wraps on PHP 8.2-8.4 and warns on 8.5 (failOnWarning).
     expect(JobRows::milliseconds(1e17))->toBeNull()
         ->and(JobRows::milliseconds(-1e17))->toBeNull()
@@ -133,7 +133,7 @@ it('refuses to format delayed rows as Horizon rows', function (): void {
     JobRows::horizon(JobList::Delayed, jobRowsTestRow(), ExceptionMode::Full);
 })->throws(LogicException::class);
 
-it('keeps the Q2.1 field contract', function (): void {
+it('keeps the field contract of every list', function (): void {
     expect(JobRows::fields(JobList::Pending))->toBe(['id', 'name', 'queue', 'queued_at', 'horizon_path'])
         ->and(JobRows::fields(JobList::Completed))->toBe(['id', 'name', 'queue', 'queued_at', 'completed_at', 'runtime', 'horizon_path'])
         ->and(JobRows::fields(JobList::Failed))->toBe(['id', 'name', 'queue', 'attempts', 'failed_at', 'runtime', 'exception', 'horizon_path'])

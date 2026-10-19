@@ -6,8 +6,8 @@ use DF\HorizonObservability\Metrics\Metric;
 use DF\HorizonObservability\Metrics\MetricType;
 
 /*
-| The catalog equals Arch Appendix B as amended by Addendum R1, R3.4 and B': case, family, type, labels, collector
-| and HELP, in declaration order (C17: no spatie families, no horizon_current_processes).
+| The metric catalog in full (README.md "Metrics"): case, family, type, labels, collector and HELP, in declaration
+| order. It has no families of spatie's collectors and no horizon_current_processes.
 */
 
 const APPENDIX_B = [
@@ -49,7 +49,7 @@ const APPENDIX_B = [
     ['ConfigProblems', 'exporter_config_problems', 'gauge', [], 'self', 'Number of invalid configuration values replaced by defaults; see php artisan horizon-observability:check.'],
 ];
 
-it('equals Appendix B as amended by Addendum B-prime, in declaration order', function (): void {
+it('lists every metric with its family, type, labels, collector and HELP, in declaration order', function (): void {
     $actual = array_map(static fn (Metric $metric): array => [
         $metric->name,
         $metric->value,
@@ -83,7 +83,7 @@ it('names every self-metric ho_exporter_* with the default namespace', function 
     ]);
 });
 
-it('dropped the redundant and spatie families (C17)', function (): void {
+it('dropped the redundant and spatie families', function (): void {
     $values = array_map(static fn (Metric $metric): string => $metric->value, Metric::cases());
 
     expect($values)->not->toContain('horizon_current_processes')

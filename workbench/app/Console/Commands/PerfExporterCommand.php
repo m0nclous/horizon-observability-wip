@@ -9,7 +9,7 @@ use InvalidArgumentException;
 use Workbench\App\Perf\SyntheticModel;
 
 /**
- * Serves the synthetic perf-profile metrics on GET /metrics (ADDENDUM R2.2 step 2), continuing the backfilled history
+ * Serves the synthetic perf-profile metrics on GET /metrics, continuing the backfilled history
  * at scrape time, so dashboard ranges ending at "now" are continuous. A minimal single-threaded HTTP server: one
  * Prometheus scrapes it.
  *

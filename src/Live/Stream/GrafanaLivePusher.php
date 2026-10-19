@@ -11,12 +11,12 @@ use SensitiveParameter;
 use Throwable;
 
 /**
- * `POST {grafana}/api/live/push/{id}` of a line-protocol body with a service-account token (Addendum R4.6), through
+ * `POST {grafana}/api/live/push/{id}` of a line-protocol body with a service-account token, through
  * Laravel's HTTP client (`Http::fake()` works): 2 s timeout, 1 s connect timeout, no retries, no redirects.
  *
  * A push never throws: connection errors and timeouts are a {@see PushResult} without a status, a non-2xx answer one
  * with it. The error text is short and never contains the token. {@see self::hint()} gives the operator hint for a
- * status (Addendum R4.10), shared with `check --live-push-test`.
+ * status, shared with `check --live-push-test`.
  *
  * @internal
  */

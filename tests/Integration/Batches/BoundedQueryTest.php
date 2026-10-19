@@ -8,8 +8,8 @@ use DF\HorizonObservability\Tests\Integration\Batches\Support\BatchTable;
 use Illuminate\Support\Facades\DB;
 
 /*
-| C15: the pilot loaded every never-finished batch on every scrape, with one unbounded OR query. A scrape now runs
-| exactly two queries, each bounded by a time window and LIMIT 5000, newest first (Arch Q6.7, query-log assertion).
+| The pilot loaded every never-finished batch on every scrape, with one unbounded OR query. A scrape now runs exactly
+| two queries, each bounded by a time window and LIMIT 5000, newest first (asserted on the query log).
 */
 
 it('reads batches with two bounded queries', function (): void {

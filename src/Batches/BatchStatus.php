@@ -6,7 +6,7 @@ namespace DF\HorizonObservability\Batches;
 
 /**
  * State of a job batch: the `status` label of `queue_batch_progress`. Capitalised because the dashboard shows the
- * values as they are. The values are public (Arch Q4, SemVer-covered).
+ * values as they are. The values are public and SemVer-covered.
  */
 enum BatchStatus: string
 {

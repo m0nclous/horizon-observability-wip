@@ -9,16 +9,16 @@ use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * Owner decision 13, the counter-birth rule of T16: Prometheus cannot count the first sample of a series, and the
- * dashboard must not count it either, because the first value of a series that appears inside the range may be a
- * whole history (the scrape job or replica of an application added later, AdversarialRound2TileTest). The exporter
- * makes new series count instead: T16 exports a new (connection, queue, class) as 0 for its first 75 seconds, so its
- * first attempts are an increase from 0.
+ * The counter-birth rule: Prometheus cannot count the first sample of a series, and the dashboard must not count it
+ * either, because the first value of a series that appears inside the range may be a whole history (the scrape job or
+ * replica of an application added later, AdversarialRound2TileTest). The exporter makes new series count instead: it
+ * exports a new (connection, queue, class) as 0 for its first 90 seconds (the new-series hold, README
+ * "Dashboard numbers"), so its first attempts are an increase from 0.
  *
- * The Completed (#8) and Failed (#4) tiles and the tables (Attempts::delta(), #5 and #6) follow the same rule (T13 QA
- * round 2): a series born at 0 counts every attempt after its birth, a series born with a value counts from that
- * value, and the tile equals the sum of the table values. Grafana's range query (step = $__interval, reduced with sum)
- * is emulated by a subquery at the same step.
+ * The Completed (#8) and Failed (#4) tiles and the tables (Attempts::delta(), #5 and #6) follow the same rule: a series
+ * born at 0 counts every attempt after its birth, a series born with a value counts from that value, and the tile
+ * equals the sum of the table values. Grafana's range query (step = $__interval, reduced with sum) is emulated by a
+ * subquery at the same step.
  */
 
 pest()->group('grafana');
@@ -63,7 +63,7 @@ it('counts the attempts of a series exported as 0 first, like the tables', funct
             // A known class without attempts in the range
             ['series' => $class('Old', 'completed'), 'values' => '1000x20'],
             ['series' => $class('Old', 'failed'), 'values' => '10x20'],
-            // A new class at 9m, held at 0 by the exporter (T16), then 5 completed and 2 failed attempts
+            // A new class at 9m, held at 0 by the exporter, then 5 completed and 2 failed attempts
             ['series' => $class('New', 'completed'), 'values' => '_x8 0 0 5x10'],
             ['series' => $class('New', 'failed'), 'values' => '_x8 0 0 2x10'],
             // A series born with its value (no hold): its first value is not counted, its later attempts are

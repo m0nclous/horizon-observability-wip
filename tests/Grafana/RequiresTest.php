@@ -8,10 +8,10 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 use Symfony\Component\Yaml\Yaml;
 
 /*
- * Arch Q5.2 and Q5.6 step 8: __requires lists Grafana 12.3.0 and exactly the datasources and panels the dashboard
- * uses, with the plugin versions the dev stack and CI provision (owner decision 4). In every mode: Infinity stays
- * (the live modes read the snapshot and the job lists with it), and stream adds nothing, Grafana Live and the
- * -- Grafana -- datasource being core (ADDENDUM R4.8).
+ * __requires lists Grafana 12.3.0 and exactly the datasources and panels the dashboard uses, with the plugin versions
+ * the dev stack and CI provision (README, "Requirements"). In every mode: Infinity stays (the live modes read the
+ * snapshot and the job lists with it), and stream adds nothing, Grafana Live and the -- Grafana -- datasource being
+ * core.
  */
 
 pest()->group('grafana');

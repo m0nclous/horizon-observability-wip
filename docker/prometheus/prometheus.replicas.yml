@@ -1,5 +1,6 @@
 # Two replicas of one application (testbench serve on :8000 and :8001 on the host), one job: the e2e dedupe gate
-# compares the dashboard against a single-target run (Arch Q1.5, Q5.6 step 10). PROMETHEUS_CONFIG=prometheus.replicas.yml
+# compares the dashboard against a single-target run: every query must deduplicate replicas.
+# PROMETHEUS_CONFIG=prometheus.replicas.yml
 global:
   scrape_interval: 10s
   scrape_timeout: 8s

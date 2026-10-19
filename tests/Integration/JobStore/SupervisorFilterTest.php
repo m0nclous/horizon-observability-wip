@@ -11,9 +11,9 @@ use DF\HorizonObservability\Tests\Support\HorizonState;
 use DF\HorizonObservability\Tests\Support\QueuePayloads;
 
 /*
-| C14: the Supervisor filter of a balance=false supervisor. Horizon runs such a supervisor as one pool whose
-| process label is the comma list ("redis:mail,sms"); the pilot compared that label with the single queue of each
-| job, so every table came back empty. The queues are now split from the supervisor's queue option.
+| The Supervisor filter of a balance=false supervisor. Horizon runs such a supervisor as one pool whose process label is
+| the comma list ("redis:mail,sms"); the pilot compared that label with the single queue of each job, so every table
+| came back empty. The queues are now split from the supervisor's queue option.
 */
 
 pest()->group('redis');
@@ -47,7 +47,7 @@ function supervisorFilterTestIds(JobList $list, array $supervisors, ?array $queu
     return array_map(static fn (array $row): string => (string) $row['id'], $rows);
 }
 
-it('matches the queues of a balance=false pool (C14)', function (JobList $list, string $prefix, array $expected): void {
+it('matches the queues of a balance=false pool', function (JobList $list, string $prefix, array $expected): void {
     expect(supervisorFilterTestIds($list, ['supervisor-pool']))->toBe(array_map(static fn (string $queue): string => $prefix.$queue, $expected));
 })->with([
     'pending' => [JobList::Pending, 'p-', ['sms', 'mail']],

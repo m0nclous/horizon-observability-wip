@@ -16,7 +16,7 @@ use Laravel\Horizon\Contracts\SupervisorRepository;
 use Laravel\Horizon\HorizonServiceProvider;
 
 /*
-| GET|HEAD {base}/live (Addendum R4.3): the schema v1 document over HTTP with the job lists' var-* filters,
+| GET|HEAD {base}/live: the schema v1 document over HTTP with the job lists' var-* filters,
 | Cache-Control no-store, 200 with errors[] on failures, 422 on invalid input, and the same auth matrix as the job
 | lists (api_token, rotation, IPs, the callback, open only in local).
 */

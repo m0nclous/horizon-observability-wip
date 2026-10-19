@@ -17,12 +17,12 @@ use Laravel\Horizon\Contracts\MasterSupervisorRepository;
 use Laravel\Horizon\Contracts\SupervisorRepository;
 
 /*
-| C1 and C5 (Arch Q1.3, Appendix H): a failing source never turns the scrape into a 5xx. The response stays 200, the
-| failing collector reports exporter_collector_success 0 and the other collectors keep their data.
+| A failing source (a missing job_batches table, a Redis outage) never turns the scrape into a 5xx. The response
+| stays 200, the failing collector reports exporter_collector_success 0 and the other collectors keep their data.
 |
-| The collectors of T04, T05 and T07 are stubs here, so the failing sources are driven by test collectors that read
-| exactly what the real ones read: Horizon's repositories, a reader client and the package storage (C5), the
-| job_batches table (C1). Every other collector is a quiet fake, so the tests do not change when those tasks land.
+| The failing sources are driven by test collectors that read exactly what the real ones read: Horizon's
+| repositories, a reader client and the package storage (Redis down), the job_batches table (no table). Every other
+| collector is a quiet fake, so the tests do not depend on the data of the real collectors.
 */
 
 const FAILURE_ISOLATION_TEST_TOKEN = 'isolation-token-0123456789abcdef';
@@ -45,7 +45,7 @@ beforeEach(function (): void {
 });
 
 test('missing batches table keeps 200', function (): void {
-    // collectors.batches = true requires batches: a missing table is a collector failure on purpose (Arch Q6.7).
+    // collectors.batches = true requires batches: a missing table is a collector failure on purpose.
     config()->set('horizon-observability.collectors.batches', true);
     $this->app->forgetInstance(Config::class);
     $log = new LogRecorder;
@@ -68,7 +68,7 @@ test('missing batches table keeps 200', function (): void {
 
 it('runs no batches collector in auto mode without batching', function (): void {
     // collectors.batches = null (auto): no table, so the collector is not run and has no self-metric (not a failure).
-    // This one keeps the container's BatchReader (the T07 stub, or T07's detection on a database without the table).
+    // This one keeps the container's BatchReader, whose detection finds no table on this database.
     $batches = new FakeCollector('batches', static fn (): array => [MetricFamily::of(Metric::BatchesRunning)->set(['batch' => 'export'], 1)]);
 
     $exposition = failureIsolationTestScrape(['batches' => $batches]);

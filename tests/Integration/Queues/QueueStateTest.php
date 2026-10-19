@@ -17,9 +17,9 @@ use DF\HorizonObservability\Tests\TestCase;
 use Illuminate\Redis\Connections\Connection;
 
 /*
-| queue_state.lua through QueueInspector (Arch Q6.3, Q6.11, Appendix D, Addendum D'): counts, due delayed jobs, the
-| C8 readiness of the first fresh head payload, the class breakdown, the scan and byte caps, and the live mode.
-| Runs on phpredis and on predis (REDIS_CLIENT=predis).
+| queue_state.lua (its contract is in the script header) through QueueInspector: counts, due delayed jobs, the readiness
+| of the first fresh head payload, the class breakdown, the scan and byte caps, and the live mode. Runs on phpredis and
+| on predis (REDIS_CLIENT=predis).
 */
 
 pest()->group('redis');
@@ -101,9 +101,9 @@ it('counts ready, reserved and delayed jobs, with due delayed jobs as pending', 
 });
 
 test('delayed, retried and released heads', function (): void {
-    // C8: the pilot aged the queue from the head's pushedAt (or createdAt), so a head that had been delayed, released
-    // or retried reported its delay, backoff and earlier runtimes as wait, and the long-wait alert fired. Readiness is
-    // now max(pushedAt, createdAt + delay) of the first payload with attempts == 0, or the earliest due delayed score.
+    // The pilot aged the queue from the head's pushedAt (or createdAt), so a head that had been delayed, released or
+    // retried reported its delay, backoff and earlier runtimes as wait, and the long-wait alert fired. Readiness is now
+    // max(pushedAt, createdAt + delay) of the first payload with attempts == 0, or the earliest due delayed score.
     $redis = queueStateRedis();
     $now = QUEUE_STATE_NOW;
 
@@ -116,8 +116,8 @@ test('delayed, retried and released heads', function (): void {
     QueuePayloads::push($redis, 'released', queueStateJob($now - 40));
     $released = queueStateInspect('released');
 
-    // A Horizon retry of a job dispatched 2 h ago with ->delay(600) keeps createdAt and delay but gets attempts 0 and
-    // a fresh pushedAt (C19): it has waited 5 s.
+    // A Horizon retry of a job dispatched 2 h ago with ->delay(600) keeps createdAt and delay but gets attempts 0 and a
+    // fresh pushedAt: it has waited 5 s.
     QueuePayloads::push($redis, 'retried', queueStateJob($now - 7200, ['delay' => 600, 'pushedAt' => sprintf('%.4F', $now - 5), 'retry_of' => 'f00']));
     $retried = queueStateInspect('retried');
 
@@ -232,7 +232,7 @@ it('finds the first fresh payload anywhere in the scan window in full mode', fun
         ->and($snapshot->oldestAgeSeconds(QUEUE_STATE_NOW))->toBeGreaterThanOrEqual(50.0)->toBeLessThan(50.001);
 });
 
-it('stops the head scan at the byte cap (C12)', function (): void {
+it('stops the head scan at the byte cap', function (): void {
     // The script contract with a small cap: the payload that reaches the cap is the last one read.
     $redis = queueStateRedis();
     $payload = QueuePayloads::encode(queueStateJob(QUEUE_STATE_NOW - 10, ['attempts' => 1, 'tags' => [str_repeat('x', 300)]]));

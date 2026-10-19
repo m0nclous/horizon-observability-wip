@@ -7,8 +7,9 @@ use DF\HorizonObservability\Metrics\MetricType;
 use Workbench\App\Perf\SyntheticModel;
 
 /*
-| The perf-profile model (ADDENDUM R2.2, T11): a faithful port of the T01 probe model, so the R2.1 measurements can be
-| reproduced, plus the package's catalog schema for the measurements of the rewritten dashboard.
+| The perf-profile model (docker/perf/README.md): a faithful port of the Python probe model (synth.py) whose history
+| the pilot dashboard was first measured on, so those reference measurements can be reproduced, plus the package's
+| catalog schema for the measurements of the rewritten dashboard.
 */
 
 /**
@@ -138,7 +139,7 @@ it('keeps counters monotonic across scrapes', function (): void {
         ->and($decreasing)->toBe([]);
 });
 
-it('sizes the profiles as the addendum describes', function (): void {
+it('sizes the profiles as docker/perf/README.md describes', function (): void {
     $medium = new SyntheticModel;
     $large = new SyntheticModel('large');
     $supervisors = static fn (SyntheticModel $model): int => count(array_filter(iterator_to_array($model->series(1792201716), false), static fn (array $row): bool => $row[0] === 'horizon_supervisor_max_processes'));

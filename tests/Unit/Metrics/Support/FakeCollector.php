@@ -24,8 +24,8 @@ final class FakeCollector implements Collector
     public function __construct(private readonly string $name, private readonly Closure $collect) {}
 
     /**
-     * One collector per id that collects nothing, so a test does not depend on the real collectors (other tasks'
-     * code, which may need Redis or the database). Override single ids with `[...FakeCollector::quiet(), ...]`.
+     * One collector per id that collects nothing, so a test does not depend on the real collectors (which may
+     * need Redis or the database). Override single ids with `[...FakeCollector::quiet(), ...]`.
      *
      * @return array<string, self>
      */

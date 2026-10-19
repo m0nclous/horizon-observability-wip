@@ -10,9 +10,9 @@ use Illuminate\Support\Facades\Artisan;
 use Predis\Client;
 
 /*
-| horizon-observability:flush with the package storage on a Redis Cluster (Arch Q6.5, 8.5 `cluster` leg: a
-| single-node cluster on 127.0.0.1:7000, override with REDIS_CLUSTER_HOST and REDIS_CLUSTER_PORT): SCAN runs on
-| every master and only the package keys go. Skipped when no cluster answers.
+| horizon-observability:flush with the package storage on a Redis Cluster (the `cluster` CI leg: a single-node
+| cluster on 127.0.0.1:7000, override with REDIS_CLUSTER_HOST and REDIS_CLUSTER_PORT): SCAN runs on every master
+| and only the package keys go. Skipped when no cluster answers.
 */
 
 pest()->group('cluster');

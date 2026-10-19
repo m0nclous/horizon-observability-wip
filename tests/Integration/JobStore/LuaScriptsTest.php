@@ -9,8 +9,8 @@ use DF\HorizonObservability\Tests\Support\QueuePayloads;
 use Illuminate\Redis\Connections\Connection;
 
 /*
-| The contracts of job_details.lua and delayed_jobs.lua (Arch Appendix D) on both clients: KEYS, ARGV and the
-| reply shapes. Nil replies are false on phpredis and null on predis; the helpers read both as null.
+| The contracts of job_details.lua and delayed_jobs.lua (documented in their headers) on both clients: KEYS, ARGV and
+| the reply shapes. Nil replies are false on phpredis and null on predis; the helpers read both as null.
 */
 
 pest()->group('redis');

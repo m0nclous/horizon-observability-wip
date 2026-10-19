@@ -14,7 +14,7 @@ use Illuminate\Queue\RedisQueue;
 use Predis\PredisException;
 
 /*
-| QueueInspector without a Redis server (Arch Q6.5, C2.3 item 15): which queue connections it reads, and the cluster
+| QueueInspector without a Redis server: which queue connections it reads, and the cluster
 | topology check that runs before any command is sent, and the queue keys on a cluster: a framework with first-class
 | cluster queues (Laravel 13, RedisQueue::getQueueRedisKey()) keeps an untagged queue under queues:{<q>}, an older
 | one under queues:<q>, which a script cannot read. The cluster connection points at a closed port; predis connects

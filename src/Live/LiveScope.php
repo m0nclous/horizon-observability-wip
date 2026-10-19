@@ -11,7 +11,7 @@ use DF\HorizonObservability\Http\JobListQuery;
 use DF\HorizonObservability\Redis\Keys;
 
 /**
- * Resolved scope of a live snapshot (Addendum R4.1-R4.3, C'): the queues it covers and whether a Job or Batch
+ * Resolved scope of a live snapshot: the queues it covers and whether a Job or Batch
  * filter is active.
  *
  * - Supervisor and Queue scope the queues: the selected supervisors' split queues intersected with the topology and

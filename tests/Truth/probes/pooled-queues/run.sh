@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 #
-# Pooled-queues probe (T16): can the dashboard's queue table (#5) find the supervisor and the processes of a queue
+# Pooled-queues probe: can the dashboard's queue table (#5) find the supervisor and the processes of a queue
 # that a balance=false supervisor works? `metrics` is the exposition of the workbench topology: supervisor-pool
 # works mail and sms in one pool, so horizon_supervisor_processes carries queue="mail,sms" (Horizon's pool label).
-# Prometheus v3.15.0 scrapes it; the probe evaluates the T13 row and column expressions on
-# horizon_supervisor_processes and the same expressions on horizon_supervisor_queues (T16).
+# Prometheus v3.15.0 scrapes it; the probe evaluates the dashboard's row and column expressions (as they were when the
+# probe ran) on horizon_supervisor_processes and the same expressions on horizon_supervisor_queues, the queue map the
+# exporter added for this case.
 #
 # Usage: tests/Truth/probes/pooled-queues/run.sh [results file]   (Docker with host network; ports 18381, 19381)
 
@@ -46,12 +47,12 @@ query() {
 {
     echo "pooled-queues probe, Prometheus v3.15.0; the pool supervisor-pool works mail and sms"
     echo "rows of #5 (supervisor, queue) with pending jobs:"
-    echo "  T13 on horizon_supervisor_processes: $(query 'group by (queue, supervisor) (last_over_time(ho_horizon_supervisor_processes[1d])) * on (queue) group_left () sum by (queue) (ho_queue_pending_jobs)')"
-    echo "  on horizon_supervisor_queues:        $(query 'group by (queue, supervisor) (last_over_time(ho_horizon_supervisor_queues[1d])) * on (queue) group_left () sum by (queue) (ho_queue_pending_jobs)')"
+    echo "  dashboard on horizon_supervisor_processes: $(query 'group by (queue, supervisor) (last_over_time(ho_horizon_supervisor_processes[1d])) * on (queue) group_left () sum by (queue) (ho_queue_pending_jobs)')"
+    echo "  on horizon_supervisor_queues:              $(query 'group by (queue, supervisor) (last_over_time(ho_horizon_supervisor_queues[1d])) * on (queue) group_left () sum by (queue) (ho_queue_pending_jobs)')"
     echo "processes per queue (#5 Processes):"
-    echo "  T13 sum by (queue):                  $(query 'sum by (queue) (ho_horizon_supervisor_processes)')"
-    echo "  via the pool label:                  $(query 'sum by (queue) (ho_horizon_supervisor_queues * on (supervisor, pool) group_left () label_replace(ho_horizon_supervisor_processes, "pool", "$1", "queue", "(.*)"))')"
+    echo "  dashboard sum by (queue):                  $(query 'sum by (queue) (ho_horizon_supervisor_processes)')"
+    echo "  via the pool label:                        $(query 'sum by (queue) (ho_horizon_supervisor_queues * on (supervisor, pool) group_left () label_replace(ho_horizon_supervisor_processes, "pool", "$1", "queue", "(.*)"))')"
     echo "busy workers per supervisor (utilisation numerator):"
-    echo "  T13 on horizon_supervisor_processes: $(query 'sum by (supervisor) (group by (supervisor, queue) (ho_horizon_supervisor_processes) * on (queue) group_left () sum by (queue) (ho_queue_jobs_reserved))')"
-    echo "  on horizon_supervisor_queues:        $(query 'sum by (supervisor) (group by (supervisor, queue) (ho_horizon_supervisor_queues) * on (queue) group_left () sum by (queue) (ho_queue_jobs_reserved))')"
+    echo "  dashboard on horizon_supervisor_processes: $(query 'sum by (supervisor) (group by (supervisor, queue) (ho_horizon_supervisor_processes) * on (queue) group_left () sum by (queue) (ho_queue_jobs_reserved))')"
+    echo "  on horizon_supervisor_queues:              $(query 'sum by (supervisor) (group by (supervisor, queue) (ho_horizon_supervisor_queues) * on (queue) group_left () sum by (queue) (ho_queue_jobs_reserved))')"
 } > "$RESULTS"

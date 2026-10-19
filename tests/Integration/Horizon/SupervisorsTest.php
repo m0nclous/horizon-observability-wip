@@ -8,7 +8,7 @@ use DF\HorizonObservability\Tests\Support\HorizonState;
 
 pest()->group('redis');
 
-it('reads the supervisors Horizon writes (C14)', function (): void {
+it('reads the supervisors Horizon writes', function (): void {
     HorizonState::using($this->app)
         ->master('host-a1b2', supervisors: ['host-a1b2:supervisor-default', 'host-a1b2:supervisor-pool'])
         ->supervisor('host-a1b2:supervisor-default', HorizonState::options('host-a1b2:supervisor-default', queue: 'default', maxProcesses: 3), ['redis:default' => 3])

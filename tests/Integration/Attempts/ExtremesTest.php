@@ -7,10 +7,10 @@ use DF\HorizonObservability\Redis\Keys;
 use DF\HorizonObservability\Tests\Fixtures\Attempts\Storage;
 
 /*
-| Duration extremes tolerant of 60 s scrapes (Addendum R3.4). An attempt at `a` sits in the 15-second bucket
-| b = floor(a / 15); a scrape at `t` merges the buckets floor(t / 15) - 9 ... floor(t / 15), so the attempt is exported
-| by every scrape in [a, 15(b + 10)), more than 135 s. The pilot's 60-second windows (current + previous) kept it for
-| about 60 s in the worst case: one late 60 s scrape lost it.
+| Duration extremes tolerant of 60 s scrapes. An attempt at `a` sits in the 15-second bucket b = floor(a / 15); a scrape
+| at `t` merges the buckets floor(t / 15) - 9 ... floor(t / 15), so the attempt is exported by every scrape in
+| [a, 15(b + 10)), more than 135 s. The pilot's 60-second windows (current + previous) kept it for about 60 s in the
+| worst case: one late 60 s scrape lost it.
 */
 
 pest()->group('redis');

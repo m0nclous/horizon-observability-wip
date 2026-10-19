@@ -1,5 +1,5 @@
 {
-  "description": "e2e fixture of the live modes (Addendum R4.8, T12): the poll and stream panel shapes of the R4.8 panel JSON, built by hand, independent of the T13 renderer. Datasources: Prometheus uid 'prometheus', Infinity uid 'horizon-observability-api' (docker/grafana/provisioning), Grafana Live stream id 'horizon_observability'.",
+  "description": "e2e fixture of the live modes: the poll and stream panel shapes of the live tiles, built by hand, independent of the package renderer. Datasources: Prometheus uid 'prometheus', Infinity uid 'horizon-observability-api' (docker/grafana/provisioning), Grafana Live stream id 'horizon_observability'.",
   "uid": "horizon-observability-live-probe",
   "title": "Horizon Observability live probe",
   "tags": [

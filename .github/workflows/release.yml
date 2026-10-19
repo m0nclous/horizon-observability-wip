@@ -1,4 +1,4 @@
-# Release (Arch 8.7): on a tag vX.Y.Z, check that CHANGELOG.md has the version's section, that composer.json is valid
+# Release: on a tag vX.Y.Z, check that CHANGELOG.md has the version's section, that composer.json is valid
 # and that the committed Grafana assets equal their render, then create the GitHub release from that section.
 # Packagist updates through its GitHub webhook.
 name: release

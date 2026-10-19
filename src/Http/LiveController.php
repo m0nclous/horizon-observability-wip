@@ -19,7 +19,7 @@ use Throwable;
 
 /**
  * `GET|HEAD {base}/live`: the live snapshot JSON (schema v1) of the request's `var-*` scope, registered when
- * `live.enabled` (Addendum R4.3, R4.4).
+ * `live.enabled`.
  *
  * - The filters are the job lists' (`var-supervisor`, `var-batch_kind`, `var-queue`, `var-job_class` in Grafana's
  *   `${var:queryparam}` form, parsed by {@see JobListQuery::filtersFromRequest()}); `$__all` or absence means no

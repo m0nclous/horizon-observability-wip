@@ -1,11 +1,11 @@
 #!/bin/sh
-# Backfills the perf Prometheus with the synthetic history (ADDENDUM R2.2 step 1), one 2-hour chunk at a time, so
-# the disk holds at most one chunk (about 0.6 GB at 10 s): write it, convert it with promtool into the perf-prometheus
-# volume, delete it. Then restart perf-prometheus so it loads the blocks.
+# Backfills the perf Prometheus with the synthetic history, one 2-hour chunk at a time, so the disk holds at most one
+# chunk (about 0.6 GB at 10 s): write it, convert it with promtool into the perf-prometheus volume, delete it. Then
+# restart perf-prometheus so it loads the blocks.
 #
 #   docker/perf/backfill.sh [workbench:perf-data options]
 #   docker/perf/backfill.sh --profile=medium --hours=26                          (catalog schema, S = 10 s)
-#   docker/perf/backfill.sh --schema=legacy --step=15 --job=office-horizon --instance=app:8080   (R2.1 reference)
+#   docker/perf/backfill.sh --schema=legacy --step=15 --job=office-horizon --instance=app:8080   (pilot dashboard)
 #
 # END (Unix seconds, default now) is fixed for all chunks. Start workbench:perf-exporter right afterwards with the
 # same --profile, --schema and --namespace, so the history continues without a gap longer than 5 minutes.

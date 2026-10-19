@@ -16,7 +16,7 @@ use Throwable;
 use UnexpectedValueException;
 
 /**
- * Stale-while-revalidate snapshot cache on the package storage, safe against stampedes (Addendum R4.2): at most one
+ * Stale-while-revalidate snapshot cache on the package storage, safe against stampedes: at most one
  * build per `cache_ttl` per scope across every PHP worker and replica.
  *
  * Freshness is decided by Redis key expiry, never by comparing `generated_at` with the local clock, so replicas whose
@@ -43,7 +43,7 @@ use UnexpectedValueException;
  * All commands run on the short-timeout reader of the storage connection (`redis.scrape_timeout`), like every
  * live-path read of package keys. When the cache's Redis fails, the answer is {@see LiveSnapshot::unavailable()}
  * with the error: the stale copy lives in the same Redis, and building per request without the lock would multiply
- * the failing Redis' timeouts by viewers and panels (Addendum R4.10).
+ * the failing Redis' timeouts by viewers and panels.
  *
  * @internal
  */

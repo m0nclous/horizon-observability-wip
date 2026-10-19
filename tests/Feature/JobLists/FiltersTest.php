@@ -12,8 +12,8 @@ use DF\HorizonObservability\Tests\Support\HorizonState;
 use DF\HorizonObservability\Tests\Support\QueuePayloads;
 
 /*
-| The dashboard filters of the job lists in Grafana's ${var:queryparam} form (Arch Q2.1, F25): repeated values,
-| $__all, URL-encoded class names, the normalised Closure name, Supervisor (C14) and Batch.
+| The dashboard filters of the job lists in Grafana's ${var:queryparam} form: repeated values, $__all, URL-encoded
+| class names, the normalised Closure name, Supervisor (also a balance=false pool of several queues) and Batch.
 */
 
 pest()->group('redis');
@@ -70,7 +70,7 @@ it('combines the filters', function (): void {
         ->and(filtersTestIds('delayed', 'var-supervisor=supervisor-default&var-job_class=App%5CJobs%5CSendInvoice'))->toBe(['d-invoice']);
 });
 
-it('matches the queues of a balance=false supervisor end to end (C14)', function (): void {
+it('matches the queues of a balance=false supervisor end to end', function (): void {
     expect(filtersTestIds('pending', 'var-supervisor=supervisor-pool'))->toBe(['p-sms', 'p-mail'])
         ->and(filtersTestIds('delayed', 'var-supervisor=supervisor-pool'))->toBe(['d-closure', 'd-sms']);
 });
@@ -92,7 +92,7 @@ it('narrows to the queues and classes of a batch kind', function (): void {
     );
 
     if (app(BatchLinks::class)->forKinds(['campaign_launch'])['queues'] === []) {
-        $this->markTestSkipped('BatchLinks reads no links until T07 implements it.');
+        $this->markTestSkipped('BatchLinks reads no queues for a stored link.');
     }
 
     expect(filtersTestIds('pending', 'var-batch_kind=campaign_launch'))->toBe(['p-mail'])

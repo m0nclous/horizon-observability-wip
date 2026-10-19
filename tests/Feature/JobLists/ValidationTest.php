@@ -6,7 +6,7 @@ use DF\HorizonObservability\Http\Middleware\Authorize;
 use DF\HorizonObservability\Tests\Support\RedisCommands;
 
 /*
-| Invalid job-list input answers 422 JSON before any Redis command (Arch Q2.1, Q8.4 "422; the limit cap"), whatever
+| Invalid job-list input (a limit above the 1000 cap included) answers 422 JSON before any Redis command, whatever
 | the client accepts, because ForceJson runs first.
 */
 

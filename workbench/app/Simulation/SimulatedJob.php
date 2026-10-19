@@ -9,7 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 /**
- * The job of the load simulation (workbench only, never shipped: C25). One class carries every simulated task: the
+ * The job of the load simulation (workbench only, never shipped). One class carries every simulated task: the
  * package and Horizon take the job name from `displayName()`, so each task is a row of its own.
  *
  * A job of a cancelled batch returns at once, as real batch jobs do.

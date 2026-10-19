@@ -8,7 +8,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 
 /**
- * Discovery fixture (Arch 8.2): its own displayName(), so its job_class label is not the class name. Skipped.
+ * Discovery fixture: its own displayName(), so its job_class label is not the class name. Skipped.
  */
 final class RenameUser implements ShouldQueue
 {

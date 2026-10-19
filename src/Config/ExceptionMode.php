@@ -7,7 +7,7 @@ namespace DF\HorizonObservability\Config;
 /**
  * How much of a failed job's exception the failed-jobs list shows (`exceptions` config key).
  *
- * The values are public config values (Arch Q7, SemVer-covered).
+ * The values are public config values and SemVer-covered.
  */
 enum ExceptionMode: string
 {

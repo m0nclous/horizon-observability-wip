@@ -1,4 +1,4 @@
--- ring_read.lua: the attempts of the live ring buffer over the last complete minute (Addendum R4.5, D').
+-- ring_read.lua: the attempts of the live ring buffer over the last complete minute.
 --
 -- KEYS[1..n]  the ring buckets live:ring:<unix div 5> to sum: the 12 complete 5-second buckets before the current one
 -- ARGV        none

@@ -1,4 +1,4 @@
--- record_attempt.lua: records one finished job attempt (Arch Q6.2, Appendix D; Addendum R3.4, R4.5, D').
+-- record_attempt.lua: records one finished job attempt.
 --
 -- One EVAL per attempt on the package storage connection. Every key arrives in KEYS (the connection prefix applies)
 -- and every key carries the {horizon-observability} hash tag, so all of them sit in one Redis Cluster slot. US below
@@ -36,7 +36,7 @@
 -- bucket, sum and extremes; 4. the wait of a first attempt, max(readyAt, ready_at key) .. startedAt, at least 0, and
 -- the creation time of a queue whose first wait this is; 5. meta.dropped; 6. the live ring buffer.
 --
--- Creation times (T16): the attempts collector exports a new series as 0 for its first seconds, so Prometheus sees
+-- Creation times: the attempts collector exports a new series as 0 for its first seconds, so Prometheus sees
 -- every counter series start at 0 and increase() counts its first attempts. A creation time is written only together
 -- with the first count of its series, never for a series that already has counts, so data written before it existed
 -- is never held back. It is this server's TIME, not the worker's clock (ARGV[14]): new_series.lua measures the age
@@ -181,7 +181,7 @@ if dropped and dropped > 0 then
     redis.call('HINCRBY', KEYS[9], 'dropped', dropped)
 end
 
--- 6. Live ring buffer (Addendum R4.5).
+-- 6. Live ring buffer.
 local ringTtl = tonumber(ARGV[13])
 if ringTtl and ringTtl > 0 then
     redis.call('HINCRBY', KEYS[10], connection .. US .. queue .. US .. status, 1)

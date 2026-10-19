@@ -10,10 +10,10 @@ use Laravel\Horizon\Contracts\SupervisorRepository;
 
 /**
  * The horizon families as Horizon's own repositories and the Horizon config define them, restated from the
- * documented rules (Arch Q4, C14) without the package's collector: the status of the masters, per supervisor (the
- * name after the last colon) the processes summed per pool label over every master, the largest minimum and
- * maximum, the settings of the first master, every queue of every master's `queue` option with the pool that works
- * it, and the wait thresholds of the configured queues (`horizon.waits`, default 60 s, 0 omitted).
+ * documented rules without the package's collector: the status of the masters, per supervisor (the name after the
+ * last colon) the processes summed per pool label over every master, the largest minimum and maximum, the settings
+ * of the first master, every queue of every master's `queue` option with the pool that works it, and the wait
+ * thresholds of the configured queues (`horizon.waits`, default 60 s, 0 omitted).
  */
 final readonly class HorizonTruth
 {

@@ -10,8 +10,8 @@ use Workbench\App\Simulation\SimulatedJob;
 use Workbench\App\Simulation\TaskProfile;
 
 /*
-| workbench:simulate-load (T11, replaces the pilot's queue-metrics:load-test). It refuses production and every queue
-| connection without the redis driver (C25: with sync the jobs would run inline in the command).
+| workbench:simulate-load (replaces the pilot's queue-metrics:load-test). It refuses production and every queue
+| connection without the redis driver (with sync the jobs would run inline in the command).
 */
 
 beforeEach(function (): void {
@@ -112,7 +112,7 @@ it('refuses to run in production', function (): void {
     Bus::assertNothingDispatched();
 });
 
-it('refuses queue connections without the redis driver (C25)', function (string $connection, string $message): void {
+it('refuses queue connections without the redis driver', function (string $connection, string $message): void {
     $this->artisan('workbench:simulate-load', ['--connection' => $connection])
         ->expectsOutputToContain($message)
         ->assertFailed();

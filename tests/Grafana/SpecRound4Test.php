@@ -7,25 +7,26 @@ use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * T13 QA round 4 (spec tester), owner decision 13 and ADDENDUM R2.4 O4/O7.
+ * Two cases in which the tiles (their per-step points) and the tables (Attempts::delta()) must count the same attempts
+ * of a period.
  *
  * 1. A series that stops inside the range. Attempts::delta() ends every series at its instant value at the period end
  *    (5-minute lookback, none after a staleness marker), so the tables leave out every attempt of a series that has no
  *    value then, while the tiles count it. The same application moved to another scrape job inside the range (the
- *    dedicated scrape job of owner decision 8 and ADDENDUM R3.2): the round 3 render counted 150 here, the round 4
- *    render 100. (Also found by the adversarial tester, AdversarialRound4StopTest.)
+ *    scrape job of its own that the README recommends): the render before per-series starts counted 150 here, the first
+ *    one with them 100. (AdversarialRound4StopTest covers it too.)
  *
  * 2. The period edges as Grafana really sends them. Grafana 12.4.13 and 13.2.4 format `${__from:date:seconds}` and
  *    `${__to:date:seconds}` as Math.round(ms / 1000) (the `seconds` case of the date formatter in both bundles), evaluate
  *    an instant query (the tables) at the exact `to` in milliseconds, and align a range query (the tiles, #14) to
  *    floor((t + utcOffsetSec) / step) * step - utcOffsetSec (both checked through /api/ds/query with a `to` of x.700 s:
  *    the instant `time()` was x.7, the range points on the offset grid). The tiles' points must add up to the table
- *    count of the same request (O4: "so the points add up to the period count"):
+ *    count of the same request:
  *    - a scrape between the exact period start and its rounded second is counted by the table, not by the tiles
  *      (any time zone; with samples on arbitrary milliseconds about 2.5 % of the refreshes per edge at 10 s scrapes);
  *    - where the UTC offset is not a multiple of the step and `to` lies less than 0.5 s before a Grafana point, no point
- *      passes the last-point test and the last step ends at the next subquery point instead of `to` (also found by the
- *      adversarial tester, AdversarialRound4TileTest).
+ *      passes the last-point test and the last step ends at the next subquery point instead of `to`
+ *      (AdversarialRound4TileTest covers it too).
  */
 
 pest()->group('grafana');
@@ -126,7 +127,7 @@ it('adds the tile points up to the table count of the same request at the exact 
     // `to` 0.3 s before the point 22260, the last point 22140 must count (22080, 22259.7]: 17, the render gives 12; and
     // its first point loses the scrape at 660 s as above
     'Asia/Kathmandu, 2-minute steps, the end 0.3 s before a point' => [20700, 120, 21600, 22259.7],
-])->skip('T19 patch backlog item 5: the tiles take the period edges rounded to whole seconds, the tables the exact edges');
+])->skip('Known issue #31: the tiles take the period edges rounded to whole seconds, the tables the exact edges');
 
 /**
  * promtool's output with every line cut to 100 characters (the expressions are long).

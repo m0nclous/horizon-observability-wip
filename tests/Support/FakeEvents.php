@@ -9,8 +9,8 @@ use stdClass;
 use Throwable;
 
 /**
- * Queue events with the property shapes of every supported Laravel line (Arch Q6.2, Appendix F), so each shim branch
- * runs on every CI leg whatever Laravel is installed.
+ * Queue events with the property shapes of every supported Laravel line, so each branch of the event shim
+ * (`Attempts\AttemptOutcome`) runs on every CI leg whatever Laravel is installed.
  */
 final class FakeEvents
 {

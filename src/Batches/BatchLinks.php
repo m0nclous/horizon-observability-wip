@@ -26,7 +26,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Links of batch kinds to queue connections, queues and job classes (Arch Q6.7): which queues and classes the batches
+ * Links of batch kinds to queue connections, queues and job classes: which queues and classes the batches
  * of a kind consist of. They feed `queue_batch_job_classes`, `queue_batch_info`, the `batch_kind` filter of the job
  * lists and the Batch scope of `/live`.
  *
@@ -47,7 +47,7 @@ use Throwable;
  * **Reading**: links seen during the last {@see self::TTL_SECONDS} (7 days), at most the {@see self::MAX_LINKS} most
  * recently seen, with one `ZRANGE`. The batches collector also removes older ones once per scrape
  * ({@see self::prune()}); reads ignore them either way. Reads and the scrape's prune run on the short-timeout reader of
- * the storage connection (`redis.scrape_timeout`, like every scrape-path read of package keys, Arch Q1.3), not on the
+ * the storage connection (`redis.scrape_timeout`, like every scrape-path read of package keys), not on the
  * worker-side storage client, and use no breaker; they fail visibly.
  *
  * @internal

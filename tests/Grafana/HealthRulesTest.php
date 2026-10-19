@@ -10,8 +10,8 @@ use DF\HorizonObservability\Grafana\Render;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * Arch Q1.5, Q5.3 and Q5.6 step 11: --health-rules adds <uid>-collector and <uid>-duplicates; the Alerts tile and the
- * alert sound never watch them, and only the duplicates rule counts replicas (no dedupe around its selector).
+ * --health-rules adds <uid>-collector and <uid>-duplicates; the Alerts tile and the alert sound never watch them, and
+ * only the duplicates rule counts replicas (no dedupe around its selector).
  */
 
 pest()->group('grafana');

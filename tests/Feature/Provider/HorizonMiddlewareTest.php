@@ -12,7 +12,7 @@ use Illuminate\Session\Middleware\StartSession;
 use Laravel\Horizon\HorizonServiceProvider;
 
 /*
-| C16: the menu-link middleware is appended to horizon.middleware from the booting callback, after every register()
+| The menu-link middleware is appended to horizon.middleware from the booting callback, after every register()
 | and before Horizon's boot(), so "web" is never lost, in both provider orders, idempotently and always as an array.
 */
 
@@ -42,7 +42,7 @@ function horizonMiddleware(array $providers, array $config): array
     });
 }
 
-it('appends the link middleware and keeps web (C16)', function (array $providers): void {
+it('appends the link middleware and keeps web', function (array $providers): void {
     $middleware = horizonMiddleware($providers, ['horizon-observability.grafana.url' => 'http://localhost:3000/d/horizon-observability']);
 
     expect($middleware['config'])->toBe(['web', InjectGrafanaLink::class])

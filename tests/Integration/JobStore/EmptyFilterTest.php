@@ -16,9 +16,9 @@ use DF\HorizonObservability\Tests\Support\QueuePayloads;
 use DF\HorizonObservability\Tests\Support\RedisCommands;
 
 /*
-| C13: an empty resolved filter (a supervisor that is not running, a batch kind without links, disjoint filters)
-| returns {"data":[]} without reading any job. The pilot intersected the filter to [] and still scanned up to
-| 10 000 ids (20 ZRANGEBYSCORE calls plus 10 000 HMGETs, and the delayed payloads of every queue).
+| An empty resolved filter (a supervisor that is not running, a batch kind without links, disjoint filters) returns
+| {"data":[]} without reading any job. The pilot intersected the filter to [] and still scanned up to 10 000 ids (20
+| ZRANGEBYSCORE calls plus 10 000 HMGETs, and the delayed payloads of every queue).
 */
 
 pest()->group('redis');
@@ -57,7 +57,7 @@ function emptyFilterTestJobReads(RedisCommands $commands): array
     ));
 }
 
-it('makes zero redis commands for an empty queue or class filter (C13)', function (): void {
+it('makes zero redis commands for an empty queue or class filter', function (): void {
     $commands = RedisCommands::start($this->app);
     $now = CarbonImmutable::now();
     $results = [];
@@ -77,7 +77,7 @@ it('makes zero redis commands for an empty queue or class filter (C13)', functio
         ->and(app(DelayedJobStore::class)->rows([['connection' => 'redis', 'queue' => 'default']], null, 500, $now))->toHaveCount(1);
 });
 
-it('reads no job for a supervisor that is not running (C13)', function (JobList $list): void {
+it('reads no job for a supervisor that is not running', function (JobList $list): void {
     HorizonState::using($this->app)
         ->master('host-a', supervisors: ['host-a:supervisor-default'])
         ->supervisor('host-a:supervisor-default', HorizonState::options('host-a:supervisor-default'), ['redis:default' => 3]);
@@ -90,7 +90,7 @@ it('reads no job for a supervisor that is not running (C13)', function (JobList 
         ->and(array_unique(array_column($commands->commands(), 'connection')))->toBe(['horizon']);
 })->with([JobList::Pending, JobList::Completed, JobList::Failed, JobList::Delayed]);
 
-it('reads no job for a batch kind without links (C13)', function (JobList $list): void {
+it('reads no job for a batch kind without links', function (JobList $list): void {
     $commands = RedisCommands::start($this->app);
 
     expect(app(JobListService::class)->rows(emptyFilterTestQuery($list, batchKinds: ['campaign_launch'])))->toBe([])
@@ -100,7 +100,7 @@ it('reads no job for a batch kind without links (C13)', function (JobList $list)
         ->and($commands->names(RedisClients::READER.'horizon'))->toBe(['ZRANGE']);
 })->with([JobList::Pending, JobList::Completed, JobList::Failed, JobList::Delayed]);
 
-it('reads no job and no batch link for disjoint filters (C13)', function (JobList $list): void {
+it('reads no job and no batch link for disjoint filters', function (JobList $list): void {
     HorizonState::using($this->app)
         ->master('host-a', supervisors: ['host-a:supervisor-pool'])
         ->supervisor('host-a:supervisor-pool', HorizonState::options('host-a:supervisor-pool', queue: 'mail,sms', balance: false), ['redis:mail,sms' => 2]);
@@ -116,7 +116,7 @@ it('reads no job and no batch link for disjoint filters (C13)', function (JobLis
         ->and($commands->count())->toBe(0);
 })->with([JobList::Pending, JobList::Completed, JobList::Failed, JobList::Delayed]);
 
-it('reads no delayed job for queues outside the Horizon topology (C13)', function (): void {
+it('reads no delayed job for queues outside the Horizon topology', function (): void {
     $commands = RedisCommands::start($this->app);
 
     expect(app(JobListService::class)->rows(emptyFilterTestQuery(JobList::Delayed, queues: ['not-run-by-horizon'])))->toBe([])

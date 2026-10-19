@@ -10,14 +10,15 @@ use DF\HorizonObservability\Grafana\Live\LivePanels;
 use RuntimeException;
 
 /**
- * The layout projection of a dashboard (Arch Q5.6 and Q5.7): what must stay equal to the legacy dashboard while
- * WP8B changes the queries. Per panel in document order (the panels of a collapsed row right after it): id,
- * type, title, gridPos, the row it belongs to, repeat options and the collapsed flag; the full projection adds
- * the options without the alert sound script, the field config and the transformations.
+ * The layout projection of a dashboard: what must stay equal to the legacy dashboard while the queries change. Per
+ * panel in document order (the panels of a collapsed row right after it): id, type, title, gridPos, the row it belongs
+ * to, repeat options and the collapsed flag; the full projection adds the options without the alert sound script, the
+ * field config and the transformations.
  *
- * The full projection of the legacy dashboard is frozen in `tests/Fixtures/grafana/default/layout-projection.json`
- * (as decoded JSON: an empty object reads as an empty list, on both sides of the comparison); it outlived the
- * legacy goldens, which WP8B deleted. WP8C changes it only as {@see optimised()} lists.
+ * The full projection of the legacy dashboard is frozen in `tests/Fixtures/grafana/default/layout-projection.json` (as
+ * decoded JSON: an empty object reads as an empty list, on both sides of the comparison); it outlived the legacy
+ * goldens, which were deleted once the queries were rewritten. The dashboard optimisations change it only as
+ * {@see optimised()} lists.
  */
 final class LayoutProjection
 {
@@ -77,14 +78,14 @@ final class LayoutProjection
     }
 
     /**
-     * The frozen legacy projection with the documented, look-preserving changes of WP8C (ADDENDUM R2.4), so that any
-     * other difference fails:
-     * - O5: the hidden queue source #24 shares the hidden top grid row with #23 (both half wide); it is taken from
-     *   $dashboard after checking that it sits in that row. The queue table #5 first keeps the rows of its own
-     *   supervisor and does not show their supervisor column.
-     * - O6: the attempts columns of #5 and #6 come from one query by status, which their transformations pivot and
-     *   combine; they are taken from $dashboard after checking that they show the legacy columns in the legacy order
-     *   ({@see columns()}). Field config and options stay the legacy ones.
+     * The frozen legacy projection with the documented, look-preserving changes of the dashboard optimisations, so that
+     * any other difference fails:
+     * - Shared queue source: the hidden queue source #24 shares the hidden top grid row with #23 (both half wide); it
+     *   is taken from $dashboard after checking that it sits in that row. The queue table #5 first keeps the rows of
+     *   its own supervisor and does not show their supervisor column.
+     * - One attempts query per table: the attempts columns of #5 and #6 come from one query by status, which their
+     *   transformations pivot and combine; they are taken from $dashboard after checking that they show the legacy
+     *   columns in the legacy order ({@see columns()}). Field config and options stay the legacy ones.
      *
      * @param  list<array<string, mixed>>  $frozen
      * @param  array<array-key, mixed>  $dashboard  the render under test, decoded
@@ -134,10 +135,11 @@ final class LayoutProjection
     }
 
     /**
-     * The expected projection of a live render (ADDENDUM R4.1, R4.8; the deviations the owner accepted, README decision
-     * 9): the `--live=off` projection with row #10 titled "Live Overview" and, on the live tiles ({@see LiveShapes}),
-     * the look properties R4.8 changes: no sparkline and the null sentinel on the tile-row tiles (#3, and #2 in stream
-     * mode), and the R4.8 transformations. Everything else must stay the off render's look.
+     * The expected projection of a live render (the accepted look deviations of the live modes, README
+     * "Live Overview modes"): the `--live=off` projection with row #10 titled "Live Overview" and, on the live tiles
+     * ({@see LiveShapes}), the look properties the live shapes change: no sparkline and the null sentinel on the
+     * tile-row tiles (#3, and #2 in stream mode), and the live transformations. Everything else must stay the off
+     * render's look.
      *
      * @param  list<array<string, mixed>>  $off  the full projection of the off render
      * @param  array<array-key, mixed>  $offDashboard  the off render, decoded

@@ -10,7 +10,7 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 
 /*
-| T14 QA round 3 (adversarial): horizon-observability:install and the values Laravel reads as "no value".
+| Adversarial probes of horizon-observability:install and the values Laravel reads as "no value".
 |
 | Laravel's env() (Illuminate\Support\Env::get()) reads null and (null) as null, empty and (empty) as an empty
 | string: the skeleton's .env.example writes REDIS_PASSWORD=null, MAIL_USERNAME=null the same way, so

@@ -19,24 +19,24 @@ use DF\HorizonObservability\Redis\ServerClock;
 use Throwable;
 
 /**
- * Collector `attempts` (Arch Q1.4, Q4, Q6.10, Q6.11; Addendum R3.4, R4.11): `queue_jobs_total`, the duration and wait
- * histograms, the duration extremes of the last 150 seconds, `exporter_attempts_dropped_total` and the live push
- * self-metrics, read from the storage written by the workers.
+ * Collector `attempts`: `queue_jobs_total`, the duration and wait histograms, the duration extremes of the last 150
+ * seconds, `exporter_attempts_dropped_total` and the live push self-metrics, read from the storage written by the
+ * workers.
  *
  * Per scrape: the reset guard `EVAL`, the five counter hashes, one `new_series` `EVAL`, one `extremes_read` `EVAL`,
  * `meta` and the job-class set (read only), on the short-timeout reader of the storage connection. Values are
- * absolute (no registry, C3).
+ * absolute (no registry).
  * - Every (connection, queue, job_class) of `queue_jobs_total` is zero-filled with all five statuses, so the first
  *   failure or timeout of a known class is visible to `increase()`, and has a duration histogram (all zero until
  *   its first duration); every queue of those has a wait histogram (all zero until its first wait).
- * - **New series start at 0** (T16, owner decision 13). Prometheus cannot count the first sample of a series:
+ * - **New series start at 0.** Prometheus cannot count the first sample of a series:
  *   `increase()` and the dashboard's exact differences start from it, so a class or queue whose first scrape showed
  *   3 completed attempts counted 0 of them. The exporter knows when a series was created
  *   ({@see Keys::created()}, written by `record_attempt.lua` with its first count) and exports a series created less
  *   than {@see self::NEW_SERIES_HOLD_SECONDS} ago as 0: every scraper records at least one 0 sample before the real
  *   value, which then counts in full. The creation time and the age are both on the storage Redis' clock
  *   ({@see ServerClock}: `TIME` inside `record_attempt.lua` and `new_series.lua`), so the clocks of the workers, of
- *   the replicas behind the one scrape target (Arch Q1.5) and of the scrapers never enter the hold, and the end of
+ *   the replicas behind the one scrape target and of the scrapers never enter the hold, and the end of
  *   the hold is one decision for every replica. `new_series.lua` deletes the creation time of a released series, so
  *   it is never held again, whatever any clock does later: an exported counter never drops back to 0. Series without
  *   a creation time (the counters of a scrape job added later, of a replica that starts later, data from before the
@@ -45,7 +45,7 @@ use Throwable;
  *   90 s late, and while a new class of a known queue is held, that queue's wait histogram (not held) already counts
  *   its first waits.
  * - Fields of classes that left the class set (idle for 30 days and pruned by `record_attempt.lua` when the full set
- *   needed room for a new class, Arch Q4) are not exported and are deleted lazily, at most
+ *   needed room for a new class) are not exported and are deleted lazily, at most
  *   {@see self::FORGET_LIMIT} per scrape; `(other)` always stays.
  * - Histograms are cumulative over the configured bounds ({@see HistogramSnapshot}).
  * - `exporter_attempts_dropped_total` is always exported; the live push series only once a stream leader pushed
@@ -67,14 +67,15 @@ final readonly class AttemptsCollector implements Collector
      *
      * Measured on one clock, the storage Redis' ({@see ServerClock}). A scraper whose last scrape before the creation
      * read the counters at r sees the new series first at its next successful scrape and exports it as 0 if that
-     * scrape's hold read comes less than 90 s after the creation, which is certain when it comes less than 90 s
-     * after r: the successful scrapes of one scraper must read the counters less than 90 s apart (less the one round
-     * trip from the counter read to the hold read). That covers S <= 60 s (Addendum R3) with 30 s to spare, e.g.
-     * scrapes less than 15 s off their slots in both directions at S = 60 s (twice the deviation budget of Addendum
-     * R3.4), or up to 7 failed scrapes in a row at S = 10 s. No other clock enters: the workers' and the exporter
-     * replicas' clocks may be anything. Beyond the budget (a slower scrape interval, longer gaps, a step of the Redis
-     * clock) a new series can start without its 0 sample, as without the hold, but no exported counter ever
-     * decreases. Proven by tests/Truth/FirstValueTruthTest at the worst alignment, with any worker and replica clocks.
+     * scrape's hold read comes less than 90 s after the creation, which is certain when it comes less than 90 s after
+     * r: the successful scrapes of one scraper must read the counters less than 90 s apart (less the one round trip
+     * from the counter read to the hold read). That covers the supported scrape intervals S <= 60 s with 30 s to spare,
+     * e.g. scrapes less than 15 s off their slots in both directions at S = 60 s (twice the 7.5 s within which two
+     * scrapes at S = 60 s see every duration extreme), or up to 7 failed scrapes in a row at S = 10 s. No other clock
+     * enters: the workers' and the exporter replicas' clocks may be anything. Beyond the budget (a slower scrape
+     * interval, longer gaps, a step of the Redis clock) a new series can start without its 0 sample, as without the
+     * hold, but no exported counter ever decreases. Proven by tests/Truth/FirstValueTruthTest at the worst alignment,
+     * with any worker and replica clocks.
      */
     public const NEW_SERIES_HOLD_SECONDS = 90;
 

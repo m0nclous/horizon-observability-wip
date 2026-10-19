@@ -9,7 +9,7 @@ use DF\HorizonObservability\Http\RoutePath;
 use Illuminate\Contracts\Config\Repository;
 
 /**
- * The links of `horizon_info` for the dashboard (Arch Q3, Q4): the browser URL of Horizon and the job-list API path.
+ * The links of `horizon_info` for the dashboard: the browser URL of Horizon and the job-list API path.
  *
  * The URL is the validated `horizon_url` override, or Horizon's address as Laravel's URL generator builds it for
  * Horizon's routes: `app.url` plus `/<horizon.path>`, and with `horizon.domain` set, the scheme and port of `app.url`

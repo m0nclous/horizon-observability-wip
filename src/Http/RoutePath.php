@@ -8,7 +8,7 @@ use DF\HorizonObservability\Config\Config;
 use Illuminate\Contracts\Config\Repository;
 
 /**
- * Base path of the package endpoints (Arch Q2.1).
+ * Base path of the package endpoints.
  *
  * Runs at boot, so it reads the raw config with safe casts and never throws. `horizon-observability.path` wins when
  * it is usable; otherwise the base is Horizon's path plus `/observability`, so the package never registers a bare

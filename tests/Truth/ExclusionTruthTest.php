@@ -16,10 +16,10 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
 /*
-| Exporter truth (T16): the attempt families count Redis queue attempts only (C6). The same job class run through
-| the sync, deferred and background connections (Laravel 12.45+ fires JobAttempted for those) and through a real
-| worker on a database queue is not counted; the attempts of the redis queue are, exactly. Every job counts its
-| runs in the cache, so the test also proves the excluded jobs ran.
+| Exporter truth: the attempt families count Redis queue attempts only. The same job class run through the sync,
+| deferred and background connections (Laravel 12.45+ fires JobAttempted for those) and through a real worker on a
+| database queue is not counted; the attempts of the redis queue are, exactly. Every job counts its runs in the
+| cache, so the test also proves the excluded jobs ran.
 */
 
 pest()->group('redis', 'truth');

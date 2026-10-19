@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// The browser half of tests/e2e/first-dashboard.sh (owner decision 12, T14): waits until the Overview tiles of the
-// provisioned dashboard show values, as a newcomer sees them, and prints a JSON report.
+// The browser half of tests/e2e/first-dashboard.sh: waits until the Overview tiles of the provisioned dashboard show
+// values, as a newcomer sees them, and prints a JSON report.
 //
 //   node tests/e2e/first-dashboard.mjs --grafana http://localhost:3000 [--uid horizon-observability]
 //        [--timeout 240] [--screenshot build/first-dashboard.png]

@@ -12,9 +12,9 @@ use DF\HorizonObservability\Http\Middleware\ForceJson;
 use Illuminate\Support\Facades\Route;
 
 /*
-| Loaded by HorizonObservabilityServiceProvider inside a group with the base path prefix and the optional domain
-| (Arch Q2.1, Q2.2). Outside the web and horizon groups: no session, no cookies, no CSRF. The configured middleware
-| runs per route after Authorize, so nothing (not even a throttle's cache write) happens before access is decided.
+| Loaded by HorizonObservabilityServiceProvider inside a group with the base path prefix and the optional domain.
+| Outside the web and horizon groups: no session, no cookies, no CSRF. The configured middleware runs per route
+| after Authorize, so nothing (not even a throttle's cache write) happens before access is decided.
 */
 
 $extra = array_values(array_filter((array) config('horizon-observability.middleware', []), is_string(...)));

@@ -10,7 +10,7 @@ use DF\HorizonObservability\Queues\DelayedJobStore;
 use LogicException;
 
 /**
- * Row formatting of the job lists (Arch Q2.1), unchanged from the pilot: times are Unix milliseconds
+ * Row formatting of the job lists, unchanged from the pilot: times are Unix milliseconds
  * (`(int) round(seconds * 1000)`), `runtime` is seconds rounded to 3 decimals, `horizon_path` is the job's page
  * relative to Horizon's URL.
  *
@@ -26,7 +26,7 @@ use LogicException;
 final class JobRows
 {
     /**
-     * The fields of every row of a list, in output order (Arch Q2.1; unchanged from the pilot).
+     * The fields of every row of a list, in output order (unchanged from the pilot).
      *
      * @return list<string>
      */

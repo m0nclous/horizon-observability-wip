@@ -17,9 +17,9 @@ use DF\HorizonObservability\Tests\TestCase;
 use Predis\Client;
 
 /*
-| Package storage on a Redis Cluster connection (Arch Q6.5, C10). The pilot pipelined (phpredis RedisCluster has no
-| pipeline()) and its scripts touched keys of different slots (CROSSSLOT). Every package key carries the hash tag
-| {horizon-observability}, every script touches only its KEYS, and INFO runs inside Lua on the slot's node.
+| Package storage on a Redis Cluster connection. The pilot pipelined (phpredis RedisCluster has no pipeline()) and its
+| scripts touched keys of different slots (CROSSSLOT). Every package key carries the hash tag {horizon-observability},
+| every script touches only its KEYS, and INFO runs inside Lua on the slot's node.
 |
 | Needs a cluster node: REDIS_CLUSTER_HOST (127.0.0.1) and REDIS_CLUSTER_PORT (7000), e.g.
 | redis-server --port 7000 --cluster-enabled yes --cluster-announce-ip 127.0.0.1 --save '' --appendonly no, then
@@ -68,7 +68,7 @@ afterEach(function (): void {
     }
 });
 
-it('records attempts with every key in one slot of a cluster connection (C10)', function (): void {
+it('records attempts with every key in one slot of a cluster connection', function (): void {
     expect(app(RedisClients::class)->isCluster('ho-cluster'))->toBeTrue()
         ->and(Storage::record(duration: 0.3, startedAt: 1_700_000_010.0, readyAt: 1_700_000_009.0, uuid: 'job-1', now: $this->now))->toBeTrue()
         ->and(Storage::record(status: AttemptStatus::Failed, duration: 1.5, now: $this->now))->toBeTrue()
@@ -97,10 +97,10 @@ it('records attempts with every key in one slot of a cluster connection (C10)', 
     ])->and($slots)->toHaveCount(1);
 });
 
-it('collects from a cluster connection, reset guard included (C10)', function (): void {
+it('collects from a cluster connection, reset guard included', function (): void {
     Storage::record(duration: 0.3, startedAt: 1_700_000_010.0, readyAt: 1_700_000_009.0, now: $this->now);
 
-    // After the hold of new series (T16), so the counter shows its value.
+    // After the hold of new series, so the counter shows its value.
     $scrape = Storage::scrape($this->now->addSeconds(AttemptsCollector::NEW_SERIES_HOLD_SECONDS));
 
     expect($scrape['failures'])->toBe([])
@@ -109,7 +109,7 @@ it('collects from a cluster connection, reset guard included (C10)', function ()
         ->and(Storage::hash($this->keys->meta()))->toHaveKey('run_id');
 });
 
-it('runs the new-series hold on the clock of the slot\'s node: TIME inside both scripts (T16)', function (): void {
+it('runs the new-series hold on the clock of the slot\'s node: TIME inside both scripts', function (): void {
     // The production path, nothing pinned: record_attempt.lua stamps the creation time with the node's TIME (the
     // worker's clock, years back, never enters) and new_series.lua measures the age with it, then releases the series.
     $time = function (): float {
@@ -134,7 +134,7 @@ it('runs the new-series hold on the clock of the slot\'s node: TIME inside both 
         ->and(Storage::hash($this->keys->created()))->toBe([]);
 });
 
-it('stores ready_at on a cluster connection (C10)', function (): void {
+it('stores ready_at on a cluster connection', function (): void {
     app(LegacyReadyAt::class)->onQueued(Events::queued('redis', 'job-2', 30));
 
     expect(Storage::exists($this->keys->readyAt('job-2')))->toBeTrue();

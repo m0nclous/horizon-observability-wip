@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Grafana;
 
 /**
- * The non-ASCII characters of the rendered assets, kept as escapes so `src/` stays ASCII (Arch Q5.7 item 7).
+ * The non-ASCII characters of the rendered assets, kept as escapes so `src/` stays ASCII.
  *
  * @internal
  */

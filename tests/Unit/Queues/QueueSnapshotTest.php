@@ -5,7 +5,7 @@ declare(strict_types=1);
 use DF\HorizonObservability\Queues\QueueSnapshot;
 
 /*
-| QueueSnapshot derivations (Arch Q6.3, C8): pending includes due delayed jobs, the oldest age is the earlier of the
+| QueueSnapshot derivations: pending includes due delayed jobs, the oldest age is the earlier of the
 | first fresh readiness and the earliest due score, 0 when nothing is ready and null (unknown) otherwise.
 */
 
@@ -33,7 +33,7 @@ it('counts due delayed jobs as pending and the rest as delayed', function (): vo
         ->and($snapshot->delayedNotDue())->toBe(3);
 });
 
-it('ages the queue from the earlier of the fresh head and the earliest due job (C8)', function (): void {
+it('ages the queue from the earlier of the fresh head and the earliest due job', function (): void {
     expect(queueSnapshot(length: 1, fresh: 970.0)->oldestAgeSeconds(1000.0))->toBe(30.0)
         ->and(queueSnapshot(length: 1, due: 1, earliestDue: 950.0, fresh: 970.0)->oldestAgeSeconds(1000.0))->toBe(50.0)
         ->and(queueSnapshot(due: 1, earliestDue: 990.5)->oldestAgeSeconds(1000.0))->toBe(9.5)

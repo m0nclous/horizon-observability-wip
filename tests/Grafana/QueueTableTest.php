@@ -16,14 +16,14 @@ use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * ADDENDUM R2.4 O5 and O6: the queue tables (#5) read the hidden source #24, whose attempts query C returns one series
- * per (queue, status) and whose query M lists the (queue, supervisor) rows; the tables pivot the statuses into
- * Completed, Timeouts and Retries, merge them into the rows of M and compute Failed (failed + timed_out) and Success
- * rate (completed / finished) in Grafana. Those columns must equal the legacy per-column queries (attempts_delta per
- * status, 0 for configured queues without attempts, Success rate only with attempts), joined with the supervisors of
- * each queue as the legacy table joined every query. Evaluated by promtool on the medium perf profile, 15 minutes
- * ending at 19m, with Batch "All" and with Batch = one kind; Grafana's merge is emulated by a join on queue. The Jobs
- * table (#6) does the same per (queue, class) with its query B.
+ * The queue tables (#5) read the hidden source #24, whose attempts query C returns one series per (queue, status) and
+ * whose query M lists the (queue, supervisor) rows; the tables pivot the statuses into Completed, Timeouts and Retries,
+ * merge them into the rows of M and compute Failed (failed + timed_out) and Success rate (completed / finished) in
+ * Grafana. Those columns must equal the legacy per-column queries (attempts_delta per status, 0 for configured queues
+ * without attempts, Success rate only with attempts), joined with the supervisors of each queue as the legacy table
+ * joined every query. Evaluated by promtool on the medium perf profile, 15 minutes ending at 19m, with Batch "All" and
+ * with Batch = one kind; Grafana's merge is emulated by a join on queue. The Jobs table (#6) does the same per (queue,
+ * class) with its query B.
  */
 
 pest()->group('grafana');
@@ -55,7 +55,7 @@ beforeEach(function (): void {
     }
 });
 
-it('gives the legacy attempts columns from one query by status (O6)', function (?string $kind): void {
+it('gives the legacy attempts columns from one query by status', function (?string $kind): void {
     $promql = new Promql('ho_');
     $attempts = new Attempts($promql, '10m');
     $delta = static fn (string $statuses): string => Promql::sum($attempts->delta($statuses, Promql::RANGE), 'queue');
@@ -102,7 +102,7 @@ it('gives the legacy attempts columns from one query by status (O6)', function (
     'Batch = one kind' => [ProfileSeries::KIND],
 ]);
 
-it('gives the legacy attempts columns of the Jobs table from one query by status (O6)', function (?string $kind): void {
+it('gives the legacy attempts columns of the Jobs table from one query by status', function (?string $kind): void {
     $promql = new Promql('ho_');
     $attempts = new Attempts($promql, '10m');
     $selection = new Selection($promql);
@@ -150,7 +150,7 @@ it('gives the legacy attempts columns of the Jobs table from one query by status
     'Batch = one kind' => [ProfileSeries::KIND],
 ]);
 
-it('starts the merge of the queue table with the supervisor rows of M (T13 QA round 2, a queue of two supervisors)', function (): void {
+it('starts the merge of the queue table with the supervisor rows of M (a queue of two supervisors)', function (): void {
     // Grafana's merge adds a frame's values to each earlier row of the same key (Time, queue); a row that a frame
     // without supervisor started takes only the first supervisor of its queue, so the frames of M must come first.
     // The Prometheus datasource returns the frames of series before the tables, in query order, and Grafana puts the

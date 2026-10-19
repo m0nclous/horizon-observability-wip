@@ -13,13 +13,13 @@ use DF\HorizonObservability\Tests\Unit\Metrics\Support\FakeCollector;
 pest()->group('redis');
 
 /*
-| Addendum R4.11, Q9' WP1: the live self-metrics are read from the storage `meta` hash and exported by the attempts
-| collector (Add B'). Both live series are absent until a stream leader has pushed once (meta.live_push_at exists):
+| The live self-metrics are read from the storage `meta` hash and exported by the attempts collector. Both live
+| series are absent until a stream leader has pushed once (meta.live_push_at exists):
 | ho_exporter_live_push_timestamp_seconds is its value, ho_exporter_live_push_failures_total the failures counted so
 | far (0 when none). Failures before the first push are kept in meta and show up with it.
 |
-| The series come from the real AttemptsCollector (T04), the one implementation of this rule; the other collectors
-| are quiet fakes.
+| The series come from the real AttemptsCollector, the one implementation of this rule; the other collectors are
+| quiet fakes.
 */
 
 const LIVE_SELF_METRICS_TEST_TOKEN = 'live-self-metrics-token-0123456789';

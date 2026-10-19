@@ -12,10 +12,10 @@ use DF\HorizonObservability\Metrics\ScrapeContext;
 
 /**
  * Collector `job_classes`: queue_job_classes, one series per queueable class of the application code, value 1, so
- * the dashboard also lists classes that never ran (Arch Q4, Q6.9).
+ * the dashboard also lists classes that never ran.
  *
  * The classes come from {@see JobClassCache} (the deploy-time file, else the runtime cache, else live discovery), so
- * a scrape costs a cache file read (Arch Q6.11, C22). Labels pass through {@see JobClassLabel::normalize()}, the
+ * a scrape costs a cache file read. Labels pass through {@see JobClassLabel::normalize()}, the
  * normaliser of every other `job_class` label, so the values join with the attempt and queue series.
  *
  * @internal

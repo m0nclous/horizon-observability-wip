@@ -9,7 +9,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
 /*
-| The Grafana Live push (Addendum R4.6, R4.10): POST {url}/api/live/push/{id} with the bearer token and a text/plain
+| The Grafana Live push: POST {url}/api/live/push/{id} with the bearer token and a text/plain
 | line-protocol body, 2 s timeout and 1 s connect timeout; every answer, a refused connection and a timeout become a
 | PushResult, never an exception, and the token never appears in the error.
 */

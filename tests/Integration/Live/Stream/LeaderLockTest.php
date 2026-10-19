@@ -10,8 +10,8 @@ use DF\HorizonObservability\Tests\Support\RedisKeys;
 use DF\HorizonObservability\Tests\TestCase;
 
 /*
-| The stream leader lease (Addendum R4.6): SET live:leader <host:pid:rand> NX PX 5000 on the storage client, renewed
-| and released with lock.lua only by its holder.
+| The stream leader lease: SET live:leader <host:pid:rand> NX PX 5000 on the storage client, renewed and released with
+| lock.lua only by its holder.
 */
 
 pest()->group('redis');

@@ -12,10 +12,9 @@ use DF\HorizonObservability\Metrics\MetricType;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * Scrape-interval agnostic windows (Arch Q5.2, Q5.6 steps 6 and 12, ADDENDUM R3.3 and Q9' WP8B): the hidden
- * scrape_interval variable is every Prometheus panel's min interval, the busy window defaults to max(15s, 2 x S), the
- * counter lookback is max(10m, 10 x S), the RPM window max(5m, 5 x S), and the refresh follows S in off and stream
- * modes and --live-poll-interval in poll mode (ADDENDUM R2.5).
+ * Scrape-interval agnostic windows: the hidden scrape_interval variable is every Prometheus panel's min interval, the
+ * busy window defaults to max(15s, 2 x S), the counter lookback is max(10m, 10 x S), the RPM window max(5m, 5 x S), and
+ * the refresh follows S in off and stream modes and --live-poll-interval in poll mode.
  */
 
 pest()->group('grafana');
@@ -49,7 +48,7 @@ it('gives every panel with a Prometheus query the scrape interval as its min int
     $prometheus = [];
 
     foreach (PanelRegistry::panels(Rendered::dashboard($mode)) as $panel) {
-        // A Prometheus panel, or a Mixed live tile with its Prometheus sparkline (ADDENDUM R4.8)
+        // A Prometheus panel, or a Mixed live tile with its Prometheus sparkline
         $types = array_map(static fn (array $target): ?string => $target['datasource']['type'] ?? null, $panel['targets'] ?? []);
 
         if (($panel['datasource']['type'] ?? null) === 'prometheus' || in_array('prometheus', $types, true)) {

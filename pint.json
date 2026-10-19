@@ -8,9 +8,5 @@
       "import_constants": false,
       "import_functions": false
     }
-  },
-  "exclude": [
-    "legacy",
-    "planning"
-  ]
+  }
 }

@@ -64,7 +64,7 @@ it('copies cluster connections with per-cluster options', function (): void {
         ->and($reader[0]['timeout'])->toBe(2.0)
         ->and($reader[0]['persistent'])->toBeFalse()
         ->and($reader[1]['host'])->toBe('10.0.0.2')
-        // The predis parameters too, which a node learned from the slot map gets (T14 QA round 3).
+        // The predis parameters too, which a node learned from the slot map gets.
         ->and($reader['options'])->toBe(['prefix' => '{m}:', 'persistent' => false, 'timeout' => 2.0, 'read_timeout' => 2.0, 'read_write_timeout' => 2.0, 'parameters' => ['persistent' => false, 'timeout' => 2.0, 'read_timeout' => 2.0, 'read_write_timeout' => 2.0]]);
 });
 

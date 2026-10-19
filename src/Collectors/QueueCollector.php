@@ -16,8 +16,8 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Collector `queues`: queue_pending_jobs, queue_delayed_*, queue_oldest_pending_job_age_seconds, queue_jobs_pending|reserved
- * (Arch Q1.3, Q4, Q6.3, Q6.11, C8, C9, C12).
+ * Collector `queues`: queue_pending_jobs, queue_delayed_*, queue_oldest_pending_job_age_seconds,
+ * queue_jobs_pending|reserved.
  *
  * - **Queues** are the ones `php artisan horizon` runs in the effective environment ({@see Topology::queues()}),
  *   read from Horizon's config, so they are exported while Horizon is down. Queues of connections that do not use
@@ -26,8 +26,8 @@ use Throwable;
  *   {@see UnsupportedTopology}) is reported with {@see ScrapeContext::reportFailure()} and has no series; the other
  *   queues are exported. When the scrape budget runs out between two queues the rest are skipped and reported.
  * - **Values.** Pending includes the due delayed jobs; delayed includes them too (see queue_delayed_due_jobs). The
- *   oldest age (C8) is omitted when it is unknown (jobs are ready but no fresh one was scanned and nothing is due).
- * - **Classes** (C9): the top {@see self::CLASS_LIMIT} classes per queue by count, the rest folded into `(other)`;
+ *   oldest age is omitted when it is unknown (jobs are ready but no fresh one was scanned and nothing is due).
+ * - **Classes**: the top {@see self::CLASS_LIMIT} classes per queue by count, the rest folded into `(other)`;
  *   the ready jobs beyond the scan limit or the byte cap, and the reserved jobs beyond the reserved scan limit, are
  *   `(unscanned)`. An empty queue has no per-class series.
  *
@@ -36,7 +36,7 @@ use Throwable;
 final readonly class QueueCollector implements Collector
 {
     /**
-     * Job classes kept per queue and family (Arch Q3 internal constants); the rest become `(other)`.
+     * Job classes kept per queue and family (an internal constant); the rest become `(other)`.
      */
     public const CLASS_LIMIT = 100;
 

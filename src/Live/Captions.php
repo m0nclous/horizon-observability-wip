@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Live;
 
 /**
- * Caption, level and colour rules of the Overview tiles (Addendum R4.2 and R4.4), shared by the live snapshot and the
+ * Caption, level and colour rules of the Overview tiles, shared by the live snapshot and the
  * Grafana renderer so both modes read the same. Levels are 0 (green), 1 (yellow) and 2 (red); tiles without a
  * colour rule use `text`. Fixtures: `tests/Fixtures/live/captions.php`.
  *
@@ -45,7 +45,7 @@ final class Captions
     public const TEXT = 'text';
 
     /**
-     * Caption of every live tile while the snapshot cannot be built (Addendum R4.10).
+     * Caption of every live tile while the snapshot cannot be built.
      */
     public const UNAVAILABLE = 'Live unavailable';
 

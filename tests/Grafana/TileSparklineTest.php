@@ -12,13 +12,12 @@ use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * ADDENDUM R2.4 O4 (as amended in T13 QA rounds 2 and 3): the Completed (#8) and Failed (#4) sparklines compute the
- * attempts per step per series, the value at the end of the step minus the one at its start (or the series' first
- * value inside the step), and sum them; the first and the last step are clipped to the period. Their points add up to
- * the tile number, so on continuous data (the medium perf profile here) they must equal the legacy form, the pilot's
- * attempts_per_step summed, at every step of a period, and so must the per-step graph #14 (Attempts::perStep(), per
- * series since QA round 3). A counter reset costs the attempts of its series in the one step it falls in, not the
- * period or the other series.
+ * The Completed (#8) and Failed (#4) sparklines compute the attempts per step per series, the value at the end of the
+ * step minus the one at its start (or the series' first value inside the step), and sum them; the first and the last
+ * step are clipped to the period. Their points add up to the tile number, so on continuous data (the medium perf
+ * profile here) they must equal the legacy form (legacySparkline(): the pilot's per-step attempts, summed) at every
+ * step of a period, and so must the per-step graph #14 (Attempts::perStep(), also per series). A counter reset costs
+ * the attempts of its series in the one step it falls in, not the period or the other series.
  *
  * Grafana's range query is emulated by one promtool evaluation per step: 15-minute range ending at 19m, 1m steps.
  */
@@ -34,8 +33,8 @@ function sparklineInterpolate(string $expr): string
 }
 
 /**
- * The legacy tile expression: the pilot's attempts_per_step per (queue, job_class, status), summed, as the WP8B render
- * wrote it (Attempts::perStep() before T13 QA round 3).
+ * The legacy tile expression: the pilot's per-step attempts per (queue, job_class, status), summed, as
+ * Attempts::perStep() wrote it before it chose the start per series.
  */
 function legacySparkline(string $statuses): string
 {
@@ -78,7 +77,7 @@ beforeEach(function (): void {
     }
 });
 
-it('gives the legacy value at every step of the period (O4)', function (string $title, string $statuses): void {
+it('gives the legacy value at every step of the period', function (string $title, string $statuses): void {
     $now = sparklineInterpolate(Rendered::expressions()['panel '.PanelRegistry::idOf(Rendered::dashboard(), $title).' A']);
     $legacy = sparklineInterpolate(legacySparkline($statuses));
     $graph = sparklineInterpolate(perStepSparkline($statuses));
@@ -119,7 +118,7 @@ it('loses only the reset series in the step of a counter reset, not the period',
         ],
         'promql_expr_test' => [
             // The tile number: its points summed. In (4m, 19m] A had 5 + 1 + 9 attempts and B 30; A's attempt in the
-            // step from 9m to 10m is lost (T16 recreates a reset series at 0 first, so it is not lost in practice)
+            // step from 9m to 10m is lost (not in practice: the exporter recreates a reset series at 0 first)
             ['expr' => 'sum_over_time(('.$tile.')[16m:1m])', 'eval_time' => '19m', 'exp_samples' => [['labels' => '{}', 'value' => 45 - 1]]],
             ['expr' => '('.$tile.')', 'eval_time' => '9m', 'exp_samples' => [['labels' => '{}', 'value' => 2]]],
             ['expr' => '('.$tile.')', 'eval_time' => '10m', 'exp_samples' => [['labels' => '{}', 'value' => 3]]],
@@ -131,8 +130,8 @@ it('loses only the reset series in the step of a counter reset, not the period',
 
 it('counts a reset between the first step\'s start and the period start from the value after it', function (): void {
     // 15-second samples, the period (4m15s, 19m] at 1-minute steps: the first point (4m) counts the step (4m, 5m]
-    // from the period start. A was flushed at 4m15s (116, then 1, 2, ...): its attempts in the period are 60 - 1. The
-    // round 2 form subtracted the sum of V(from) - V(4m) = 1 - 116 from the first point and counted 115 more
+    // from the period start. A was flushed at 4m15s (116, then 1, 2, ...): its attempts in the period are 60 - 1. An
+    // earlier form subtracted the sum of V(from) - V(4m) = 1 - 116 from the first point and counted 115 more
     $series = 'ho_queue_jobs_total{job="app", instance="app:8080", connection="redis", queue="default", job_class="App\\\\Jobs\\\\A", status="completed"}';
     $tile = Promtool::interpolate(Rendered::expressions()['panel '.PanelRegistry::COMPLETED.' A'], '.+', 19 * 60, 19 * 60 - 255);
 

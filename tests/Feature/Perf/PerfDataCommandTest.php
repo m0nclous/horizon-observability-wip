@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\File;
 use Workbench\App\Perf\SyntheticModel;
 
 /*
-| workbench:perf-data (ADDENDUM R2.2 step 1, T11): OpenMetrics chunks aligned to the 2-hour block windows, with the
-| labels the perf Prometheus adds on scrape.
+| workbench:perf-data (the synthetic history of the dashboard performance profile, docker/perf/README.md):
+| OpenMetrics chunks aligned to the 2-hour block windows, with the labels the perf Prometheus adds on scrape.
 */
 
 beforeEach(function (): void {

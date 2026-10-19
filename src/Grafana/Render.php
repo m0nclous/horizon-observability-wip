@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Grafana;
 
 /**
- * The files of one render (Arch Q5.1): the dashboard and the alert rules, as Grafana file provisioning reads them,
+ * The files of one render: the dashboard and the alert rules, as Grafana file provisioning reads them,
  * and with `--recording-rules` the Prometheus rule file, keyed by their path relative to the output directory.
  *
  * @internal

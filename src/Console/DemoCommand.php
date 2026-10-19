@@ -15,7 +15,7 @@ use Random\Randomizer;
 use Throwable;
 
 /**
- * PUBLIC `horizon-observability:demo` (owner decision 12): dispatches a short burst of sample jobs so that an empty
+ * PUBLIC `horizon-observability:demo`: dispatches a short burst of sample jobs so that an empty
  * application shows data on the dashboard at once: jobs that complete, fail, fail once and succeed on the retry,
  * release themselves once, are delayed by 30 to 120 s, plus one batch.
  *

@@ -1,5 +1,5 @@
-# Dev Prometheus datasource (Arch 8.3, ADDENDUM R2.5). The URL and the interval come from docker-compose.yml, so the
-# perf profile can point the same Grafana at perf-prometheus.
+# Dev Prometheus datasource. The URL and the interval come from docker-compose.yml, so the perf profile can point the
+# same Grafana at perf-prometheus.
 apiVersion: 1
 
 datasources:

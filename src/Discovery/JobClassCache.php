@@ -13,8 +13,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Job classes from `bootstrap/cache/horizon-observability.php`, then the runtime cache (1 h), then live discovery
- * (Arch Q6.9, C22).
+ * Job classes from `bootstrap/cache/horizon-observability.php`, then the runtime cache (1 h), then live discovery.
  *
  * - **Cache file.** Written at deploy time by `horizon-observability:cache` (hooked into `php artisan optimize` on
  *   Laravel >= 11.27.1) and deleted by `horizon-observability:clear` (`optimize:clear`). While it exists it is the
@@ -48,7 +47,7 @@ final readonly class JobClassCache
     public const VERSION = 1;
 
     /**
-     * Lifetime of the runtime cache entry, seconds (Arch Q3 internal constants).
+     * Lifetime of the runtime cache entry, seconds (an internal constant).
      */
     public const TTL_SECONDS = 3600;
 

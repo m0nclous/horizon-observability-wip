@@ -57,8 +57,8 @@ it('applies the private timeouts and never a persistent socket', function (): vo
 });
 
 it('caps the timeouts of every node a predis cluster reader connects to, also those it learns from the slot map', function (string $cluster): void {
-    // predis reads connection parameters only: each listed node's, and for a node of a Redis Cluster's slot map that
-    // is not listed (e.g. seeds by host name, a cluster announcing IPs) the `parameters` option (T14 QA round 3).
+    // predis reads connection parameters only: each listed node's, and for a node of a Redis Cluster's slot map that is
+    // not listed (e.g. seeds by host name, a cluster announcing IPs) the `parameters` option.
     config()->set('database.redis.client', 'predis');
     config()->set('database.redis.options.cluster', $cluster);
     config()->set('database.redis.options.parameters', ['password' => 'from-the-options', 'read_write_timeout' => 30]);

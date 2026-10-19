@@ -11,9 +11,9 @@ use DF\HorizonObservability\Tests\Support\RedisKeys;
 use DF\HorizonObservability\Tests\TestCase;
 
 /*
-| Adversarial probes of GET {base}/live (T12 QA round 2): the round 1 fixes (a Supervisor filter while Horizon is
-| stopped, the wait level from the exact age, names that are not valid UTF-8) and the numbers next to them, against
-| the exporter and the off-mode tile rules for the same Redis state (owner decision 13).
+| Adversarial probes of GET {base}/live: earlier fixes (a Supervisor filter while Horizon is stopped, the wait level
+| from the exact age, names that are not valid UTF-8) and the numbers next to them, against the exporter and the
+| off-mode tile rules for the same Redis state (/live must show the same numbers as both).
 */
 
 pest()->group('redis');
@@ -72,7 +72,7 @@ it('captions the oldest wait like the off-mode tile, from the exact age', functi
     '149.6 s' => [149.6, 'Oldest: 2 min '.Captions::DOT.' default'],
     // 210 s, then 3.5 min: "4 min" for 3.495 min
     '209.7 s' => [209.7, 'Oldest: 3 min '.Captions::DOT.' default'],
-    // (T12 round 3) rounds to 0 s, but something waits: the off-mode tile names the queue ("0 s"), not a dash
+    // rounds to 0 s, but something waits: the off-mode tile names the queue ("0 s"), not a dash
     '0.3 s' => [0.3, 'Oldest: 0 s '.Captions::DOT.' default'],
     '119.4 s' => [119.4, 'Oldest: 119 s '.Captions::DOT.' default'],
     '150.2 s' => [150.2, 'Oldest: 3 min '.Captions::DOT.' default'],

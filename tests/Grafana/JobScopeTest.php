@@ -10,8 +10,8 @@ use DF\HorizonObservability\Grafana\Promql;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * Arch Q5.2 and Q5.6 step 4: the hidden prometheus_job variable scopes every package selector of the dashboard,
- * variable queries included, and the alert rules carry the rendered job regex (`.+`, or the exact --job).
+ * The hidden prometheus_job variable scopes every package selector of the dashboard, variable queries included, and the
+ * alert rules carry the rendered job regex (`.+`, or the exact --job).
  */
 
 pest()->group('grafana');

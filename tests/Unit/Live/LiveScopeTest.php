@@ -90,7 +90,7 @@ it('marks a job filter', function (): void {
         ->and($scope->queueNames())->toBe(['default', 'slow', 'reports', 'mail', 'sms']);
 });
 
-// BatchLinks (T07) reads the links from the package storage, so this case needs Redis.
+// BatchLinks reads the links from the package storage, so this case needs Redis.
 it('narrows to the batch links with a batch filter', function (): void {
     $scope = liveScope(['batchKinds' => ['import'], 'jobClasses' => ['App\\Jobs\\SendInvoice']]);
 

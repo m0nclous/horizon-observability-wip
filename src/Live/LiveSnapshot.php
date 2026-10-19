@@ -7,7 +7,7 @@ namespace DF\HorizonObservability\Live;
 use UnexpectedValueException;
 
 /**
- * The live snapshot, JSON schema v1 (Addendum R4.4; public and SemVer-covered as JSON, the class is not).
+ * The live snapshot, JSON schema v1 (public and SemVer-covered as JSON, the class is not).
  *
  * {@see self::compose()} derives every level, colour and caption from raw measurements with {@see Captions}, so poll
  * and stream modes read alike; {@see self::toArray()} is the public JSON and {@see self::fromArray()} reads it back
@@ -40,7 +40,7 @@ final readonly class LiveSnapshot
     public const SCHEMA_VERSION = 1;
 
     /**
-     * Ring window and bucket width of the throughput counts (Addendum R4.5).
+     * Ring window and bucket width of the throughput counts.
      */
     public const WINDOW_SECONDS = 60;
 
@@ -80,7 +80,7 @@ final readonly class LiveSnapshot
     ) {}
 
     /**
-     * Build a snapshot from raw measurements and derive levels, colours and captions (Addendum R4.2 step 5, R4.4).
+     * Build a snapshot from raw measurements and derive levels, colours and captions.
      *
      * @param  int|null  $horizonStatus  1, 0 or -1; null when Horizon's state could not be read
      * @param  list<SupervisorInput>  $supervisors  `processes` as Horizon reports them; `busy` = reserved jobs of the
@@ -139,7 +139,7 @@ final readonly class LiveSnapshot
 
         foreach ($queues as $queue) {
             $threshold = $queue['wait_threshold_seconds'];
-            // The ratio of the exact age (Addendum R4.2 step 5): 10.4 s over a 10 s limit is level 1, not 10 / 10.
+            // The ratio of the exact age: 10.4 s over a 10 s limit is level 1, not 10 / 10.
             $ratio = $threshold !== null && $threshold > 0 ? $queue['oldest_seconds'] / $threshold : null;
             $level = Captions::waitLevel($ratio);
             $seconds = (int) round($queue['oldest_seconds']);
@@ -299,7 +299,7 @@ final readonly class LiveSnapshot
     }
 
     /**
-     * The snapshot of a failed build (Addendum R4.10): null values, caption `Live unavailable`, colour `text`.
+     * The snapshot of a failed build: null values, caption `Live unavailable`, colour `text`.
      *
      * @param  list<ErrorRow>  $errors
      */
@@ -332,7 +332,7 @@ final readonly class LiveSnapshot
 
     /**
      * The same snapshot with the queue part unknown: no queue in scope could be read, so Pending, Delayed and
-     * Reserved are null with caption `Live unavailable` and colour `text` (Addendum R4.10), and the supervisors keep
+     * Reserved are null with caption `Live unavailable` and colour `text`, and the supervisors keep
      * their processes but lose the utilisation colour (busy workers are unknown; `text`, level 0) unless Horizon is
      * not running. The Horizon state and the throughput stay as read.
      */
@@ -433,7 +433,7 @@ final readonly class LiveSnapshot
     }
 
     /**
-     * The tile rows in push order (Addendum R4.7): pending, delayed, supervisors by display name, throughput. A
+     * The tile rows in push order: pending, delayed, supervisors by display name, throughput. A
      * supervisor tile shows the running processes, or with a Job or Batch filter the busy workers of the selected
      * classes, and then only the supervisors with such workers, as the off-mode tile lists them.
      *
@@ -448,7 +448,7 @@ final readonly class LiveSnapshot
 
         foreach ($this->supervisors as $supervisor) {
             // With a Job or Batch filter the tile counts the workers busy with the selected classes, as the off-mode
-            // tile does (Addendum R4.1), which lists only the supervisors whose queues run them (it joins their
+            // tile does, which lists only the supervisors whose queues run them (it joins their
             // reserved jobs); like the processes, they read 0 while Horizon is not running.
             if ($this->scope['job_filter'] && $supervisor['busy'] === 0) {
                 continue;

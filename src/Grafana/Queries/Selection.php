@@ -24,8 +24,7 @@ final readonly class Selection
      * classes without their namespace (Variables::jobQuery()), so a real option holds no backslash. Known limit, as in
      * the pilot: a value that matches no option (a shared link with a class that is no longer exported) has the value
      * as its text, and a batch kind, queue or supervisor is its own text; a backslash or a double quote in such a text
-     * makes the expression unparseable, and the panels that test the filter show the query error, never a number
-     * (T13 QA round 3).
+     * makes the expression unparseable, and the panels that test the filter show the query error, never a number.
      */
     public static function isAll(string $variable): string
     {
@@ -40,7 +39,7 @@ final readonly class Selection
      * Every configured queue: the pending-jobs gauge is exported for each queue, empty ones included
      * (legacy `QUEUES`). With $window, every queue exported within it: the rows of a table of the period, so an
      * application whose scrape failed at the end of the period, or that stopped inside it, keeps its queues and
-     * their attempts (T13 QA round 4).
+     * their attempts.
      */
     public function queues(?string $window = null): string
     {

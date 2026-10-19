@@ -7,7 +7,7 @@ namespace DF\HorizonObservability\Attempts;
 /**
  * Outcome of a finished job attempt: the `status` label of `queue_jobs_total`.
  *
- * The values are public (Arch Q4, SemVer-covered). `released` stays: it is a real outcome and keeps the totals
+ * The values are public and SemVer-covered. `released` stays: it is a real outcome and keeps the totals
  * additive.
  */
 enum AttemptStatus: string

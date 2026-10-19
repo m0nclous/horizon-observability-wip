@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Time to first dashboard (owner decision 12, TASKS T14). From a fresh `composer create-project laravel/laravel` with
+# Time to first dashboard. From a fresh `composer create-project laravel/laravel` with
 # Horizon, the README quick start alone must reach the dashboard with non-empty Overview tiles within BUDGET_SECONDS:
 #
 #   composer require sushi-market/horizon-observability

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Metrics;
 
 /**
- * Prometheus text format 0.0.4 renderer (Arch Q1.1).
+ * Prometheus text format 0.0.4 renderer.
  *
  * - Families appear in {@see Metric} declaration order whatever the input order (so the self-metrics, declared
  *   last, come last), each with `# HELP` and `# TYPE`; empty families are omitted, and a non-empty output ends with

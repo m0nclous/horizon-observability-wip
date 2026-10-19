@@ -10,7 +10,7 @@ use DF\HorizonObservability\Live\Stream\LiveStreamer;
 use Illuminate\Console\Command;
 
 /**
- * PUBLIC `horizon-observability:stream` (Arch Q7, Addendum R4.6): pushes the live overview to Grafana Live every
+ * PUBLIC `horizon-observability:stream`: pushes the live overview to Grafana Live every
  * `live.stream.interval` seconds under a Redis leader lease. Run it as a long-lived process (supervisord, systemd, a
  * Kubernetes Deployment) on any number of replicas; one of them pushes.
  *

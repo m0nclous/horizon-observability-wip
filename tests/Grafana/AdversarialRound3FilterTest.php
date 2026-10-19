@@ -7,14 +7,14 @@ use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * T13 QA round 3 (adversarial), owner decision 13 (filters) and round 2 finding 3. The job_class label is the payload
- * displayName (Attempts\JobClassLabel), which Laravel sets to the class name: App\Jobs\SendEmail for every job without
- * its own displayName() (the workbench jobs all define one, so the dev stack and the e2e tests never see a backslash).
+ * A Job filter on namespaced classes must leave every query valid. The job_class label is the payload displayName
+ * (Attempts\JobClassLabel), which Laravel sets to the class name: App\Jobs\SendEmail for every job without its own
+ * displayName() (the workbench jobs all define one, so the dev stack and the e2e tests never see a backslash).
  *
- * "All jobs selected" (Queries\Selection) compares `"${job_class:text}"` with "All" inside a PromQL string literal. The
- * round 3 probe substituted the class itself for the text and found 8 queries of the poll render and 11 of the off
- * render that Prometheus rejects (`unknown escape sequence`). The verifier refuted it: the Job variable's option text
- * is the class without its namespace (Variables::jobQuery() labels each class with `display`, the part after the last
+ * "All jobs selected" (Queries\Selection) compares `"${job_class:text}"` with "All" inside a PromQL string literal. A
+ * probe that substituted the class itself for the text found 8 queries of the poll render and 11 of the off render that
+ * Prometheus rejects (`unknown escape sequence`), but Grafana does not send that: the Job variable's option text is the
+ * class without its namespace (Variables::jobQuery() labels each class with `display`, the part after the last
  * backslash, and the variable's regex takes it as the text, the class as the value), so a real option never puts a
  * backslash into the string; Grafana 13.2.4 and 12.4.13 with namespaced classes gave no query errors. `$job_class` is
  * the value, regex-escaped by the Prometheus datasource (prometheusSpecialRegexEscape: a backslash becomes four in the
@@ -25,7 +25,7 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
  * All, and parses them with promtool. Known limit (Selection::isAll()): a value that matches no option (a shared link
  * with a class no longer exported) has the value as its text, and a batch kind is its own text; with a backslash or a
  * double quote in them the All test does not parse and the panels that use it show the query error, as the pilot's
- * filter_is_all() did.
+ * own All test did.
  */
 
 pest()->group('grafana');

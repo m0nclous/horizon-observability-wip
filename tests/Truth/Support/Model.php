@@ -9,7 +9,8 @@ use LogicException;
 
 /**
  * The expected-value model of a truth scenario: an independent re-statement of what the exporter must report,
- * written from the documented semantics (Arch Q4, Q6.2, Q6.3 C8, Appendix B), not from the package code.
+ * written from the documented semantics (the families, labels and statuses of the main README's metric tables), not
+ * from the package code.
  *
  * It follows every job of the scenario through Laravel's Redis queue (a ready list, a delayed set, reserved jobs)
  * and logs every attempt with its outcome, its planned duration, its start on the scenario clock and the wait of a
@@ -19,9 +20,10 @@ use LogicException;
  * - the duration histogram per series (exact buckets; the sum as an interval, see {@see self::OVERHEAD_SECONDS}) and
  *   the wait histogram per queue (exact, the scenario clock is frozen);
  * - the duration extremes of the attempts in the 150 s window;
- * - the queue state: pending (incl. due delayed), delayed, due, the oldest wait (C8), ready and reserved jobs per class.
+ * - the queue state: pending (incl. due delayed), delayed, due, the oldest wait of a first attempt, ready and
+ *   reserved jobs per class.
  *
- * New series are exported as 0 for their first 90 s (`AttemptsCollector::NEW_SERIES_HOLD_SECONDS`, T16): the model
+ * New series are exported as 0 for their first 90 s (`AttemptsCollector::NEW_SERIES_HOLD_SECONDS`): the model
  * applies the same rule from the time each series got its first count (one clock: the scenario's, to which the
  * scenario pins the storage Redis' clock, `ServerClock`, that the hold runs on).
  */
@@ -39,7 +41,7 @@ final class Model
     public const HOLD_SECONDS = 90;
 
     /**
-     * The extremes cover the current 15-second bucket and the 9 before it (Addendum R3.4).
+     * The extremes cover the current 15-second bucket and the 9 before it (`AttemptStore::EXTREMES_READ_BUCKETS`).
      */
     private const EXTREMES_BUCKETS = 10;
 
@@ -320,8 +322,9 @@ final class Model
     }
 
     /**
-     * C8: seconds since the readiness of the first first-attempt job in the ready list or since the earliest due
-     * delayed job, whichever is older; 0 when nothing is pending; null when neither exists.
+     * `queue_oldest_pending_job_age_seconds`: seconds since the readiness of the first first-attempt job in the
+     * ready list or since the earliest due delayed job, whichever is older; 0 when nothing is pending; null when
+     * neither exists.
      */
     public function oldest(string $connection, string $queue, float $at, int $scanLimit = 1000): ?float
     {

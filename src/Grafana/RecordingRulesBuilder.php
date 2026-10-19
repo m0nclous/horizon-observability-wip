@@ -7,14 +7,14 @@ namespace DF\HorizonObservability\Grafana;
 use DF\HorizonObservability\Metrics\Metric;
 
 /**
- * The optional Prometheus recording rules (ADDENDUM R2.4 O9, `horizon-observability:grafana --recording-rules`): the
- * attempt counter and the duration histogram summed per queue, without `job_class`, the replicas deduplicated as on
- * the dashboard (Arch Q5.6 step 10) and scoped to the rendered job like the alert rules.
+ * The optional Prometheus recording rules (`horizon-observability:grafana --recording-rules`): the attempt counter
+ * and the duration histogram summed per queue, without `job_class`, the replicas deduplicated as on the dashboard
+ * and scoped to the rendered job like the alert rules.
  *
- * The rendered dashboard never reads them, so the default render does not depend on extra Prometheus config (the
- * Arch Q5 rejected alternative): the recorded series have no class, so they could serve the panels only while Job and
- * Batch are "All", and the 6-hour refresh is within its budget without them (the WP8C measurement). They are for
- * queries over long ranges outside the dashboard, and for panels of one's own.
+ * The rendered dashboard never reads them, so the default render does not depend on extra Prometheus config: the
+ * recorded series have no class, so they could serve the panels only while Job and Batch are "All", and the 6-hour
+ * refresh is within its budget without them (README, "Performance and scrape interval"). They are for queries over
+ * long ranges outside the dashboard, and for panels of one's own.
  *
  * @internal
  */

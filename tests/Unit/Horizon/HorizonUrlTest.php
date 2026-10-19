@@ -6,7 +6,7 @@ use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Horizon\HorizonUrl;
 
 /*
-| horizon_info{url,api_path} (Arch Q3, Q4): the validated horizon_url override, or Horizon's address from app.url,
+| horizon_info{url,api_path}: the validated horizon_url override, or Horizon's address from app.url,
 | horizon.domain and horizon.path, never with a trailing slash; the API path follows the routes' base path.
 */
 

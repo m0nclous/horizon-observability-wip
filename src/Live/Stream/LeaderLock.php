@@ -12,7 +12,7 @@ use DF\HorizonObservability\Redis\RedisScriptFailed;
 use RuntimeException;
 
 /**
- * Redis leader lease of the stream command (Addendum R4.6): `SET live:leader <token> NX PX 5000`, renewed and
+ * Redis leader lease of the stream command: `SET live:leader <token> NX PX 5000`, renewed and
  * released with `lock.lua` (compare-and-PEXPIRE, compare-and-DEL), on the private storage client
  * (`redis.worker_timeout`). At most one process holds the lease; one that lost it can neither extend nor delete
  * the next holder's.

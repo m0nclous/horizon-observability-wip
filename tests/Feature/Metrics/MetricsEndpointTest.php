@@ -17,11 +17,12 @@ use Illuminate\Testing\TestResponse;
 use Symfony\Component\Process\ExecutableFinder;
 
 /*
-| GET {base}/metrics (Arch Q1, Q2.1, 8.4): content type, no caching, HEAD, the golden exposition over HTTP and
-| promtool-clean, the scrape timeout header, absolute counters (C3) and no foreign families (C17).
+| GET {base}/metrics: content type, no caching, HEAD, the golden exposition over HTTP and promtool-clean, the scrape
+| timeout header, absolute counters (each scrape exports the source's total, nothing is kept between scrapes) and no
+| foreign families (every family is in the package catalog under ho_, none of spatie's queue or Horizon families).
 |
-| Every test scrapes fake collectors (quiet by default), so it does not depend on the real collectors of T04, T05,
-| T07 and T08, except "no spatie families", which also scrapes the real ones (redis group).
+| Every test scrapes fake collectors (quiet by default), so it does not depend on the data of the real collectors,
+| except "no spatie families", which also scrapes the real ones (redis group).
 */
 
 const METRICS_ENDPOINT_TEST_TOKEN = 'metrics-endpoint-token-0123456789';
@@ -173,7 +174,7 @@ test('counters are absolute across scrapes', function (): void {
 test('no spatie families', function (): void {
     $catalog = array_map(static fn (Metric $metric): string => 'ho_'.$metric->value, Metric::cases());
 
-    // The real collectors (stubs until their tasks land) and the full fixture scrape.
+    // The real collectors and the full fixture scrape.
     $this->app->forgetInstance(Exporter::class);
     $real = Exposition::parse((string) metricsEndpointTestScrape()->assertOk()->getContent());
 

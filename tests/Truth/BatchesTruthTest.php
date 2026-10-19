@@ -13,12 +13,11 @@ use Illuminate\Bus\Batch;
 use Illuminate\Support\Facades\Bus;
 
 /*
-| Exporter truth (T16): the batch families equal Laravel's own bookkeeping of real batches run by real workers
-| (Bus::findBatch(), i.e. the job_batches rows), classified by the documented rules (Arch Q6.7): Cancelled when
-| cancelled; Finished or Failures when finished, or when every pending job has failed (allowFailures batches never
-| finish); Running otherwise. Kinds follow the default BatchKind rules (digits, dates and hex tokens stripped), an
-| unnamed batch is "unnamed" and labelled by its id. The job classes and queues come from the jobs the batches
-| dispatched.
+| Exporter truth: the batch families equal Laravel's own bookkeeping of real batches run by real workers
+| (Bus::findBatch(), i.e. the job_batches rows), classified by these rules: Cancelled when cancelled; Finished or
+| Failures when finished, or when every pending job has failed (allowFailures batches never finish); Running
+| otherwise. Kinds follow the default BatchKind rules (digits, dates and hex tokens stripped), an unnamed batch is
+| "unnamed" and labelled by its id. The job classes and queues come from the jobs the batches dispatched.
 */
 
 pest()->group('redis', 'truth');

@@ -14,7 +14,7 @@ use Illuminate\Queue\Events\JobQueued;
 use Illuminate\Support\Facades\Event;
 
 /*
-| Dispatch paths of the legacy ready_at listener (A01): the pilot cast JobQueued::$delay to int outside its try, so
+| Dispatch paths of the legacy ready_at listener: the pilot cast JobQueued::$delay to int outside its try, so
 | ->delay(now()->addMinute()) threw "could not be converted to int" into the code that dispatched the job (after the
 | push, possibly rolling back the surrounding transaction).
 */
@@ -44,7 +44,7 @@ beforeEach(function (): void {
     };
 });
 
-it('carbon delay does not throw (A01)', function (): void {
+it('carbon delay does not throw', function (): void {
     CompletingJob::dispatch()->onConnection('redis')->delay(now()->addMinute());
 
     expect(($this->readyAt)())->toBe([[$this->start->getTimestamp() + 60, 60 + LegacyReadyAt::EXTRA_TTL_SECONDS]]);

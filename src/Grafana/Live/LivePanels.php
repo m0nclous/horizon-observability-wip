@@ -15,9 +15,9 @@ use LogicException;
 use stdClass;
 
 /**
- * The live variants of the Overview tiles (ADDENDUM R4.1 and R4.8), made from their `--live=off` panels: only the
- * properties R4.8 lists change, so gridPos, field defaults, colours, text mode and caption size stay those of the
- * off render.
+ * The live variants of the Overview tiles, made from their `--live=off` panels: only the datasource, the queries,
+ * the transformations and the few properties described below change, so gridPos, field defaults, colours, text mode
+ * and caption size stay those of the off render.
  *
  * Poll mode:
  * - #3 Supervisor Processes reads the snapshot's `tiles[]` (Infinity) through {@see tileRows()}: one value per
@@ -59,8 +59,7 @@ final readonly class LivePanels
     public const FILTERS = ['supervisor', 'batch_kind', 'queue', 'job_class'];
 
     /**
-     * The fields of a tile row, the snapshot's `tiles[]` and the `tiles` measurement alike (ADDENDUM R4.4, R4.7);
-     * `level` is not read.
+     * The fields of a tile row, the snapshot's `tiles[]` and the `tiles` measurement alike; `level` is not read.
      */
     public const TILE_FIELDS = ['tile', 'key', 'caption', 'value', 'color'];
 
@@ -73,7 +72,7 @@ final readonly class LivePanels
 
     /**
      * Stream tiles keep 500 ms of rows (`maxDelta`): with pushes 1 s apart and the rows of one push stamped 1 ms
-     * apart, exactly the latest push (ADDENDUM R4.8).
+     * apart, exactly the latest push.
      */
     public const BUFFER_MS = 500;
 
@@ -212,9 +211,10 @@ final readonly class LivePanels
     }
 
     /**
-     * `TILE_ROWS(t)` (ADDENDUM R4.8): the rows of tile $tile, the last one per (`tile`, `key`), one field each, named
-     * by its caption and coloured by its colour. `groupBy` removes the duplicate fields of a live panel that
-     * re-subscribes after a refresh and drops `time`, `labels` and `level`, which `rowsToFields` would turn into labels.
+     * `TILE_ROWS(t)`, shared by the poll and stream tiles: the rows of tile $tile, the last one per (`tile`, `key`),
+     * one field each, named by its caption and coloured by its colour. `groupBy` removes the duplicate fields of a
+     * live panel that re-subscribes after a refresh and drops `time`, `labels` and `level`, which `rowsToFields` would
+     * turn into labels.
      *
      * @return list<array<string, mixed>>
      */
@@ -244,7 +244,7 @@ final readonly class LivePanels
     }
 
     /**
-     * `SENTINEL` (ADDENDUM R4.8): the line protocol pushes a null value as -1, which a stream tile shows as a dash.
+     * `SENTINEL`: the line protocol pushes a null value as -1, which a stream tile shows as a dash.
      *
      * @return array<string, mixed>
      */
@@ -311,7 +311,7 @@ final readonly class LivePanels
 
     /**
      * #2: poll keeps the Prometheus sparkline and takes the live value, caption and colour; stream reads the live
-     * tile row only (Mixed cannot carry a stream, ADDENDUM R4.8).
+     * tile row only (Mixed cannot carry a stream).
      *
      * @param  array<string, mixed>  $panel
      * @return array<string, mixed>
@@ -470,8 +470,8 @@ final readonly class LivePanels
     }
 
     /**
-     * "Config from query results" of query $refId for every other frame (ADDENDUM R4.8: no `applyTo`, the merged
-     * frame of A and L has no refId of its own).
+     * "Config from query results" of query $refId for every other frame (no `applyTo`: the merged frame of A and L
+     * has no refId of its own).
      *
      * @param  list<array<string, mixed>>  $mappings
      * @return array<string, mixed>

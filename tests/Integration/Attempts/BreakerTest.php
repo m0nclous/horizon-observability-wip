@@ -14,9 +14,9 @@ use DF\HorizonObservability\Tests\Support\LogRecorder;
 use DF\HorizonObservability\Tests\Support\RunsWorker;
 
 /*
-| An unreachable or hanging metrics Redis (C11). The pilot paid a connect timeout (60 s by default) per job and per
-| delayed dispatch and logged a warning per job. Now: a private client with redis.worker_timeout, and a breaker that
-| skips writes for 30 s after a failure, so the worst case is one timeout per cooldown per worker.
+| An unreachable or hanging metrics Redis. The pilot paid a connect timeout (60 s by default) per job and per delayed
+| dispatch and logged a warning per job. Now: a private client with redis.worker_timeout, and a breaker that skips
+| writes for 30 s after a failure, so the worst case is one timeout per cooldown per worker.
 */
 
 pest()->group('redis');
@@ -62,7 +62,7 @@ afterEach(function (): void {
     fclose($this->server);
 });
 
-it('unreachable storage costs one timeout per cooldown (C11)', function (): void {
+it('unreachable storage costs one timeout per cooldown', function (): void {
     $first = ($this->timed)(static function (): void {
         expect(Storage::record())->toBeFalse();
     });
@@ -90,7 +90,7 @@ it('unreachable storage costs one timeout per cooldown (C11)', function (): void
         ->and($this->log->messages('warning')[0])->toStartWith('horizon-observability: breaker:attempts failed: ');
 });
 
-it('costs one timeout per cooldown when the default cache store is on the same Redis (C11)', function (): void {
+it('costs one timeout per cooldown when the default cache store is on the same Redis', function (): void {
     // The app's cache shares the hanging server (a common setup): the breaker's warning must not wait for it too.
     config()->set('database.redis.cache', [...config('database.redis.hanging'), 'timeout' => 3, 'read_timeout' => 3, 'read_write_timeout' => 3]);
     config()->set('cache.default', 'redis');

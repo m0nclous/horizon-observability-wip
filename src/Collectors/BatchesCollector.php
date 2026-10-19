@@ -17,7 +17,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Collector `batches`: queue_batch* (Arch Q4, Q6.7, C1, C9).
+ * Collector `batches`: queue_batch*.
  *
  * Two sources, each a partial failure of its own ({@see ScrapeContext::reportFailure()}: the data of the other source
  * is kept, `exporter_collector_success` is 0):
@@ -36,7 +36,7 @@ use Throwable;
  *   `queue_batch_progress` (with `status` and `id`). Kind and name identify a batch on the dashboard, so of several
  *   batches with the same kind and name only the newest is exported.
  *
- * Cardinality caps (C9): at most {@see self::MAX_KINDS} kinds, the most recently active first (latest creation,
+ * Cardinality caps: at most {@see self::MAX_KINDS} kinds, the most recently active first (latest creation,
  * closing or link time); the other kinds are folded into `(other)` in the per-kind families. Per-batch families cover
  * at most {@see self::MAX_BATCHES_PER_KIND} batches per kind and {@see self::MAX_BATCHES} per scrape, newest first,
  * and only kinds that are not folded.

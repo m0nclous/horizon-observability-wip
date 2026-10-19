@@ -14,9 +14,9 @@ use Illuminate\Support\Facades\Cache;
 use Symfony\Component\Process\Process;
 
 /*
-| The job class cache (Arch Q6.9, C22): the deploy-time file wins, else the runtime cache (1 h, keyed by the scanned
-| directories) serves every request, else live discovery runs. A fresh JobClassCache instance stands for a new PHP-FPM
-| request: the pilot kept the list in a static property, so every request scanned the code again.
+| The job class cache: the deploy-time file wins, else the runtime cache (1 h, keyed by the scanned directories) serves
+| every request, else live discovery runs. A fresh JobClassCache instance stands for a new PHP-FPM request: the pilot
+| kept the list in a static property, so every request scanned the code again.
 */
 
 beforeEach(function (): void {
@@ -219,7 +219,7 @@ it('drops the scan marker on cache and clear', function (): void {
     expect(Cache::has($marker))->toBeFalse();
 });
 
-it('serves a fresh request from the runtime cache without scanning again (C22)', function (): void {
+it('serves a fresh request from the runtime cache without scanning again', function (): void {
     $a = $this->classes->job('Alpha');
 
     expect(freshJobClassCache()->classes())->toBe([$a]);
@@ -253,7 +253,7 @@ it('keys the runtime cache by the scanned directories', function (): void {
     }
 });
 
-it('prefers the cache file and never scans while it exists (C22)', function (): void {
+it('prefers the cache file and never scans while it exists', function (): void {
     $a = $this->classes->job('Alpha');
 
     expect(freshJobClassCache()->write())->toBe(1)

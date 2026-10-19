@@ -12,7 +12,7 @@ use Illuminate\Support\ServiceProvider;
 use Throwable;
 
 /**
- * Versions of the running stack and the capabilities that depend on them (Arch Q6.8, Appendix F).
+ * Versions of the running stack and the capabilities that depend on them.
  *
  * Versions come from `InstalledVersions::getVersion()` and `version_compare()`, never from `satisfies()`, because
  * `composer/semver` is not a runtime dependency of the framework. A dev branch or an unknown version counts as the

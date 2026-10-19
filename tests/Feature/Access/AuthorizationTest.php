@@ -21,13 +21,13 @@ use Laravel\Horizon\HorizonServiceProvider;
 use Symfony\Component\HttpFoundation\Response;
 
 /*
-| C4 (Arch Q2.3, Appendix H): the auth matrix over HTTP. Locked by default outside local, 401 with a Bearer
-| challenge for a missing or wrong token, rotation, the separate api_token, IPs alone and with tokens, the callback;
-| 401/403 bodies as text on /metrics and JSON on the job lists and /live; nothing behind Authorize runs for a
-| denied request, not even the configured throttle, and the denial does no cache, database or Redis work.
+| The auth matrix over HTTP. Locked by default outside local, 401 with a Bearer challenge for a missing or wrong
+| token, rotation, the separate api_token, IPs alone and with tokens, the callback; 401/403 bodies as text on /metrics
+| and JSON on the job lists and /live; nothing behind Authorize runs for a denied request, not even the configured
+| throttle, and the denial does no cache, database or Redis work.
 |
 | Denials use the package routes. Allowed api requests use a test route with the same middleware, so the matrix does
-| not depend on the job-list and live controllers (T06, T12).
+| not depend on the job-list and live controllers.
 */
 
 const AUTHORIZATION_TEST_TOKEN = 'prometheus-token-0123456789abcdef';
@@ -69,7 +69,7 @@ beforeEach(function (): void {
     // An api endpoint behind the package middleware whose controller needs nothing.
     Route::get(AUTHORIZATION_TEST_API_ROUTE, static fn (): JsonResponse => new JsonResponse(['ok' => true]))
         ->middleware([ForceJson::class, Authorize::class.':api']);
-    // Allowed scrapes collect nothing, so the matrix does not depend on the real collectors (T04, T05, T07, T08).
+    // Allowed scrapes collect nothing, so the matrix does not depend on the real collectors.
     $this->app->instance(Exporter::class, new Exporter($this->app, null, FakeCollector::quiet()));
 });
 
@@ -285,7 +285,7 @@ it('causes no cache write when unauthenticated', function (array $config, ?Closu
     [$denied, [$ioWhileDenied, $redisWhileDenied], $allowed, $io] = $result;
 
     // Twelve denied requests never reached the throttle (limit 2 per minute), and the denial itself, including its
-    // log line, did no cache, database or Redis work (Arch Q2.4).
+    // log line, did no cache, database or Redis work.
     expect(array_unique($denied))->toBe([$status])
         ->and($ioWhileDenied)->toBe([])
         ->and($redisWhileDenied)->toBe(0);

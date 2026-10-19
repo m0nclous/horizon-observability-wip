@@ -66,8 +66,8 @@ final readonly class BatchState
 
     /**
      * Which queue and class each batch kind runs (legacy `BATCH_CLASSES`): now, or with $window every pair exported
-     * within it, for the attempts of the period (an application whose scrape failed at the end of the period keeps
-     * its kinds' attempts, T13 QA round 4).
+     * within it, for the attempts of the period (so an application whose scrape failed at the end of the period
+     * keeps its kinds' attempts).
      */
     public function classes(?string $window = null): string
     {

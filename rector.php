@@ -17,8 +17,8 @@ return RectorConfig::configure()
     ])
     ->withSkip([
         __DIR__.'/tests/Fixtures',
-        // Public method signatures are frozen contracts (Arch Appendix C, ADDENDUM Appendix C2): stubs keep their
-        // parameters and no-op listeners until the owning task implements them.
+        // Public method signatures are contracts (an event subscriber's subscribe($events), the empty handle() of the
+        // workbench discovery fixtures): Rector must not drop their unused parameters or empty methods.
         RemoveUnusedPublicMethodParameterRector::class,
         RemoveEmptyClassMethodRector::class,
     ])
@@ -29,7 +29,7 @@ return RectorConfig::configure()
         typeDeclarations: true,
         earlyReturn: true,
     )
-    // The floor is Laravel 11.23 (Arch 8.6): upgrade rules up to Laravel 11, nothing newer.
+    // The floor is Laravel 11.23: upgrade rules up to Laravel 11, nothing newer.
     ->withSets([
         LaravelLevelSetList::UP_TO_LARAVEL_110,
     ]);

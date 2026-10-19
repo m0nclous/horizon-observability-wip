@@ -1,5 +1,5 @@
 # Dev Prometheus, PHP on the host (composer serve on :8000). The package endpoint is its own scrape job at the
-# recommended 10 s (ADDENDUM R3.2): the job name is the dashboard's prometheus_job scope.
+# recommended 10 s: the job name is the dashboard's prometheus_job scope.
 global:
   scrape_interval: 10s
   scrape_timeout: 8s

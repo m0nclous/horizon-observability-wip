@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Batches;
 
 /**
- * One row of the batch table as the batches collector exports it (Arch Q6.7). Times are Unix seconds.
+ * One row of the batch table as the batches collector exports it. Times are Unix seconds.
  *
  * @internal
  */

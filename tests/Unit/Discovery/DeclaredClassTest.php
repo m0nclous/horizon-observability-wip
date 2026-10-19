@@ -5,7 +5,7 @@ declare(strict_types=1);
 use DF\HorizonObservability\Discovery\JobClassFinder;
 
 /*
-| The token prefilter of the job class discovery (Arch Q6.9, C22): which files may be handed to the autoloader. A
+| The token prefilter of the job class discovery: which files may be handed to the autoloader. A
 | file passes only when it parses and declares exactly one class, named like the file, in at most one namespace,
 | with no file-level function, constant, include or require.
 */
@@ -75,7 +75,7 @@ it('accepts a braced namespace', function (): void {
 it('rejects files that must not be autoloaded', function (string $body): void {
     expect(JobClassFinder::declaredClass(declaredClassSource($body), 'Foo'))->toBeNull();
 })->with([
-    'no class at all (a functions file, C22)' => ["use Illuminate\\Contracts\\Queue\\ShouldQueue;\n\nfunction foo(ShouldQueue \$job): bool { return true; }"],
+    'no class at all (a functions file)' => ["use Illuminate\\Contracts\\Queue\\ShouldQueue;\n\nfunction foo(ShouldQueue \$job): bool { return true; }"],
     'a class named unlike the file' => ['class Bar {}'],
     'a class named like the file in another case' => ['class foo {}'],
     'two classes' => ["class Foo {}\nclass Bar {}"],

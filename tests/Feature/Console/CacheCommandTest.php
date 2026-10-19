@@ -13,7 +13,7 @@ use Illuminate\Foundation\Console\OptimizeCommand;
 use Illuminate\Support\ServiceProvider;
 
 /*
-| horizon-observability:cache and :clear (Arch Q7, Q6.9, C22): the deploy-time discovery cache in
+| horizon-observability:cache and :clear: the deploy-time discovery cache in
 | bootstrap/cache/horizon-observability.php, and the optimize / optimize:clear hook, which exists iff Laravel >= 11.27.1
 | (ServiceProvider::optimizes()). The bootstrap path points at a temporary directory, so nothing is written into the
 | testbench skeleton.
@@ -47,7 +47,7 @@ function otherOptimizeTasks(string $command, string $method): string
     return implode(',', array_filter(array_keys($tasks), static fn (string $key): bool => $key !== 'horizon-observability'));
 }
 
-it('caches the discovered job classes into bootstrap/cache (C22)', function (): void {
+it('caches the discovered job classes into bootstrap/cache', function (): void {
     $this->artisan('horizon-observability:cache')
         ->expectsOutputToContain('Job classes cached successfully (6 classes).')
         ->assertExitCode(0);
@@ -101,7 +101,7 @@ it('clears the cache file, also when there is none', function (): void {
     $this->artisan('horizon-observability:clear')->assertExitCode(0);
 });
 
-it('hooks into optimize and optimize:clear iff Laravel >= 11.27.1 (C22)', function (): void {
+it('hooks into optimize and optimize:clear iff Laravel >= 11.27.1', function (): void {
     $supported = version_compare(Application::VERSION, '11.27.1', '>=');
 
     expect(method_exists(ServiceProvider::class, 'optimizes'))->toBe($supported);

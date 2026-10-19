@@ -11,8 +11,8 @@ use DF\HorizonObservability\Tests\Fixtures\Attempts\Storage;
 use DF\HorizonObservability\Tests\Support\RunsWorker;
 
 /*
-| AttemptTracker with a real in-process worker on Horizon's Redis queue (Arch 8.4): completed, released, retried,
-| failed, max attempts exceeded (no duration), a nested dispatchSync(), and the wait of first attempts only.
+| AttemptTracker with a real in-process worker on Horizon's Redis queue: completed, released, retried, failed, max
+| attempts exceeded (no duration), a nested dispatchSync(), and the wait of first attempts only.
 */
 
 pest()->group('redis');

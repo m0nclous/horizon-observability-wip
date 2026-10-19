@@ -8,7 +8,7 @@ use DF\HorizonObservability\Live\Captions;
 use DF\HorizonObservability\Live\LiveSnapshot;
 
 /**
- * Influx line protocol of a push (Addendum R4.7; public and SemVer-covered as a wire format, the class is not).
+ * Influx line protocol of a push (public and SemVer-covered as a wire format, the class is not).
  *
  * Two tagless measurements:
  * - `tiles` (channel `stream/<id>/tiles`): the {@see LiveSnapshot::tiles()} rows (pending, delayed, supervisors by
@@ -41,13 +41,13 @@ final class LineProtocol
     public const ROW_SPACING_NS = 1000000;
 
     /**
-     * Window points pushed with the current one (Addendum R4.6: 179 x 5 s plus the current value, 15 minutes).
+     * Window points pushed with the current one (179 x 5 s plus the current value, 15 minutes).
      */
     public const WINDOW_POINTS = 179;
 
     /**
-     * The `tiles` rows stamped `$timeNs + k ms` in R4.7 order, then the `delayed` window points older than the push
-     * and the current delayed value (left out when it is null).
+     * The `tiles` rows stamped `$timeNs + k ms` in push order ({@see LiveSnapshot::tiles()}), then the `delayed`
+     * window points older than the push and the current delayed value (left out when it is null).
      *
      * @param  list<array{0: int, 1: float}>  $delayedWindow  [unix_ms, value], ascending
      */
@@ -82,7 +82,7 @@ final class LineProtocol
     }
 
     /**
-     * The idempotent "unavailable" frame (Addendum R4.7, R4.10): the given tile rows, or only the pending row,
+     * The idempotent "unavailable" frame: the given tile rows, or only the pending row,
      * with caption `Live unavailable`, value -1, colour `text` and level 0, stamped `$timeNs + k ms`. The tiles then
      * read "Live unavailable \u{2014}".
      *

@@ -14,8 +14,8 @@ use DF\HorizonObservability\Tests\Integration\Discovery\DiscoveryFixtures;
 use Illuminate\Filesystem\Filesystem;
 
 /*
-| Collector job_classes (Arch Q4, Q6.9): queue_job_classes{job_class} = 1 per discovered class, read from the job
-| class cache, so a scrape costs a cache file read (Arch Q6.11, C22).
+| Collector job_classes: queue_job_classes{job_class} = 1 per discovered class, read from the job class cache, so a
+| scrape costs a cache file read.
 */
 
 beforeEach(function (): void {
@@ -63,7 +63,7 @@ it('exports one series per discovered class with value 1', function (): void {
         ->and($result['samples'])->toBe(array_fill_keys(DiscoveryFixtures::FOUND, 1));
 });
 
-it('reads the cache file instead of scanning the code (C22)', function (): void {
+it('reads the cache file instead of scanning the code', function (): void {
     file_put_contents($this->bootstrap.'/cache/horizon-observability.php', "<?php\n\nreturn ['version' => 1, 'generated_at' => 1, 'classes' => ['App\\\\Jobs\\\\OnlyInTheFile']];\n");
 
     expect(collectJobClasses()['samples'])->toBe(['App\\Jobs\\OnlyInTheFile' => 1]);

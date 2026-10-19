@@ -16,7 +16,7 @@ use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 /**
- * Adds a "Grafana" link right after "Dashboard" in Horizon's sidebar (Arch Q7, C16 rendering side). The provider
+ * Adds a "Grafana" link right after "Dashboard" in Horizon's sidebar. The provider
  * appends it to `horizon.middleware` when `grafana.url` is set, so it runs on every Horizon route.
  *
  * Horizon has no hook for sidebar items, so the item is inserted into the rendered `horizon::layout` page; a copy
@@ -52,7 +52,7 @@ final readonly class InjectGrafanaLink
     public const ROUTE = 'horizon.index';
 
     /**
-     * The sidebar item (PUBLIC view name, Arch Q7); it receives the dashboard URL as `$url`.
+     * The sidebar item (PUBLIC view name); it receives the dashboard URL as `$url`.
      */
     public const VIEW = 'horizon-observability::menu-link';
 

@@ -11,10 +11,9 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 use Illuminate\Support\Facades\Artisan;
 
 /*
- * horizon-observability:grafana (Arch Q5.1): renders the dashboard and the alert rules, and --check compares the files
- * with the render (Arch Q5.7 item 1: the committed assets equal the --defaults render, and --check is idempotent). The
- * package render polls the live snapshot (--live=poll, owner decision 9); the --live=off and --live=stream renders are
- * committed as fixtures (ADDENDUM Q9' WP8D).
+ * horizon-observability:grafana renders the dashboard and the alert rules, and --check compares the files with the
+ * render (the committed assets equal the --defaults render, and --check is idempotent). The package render polls the
+ * live snapshot (--live=poll); the --live=off and --live=stream renders are committed as fixtures.
  */
 
 pest()->group('grafana');
@@ -87,7 +86,7 @@ it('renders the live mode it is given, poll by default', function (): void {
     }
 });
 
-it('renders --live=off by default while the application serves no live endpoint (T13 QA round 2)', function (): void {
+it('renders --live=off by default while the application serves no live endpoint', function (): void {
     config()->set('horizon-observability.live.enabled', false);
     app()->forgetInstance(Config::class);
     $dashboard = fn (): string => (string) file_get_contents($this->output.'/'.Render::DASHBOARD);
@@ -164,7 +163,7 @@ it('writes the dashboard and the alert rules', function (): void {
         ->and(array_keys((new Render(new DashboardOptions))->files()))->toBe([Render::DASHBOARD, Render::ALERTING]);
 });
 
-it('writes the recording rules only with --recording-rules, and checks them (ADDENDUM R2.4 O9)', function (): void {
+it('writes the recording rules only with --recording-rules, and checks them', function (): void {
     [$status, $output] = runGrafana(['path' => $this->output, '--recording-rules' => true, '--scrape-interval' => '30s']);
     $render = (new Render(new DashboardOptions(scrapeInterval: 30, recordingRules: true)))->files();
 
@@ -214,7 +213,7 @@ it('fails the check with a summary for an outdated or missing file and writes no
         ->and(file_exists($this->output.'/'.Render::ALERTING))->toBeFalse();
 });
 
-it('resolves a relative path against the application root, not the current directory (Arch Q5.1)', function (): void {
+it('resolves a relative path against the application root, not the current directory', function (): void {
     $relative = 'ho-grafana-'.bin2hex(random_bytes(6)).'/nested';
     $previous = (string) getcwd();
     chdir($this->output);

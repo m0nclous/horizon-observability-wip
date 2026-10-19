@@ -10,8 +10,8 @@ use DF\HorizonObservability\Tests\Support\RedisCommands;
 use Illuminate\Redis\Connections\Connection;
 
 /*
-| Not-yet-due delayed jobs (Arch Q2.1, Q8.4 "Other stores"): light rows extracted by delayed_jobs.lua against one
-| `now`, soonest first across queues, the class filter, chunked and bounded scans.
+| Not-yet-due delayed jobs: light rows extracted by delayed_jobs.lua against one `now`, soonest first across queues, the
+| class filter, chunked and bounded scans.
 */
 
 pest()->group('redis');

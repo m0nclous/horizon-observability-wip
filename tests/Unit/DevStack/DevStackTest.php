@@ -12,9 +12,8 @@ use Workbench\App\Console\Commands\PerfDataCommand;
 use Workbench\App\Providers\WorkbenchServiceProvider;
 
 /*
-| The Docker dev stack (Arch 8.3, ADDENDUM R2.2, R3.2, R4.9; T11) agrees with the package and the workbench: the
-| scrape path and token, the 10-second scrape job, the pinned Grafana images and plugins, the perf labels, and every
-| mounted file exists.
+| The Docker dev stack agrees with the package and the workbench: the scrape path and token, the 10-second scrape
+| job, the pinned Grafana images and plugins, the perf labels, and every mounted file exists.
 */
 
 function devStackRoot(): string
@@ -90,7 +89,7 @@ it('gives Prometheus the workbench token', function (): void {
         ->and(devStackToken())->not->toBe('');
 });
 
-it('registers Horizon and the package after the workbench provider in testbench.yaml (T18)', function (): void {
+it('registers Horizon and the package after the workbench provider in testbench.yaml', function (): void {
     // Package discovery finds both, but Larastan and the vendor refresh of defineCacheRoutes() rebuild the skeleton's
     // manifest without the root package on a fresh checkout: no view namespace for PHPStan, no routes in route:cache.
     expect(devStackYaml('testbench.yaml')['providers'] ?? null)->toBe([
@@ -114,7 +113,7 @@ it('labels the perf scrape like the backfill', function (string $file, string $j
         ->and($config['static_configs'][0]['targets'])->toBe(['host.docker.internal:8391']);
 })->with([
     'perf' => ['prometheus.yml', 'perf-horizon', 'perf-exporter', '10s'],
-    'R2.1 reference' => ['prometheus.reference.yml', 'office-horizon', 'app:8080', '15s'],
+    'reference' => ['prometheus.reference.yml', 'office-horizon', 'app:8080', '15s'],
 ]);
 
 it('defaults the backfill labels to the perf scrape job', function (): void {
@@ -143,7 +142,7 @@ it('provisions the Prometheus datasource for large POST queries at the scrape in
 });
 
 it('provisions the shipped Infinity datasource with the API bearer token', function (): void {
-    // The package example (Arch Q5.5), mounted by the dev stack so it is tested
+    // The package example, mounted by the dev stack so it is tested
     $datasource = devStackYaml('resources/grafana/provisioning/datasources/horizon-observability.yaml')['datasources'][0];
 
     expect($datasource['type'])->toBe('yesoreyeram-infinity-datasource')
@@ -235,7 +234,7 @@ it('ships Node tools that parse', function (string $script): void {
     expect($check->run())->toBe(0, $check->getErrorOutput());
 })->with(['bin/perf.mjs', 'bin/screenshot.mjs']);
 
-it('keeps the perf budget of the addendum', function (): void {
+it('keeps the perf budget and the reference values of the pilot dashboard', function (): void {
     $budget = json_decode((string) file_get_contents(devStackRoot().'/docker/perf/budget.json'), true);
     $legacy = json_decode((string) file_get_contents(devStackRoot().'/docker/perf/reference-legacy.json'), true);
 

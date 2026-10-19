@@ -25,7 +25,7 @@ final readonly class Attempts
     public const TIMED_OUT = 'timed_out';
 
     /**
-     * The statuses the tables count, in one query (ADDENDUM R2.4 O6).
+     * The statuses the tables count, in one query.
      */
     public const COUNTED = 'completed|failed|timed_out|retried';
 
@@ -39,7 +39,7 @@ final readonly class Attempts
 
     /**
      * @param  string  $startLookback  how far back the start of a period looks for the last counter value:
-     *                                 max(10m, 10 x the scrape interval) (ADDENDUM R3.3; the pilot looked back a day)
+     *                                 max(10m, 10 x the scrape interval) (the pilot looked back a day)
      */
     public function __construct(private Promql $promql, private string $startLookback) {}
 
@@ -51,17 +51,16 @@ final readonly class Attempts
      * class, or the scrape job or a replica of an application added later; or it is back after an outage longer than
      * the lookback over the start of the window) starts at its first value in the window. The end is the series' last
      * value inside the window, so a series that stops inside it keeps the attempts it made up to its last sample: a
-     * scrape job moved or renamed (the dedicated job of ADDENDUM R3.2), a Redis connection renamed, an application
-     * decommissioned, a failed scrape or an outage at the end of the window. After a counter reset (negative
-     * difference) the value after the reset counts, for that series only.
+     * scrape job moved or renamed (such as a move to the endpoint's own scrape job), a Redis connection renamed, an
+     * application decommissioned, a failed scrape or an outage at the end of the window. After a counter reset
+     * (negative difference) the value after the reset counts, for that series only.
      *
      * The start is chosen per series, before the sum: a sum by (queue, job_class, status) has a start as soon as one of
      * its series has one, so a series that appears inside the window next to another job's series of the same queue,
      * class and status added its whole first value (its history), and a reset of one series made the sum's difference
-     * negative and counted every series' whole value (T13 QA round 3). The end was the instant value at the end of the
-     * window (Prometheus' 5-minute lookback, nothing after a staleness marker), so a series without one lost every
-     * attempt of the window: one failed scrape at the end left the tables at 0 while the tiles counted 2,043 (T13 QA
-     * round 4).
+     * negative and counted every series' whole value. The end was the instant value at the end of the window
+     * (Prometheus' 5-minute lookback, nothing after a staleness marker), so a series without one lost every attempt
+     * of the window: one failed scrape at the end left the tables at 0 while the tiles counted 2,043.
      */
     public function delta(string $statuses, string $window): string
     {
@@ -69,8 +68,8 @@ final readonly class Attempts
         // The last value in (t - window, t]: range selectors skip staleness markers, and the window is the one the
         // start's lookback ends at and its fallback reads
         $end = $this->promql->over('last_over_time', Metric::JobsTotal, $window, $status);
-        // The full-range fallback stays (ADDENDUM R2.4 O7): bounding it to the first LOOKBACK of the window would
-        // count a series' whole value after a Prometheus outage longer than LOOKBACK over the start of the window
+        // The full-range fallback stays: bounding it to the first LOOKBACK of the window would count a series' whole
+        // value after a Prometheus outage longer than LOOKBACK over the start of the window
         $start = Promql::paren(Promql::either(
             $this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status, offset: $window),
             $this->promql->over('min_over_time', Metric::JobsTotal, $window, $status),
@@ -89,16 +88,16 @@ final readonly class Attempts
      * {@see delta()} over the period at any step. Grafana aligns the first point to the step size, at or before the
      * period start, and the last at or before the period end, so the first step starts at the series' value at
      * `${__from}` and the last ends at its last value within the lookback at `${__to}`, as the tiles' last point (a
-     * series without one appeared after the period or stopped before the last step; the instant value at `${__to}`
-     * left out the last step of a series whose scrape failed at the end, T13 QA round 4). A step edge takes the last
-     * value inside the step, else the current one, so a staleness marker after a missed scrape does not zero the step.
-     * A series with no value at the start of a step (new, or back after a gap) starts at its first value inside the
-     * step: attempts during the gap are lost but not recounted. A counter reset counts 0 for its step on that series,
-     * as on the tiles ({@see perStepTotal()}).
+     * series without one appeared after the period or stopped before the last step; the instant value at `${__to}` left
+     * out the last step of a series whose scrape failed at the end). A step edge takes the last value inside the step,
+     * else the current one, so a staleness marker after a missed scrape does not zero the step. A series with no value
+     * at the start of a step (new, or back after a gap) starts at its first value inside the step: attempts during the
+     * gap are lost but not recounted. A counter reset counts 0 for its step on that series, as on the tiles
+     * ({@see perStepTotal()}).
      *
      * The legacy form clipped with the values instead of the times (max with the value at the period start, min with
      * the one at the end), so after a reset every later step of the series counted its whole value; and it chose the
-     * start per (queue, job_class, status) sum (T13 QA round 3, {@see delta()}).
+     * start per (queue, job_class, status) sum (see {@see delta()}).
      */
     public function perStep(string $statuses): string
     {
@@ -134,9 +133,10 @@ final readonly class Attempts
      * below 0, summed. The values are the last within the lookback (a missed scrape or a gap shorter than the lookback
      * loses no attempts). A series without a value at the start of the step (a new class, a replica or the scrape job
      * of an application added later, or a series back after a gap longer than the lookback) starts at its first value
-     * inside the step, so it counts from its first value, never the first value itself, like {@see delta()}: T16
-     * exports a new series as 0 first, so the attempts it is born with count. A counter reset counts 0 for its step on
-     * that series (after a Redis restart T16 recreates the series at 0 as well), and a pruned class stops counting.
+     * inside the step, so it counts from its first value, never the first value itself, like {@see delta()}: the
+     * exporter exports a new series as 0 first (it holds it at 0 for 90 s), so the attempts it is born with count. A
+     * counter reset counts 0 for its step on that series (after a Redis restart the exporter recreates the series at 0
+     * as well), and a pruned class stops counting.
      *
      * The step edges are subquery points at the graph step. Subquery points are multiples of the step since 1970,
      * Grafana's steps too unless the browser's UTC offset shifts them (a 2-hour step at UTC+3); point t counts the step
@@ -151,10 +151,10 @@ final readonly class Attempts
      * point; a series without a value at `${__to}` appeared after the period. The points whose step ends before the
      * period are dropped.
      *
-     * The aggregate-first form of ADDENDUM R2.4 O4 counted the whole value of a series that appears inside the period
-     * (T13 QA round 2); the round 2 form, `idelta()` alone, gave a series without a value at the earlier point no step,
-     * so a series that appears between two subquery points lost its attempts up to the next one whenever the graph step
-     * was longer than the scrape interval (T13 QA round 3).
+     * An earlier aggregate-first form (the difference of the sums) counted the whole value of a series that appears
+     * inside the period; the form after it, `idelta()` alone, gave a series without a value at the earlier point no
+     * step, so a series that appears between two subquery points lost its attempts up to the next one whenever the
+     * graph step was longer than the scrape interval.
      */
     public function perStepTotal(string $statuses): string
     {
