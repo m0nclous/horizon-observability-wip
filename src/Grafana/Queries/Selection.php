@@ -38,11 +38,15 @@ final readonly class Selection
 
     /**
      * Every configured queue: the pending-jobs gauge is exported for each queue, empty ones included
-     * (legacy `QUEUES`).
+     * (legacy `QUEUES`). With $window, every queue exported within it: the rows of a table of the period, so an
+     * application whose scrape failed at the end of the period, or that stopped inside it, keeps its queues and
+     * their attempts (T13 QA round 4).
      */
-    public function queues(): string
+    public function queues(?string $window = null): string
     {
-        return Promql::group($this->promql->selector(Metric::QueuePendingJobs), 'queue');
+        return Promql::group($window === null
+            ? $this->promql->selector(Metric::QueuePendingJobs)
+            : $this->promql->over('last_over_time', Metric::QueuePendingJobs, $window), 'queue');
     }
 
     /**
