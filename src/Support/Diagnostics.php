@@ -54,7 +54,9 @@ use Throwable;
  * it; the storage and reader Redis connections (reachable, latency, client, cluster, persistent flag, braces in the
  * prefix); the timeouts of Horizon's `horizon` connection, of the default cache store (a `failover` store by the stores
  * it tries, a `storage` store by its disk) and of the batching database connection (a store without a timeout can cost
- * a scrape its budget); Horizon (version, status, topology, the Grafana link in the `horizon` group); capabilities;
+ * a scrape its budget). A Redis connection's timeouts, persistent flag and prefix are those the client Laravel builds
+ * for it reads ({@see RedisClientSettings}: phpredis and predis, one server or a cluster), and the fix lines name a
+ * place that client reads them from; Horizon (version, status, topology, the Grafana link in the `horizon` group); capabilities;
  * batches; the job-class cache and cap; a dry run of every collector; the live block (enabled, stream URL, token,
  * stream id, the last push, and with `$livePushTest` one `tiles` frame pushed to the stream `<id>_check`).
  *
@@ -430,7 +432,7 @@ final readonly class Diagnostics
     {
         $section = 'Storage';
         $name = $config->redisConnection;
-        $settings = $this->redisSettings($name);
+        $settings = $this->redis($name);
         /** @var RedisClients $clients */
         $clients = $this->container->make(RedisClients::class);
         $client = $this->container->make(Versions::class)->redisClient();
@@ -441,7 +443,7 @@ final readonly class Diagnostics
         }
 
         $results = [];
-        $prefix = is_string($settings['prefix'] ?? null) ? $settings['prefix'] : '';
+        $prefix = $settings->prefix();
 
         try {
             $started = hrtime(true);
@@ -467,8 +469,8 @@ final readonly class Diagnostics
             TextFormat::number($config->scrapeTimeout),
         ));
 
-        if ($this->persistent($settings)) {
-            $results[] = $this->persistentWarning($section, $name);
+        if ($settings->persistentPlaces() !== []) {
+            $results[] = $this->persistentWarning($section, $name, $settings);
         }
 
         $tag = self::hashTag($prefix.Keys::ROOT.'meta');
@@ -535,7 +537,7 @@ final readonly class Diagnostics
             }
 
             $seen[$redis] = true;
-            $settings = $this->redisSettings($redis) ?? [];
+            $settings = $this->redis($redis);
 
             try {
                 $started = hrtime(true);
@@ -545,8 +547,8 @@ final readonly class Diagnostics
                 $results[] = CheckResult::error($section, 'Redis '.$redis, 'unreachable: '.FailureReporter::describe($e), sprintf('Start Redis or fix database.redis.%s in config/database.php (the queue connection %s uses it).', $redis, $connection));
             }
 
-            if ($this->persistent($settings)) {
-                $results[] = $this->persistentWarning($section, $redis);
+            if ($settings !== null && $settings->persistentPlaces() !== []) {
+                $results[] = $this->persistentWarning($section, $redis, $settings);
             }
         }
 
@@ -555,33 +557,26 @@ final readonly class Diagnostics
 
     /**
      * Connections the scrape waits for with the app's own settings: Horizon's `horizon` connection (its repositories),
-     * the default cache store (throttled logs, batch detection, job-class cache) and the batching database.
+     * the default cache store (throttled logs, batch detection, job-class cache) and the batching database. A timeout
+     * set where the client does not read it (predis: any `options` array; a phpredis cluster: its nodes) is named in
+     * the warning.
      *
      * @return list<CheckResult>
      */
     private function timeouts(Config $config): array
     {
         $section = 'Timeouts';
-        $repository = $this->repository();
         $results = [];
-        $client = $this->redisClient();
-
-        $horizon = $this->redisSettings('horizon');
-        $use = $repository->get('horizon.use');
-        $use = is_string($use) && $use !== '' ? $use : 'default';
+        $horizon = $this->redis('horizon');
 
         if ($horizon !== null) {
-            $missing = $this->missingRedisTimeouts($horizon, $client);
-            $results[] = $missing === []
-                ? CheckResult::ok($section, 'Horizon connection', 'horizon has '.$this->redisTimeoutText($horizon, $client))
-                : CheckResult::warning($section, 'Horizon connection', sprintf('horizon (a copy of %s) has no %s: a hung Redis holds every scrape until the socket default (60 s)', $use, implode(' or ', $missing)), sprintf(
-                    'Add %s to database.redis.%s in config/database.php; Horizon copies it into its horizon connection.',
-                    implode(' and ', array_map(static fn (string $key): string => "'".$key."' => 2.0", $missing)),
-                    $use,
-                ));
+            $results[] = $this->redisTimeout($section, 'Horizon connection', 'horizon', sprintf('horizon (a copy of %s)', $this->horizonUse()), $horizon, sprintf(
+                "a hung Redis holds every scrape until PHP's default_socket_timeout (%s s)",
+                $this->scalarText(ini_get('default_socket_timeout')),
+            ), '; Horizon copies it into its horizon connection.');
         }
 
-        $results[] = $this->cacheTimeout($section, $client);
+        $results[] = $this->cacheTimeout($section);
 
         if ($config->collectors['batches'] !== false) {
             /** @var BatchReader $reader */
@@ -598,12 +593,39 @@ final readonly class Diagnostics
     /**
      * The default cache store: it backs the throttled logs, the batching detection and the job-class runtime cache.
      */
-    private function cacheTimeout(string $section, string $client): CheckResult
+    private function cacheTimeout(string $section): CheckResult
     {
         $store = $this->repository()->get('cache.default');
         $store = is_string($store) && $store !== '' ? $store : 'file';
 
-        return $this->storeTimeout($section, 'Default cache store', $store, $client);
+        return $this->storeTimeout($section, 'Default cache store', $store);
+    }
+
+    /**
+     * The timeouts of the client Laravel builds for a Redis connection ({@see RedisClientSettings}): ok with the
+     * timeouts it has, or a warning naming the place the client reads them from.
+     */
+    private function redisTimeout(string $section, string $name, string $label, string $missingLabel, RedisClientSettings $settings, string $consequence, string $fixSuffix = '.'): CheckResult
+    {
+        if (! $settings->known()) {
+            return CheckResult::info($section, $name, sprintf('%s uses the Redis client %s, whose timeouts this check does not know', $label, $settings->client), 'Give its client connect and read timeouts of about 2 s: a hung store can cost a scrape its budget.');
+        }
+
+        $missing = $settings->missingTimeouts();
+
+        if ($missing === []) {
+            return CheckResult::ok($section, $name, $label.' has '.$settings->timeoutText());
+        }
+
+        $unread = $settings->unreadTimeouts($missing);
+
+        return CheckResult::warning($section, $name, sprintf(
+            '%s has no %s%s: %s',
+            $missingLabel,
+            implode(' or ', $missing),
+            $unread === [] ? '' : sprintf(' (%s does not read %s from %s)', $settings->client, implode(' or ', $missing), implode(' or ', $unread)),
+            $consequence,
+        ), $settings->timeoutFix($missing).' in config/database.php'.$fixSuffix);
     }
 
     /**
@@ -613,7 +635,7 @@ final readonly class Diagnostics
      *
      * @param  list<string>  $failovers  the failover stores that lead to this one, outermost first
      */
-    private function storeTimeout(string $section, string $name, string $store, string $client, array $failovers = []): CheckResult
+    private function storeTimeout(string $section, string $name, string $store, array $failovers = []): CheckResult
     {
         $settings = $this->repository()->get('cache.stores.'.$store);
 
@@ -627,21 +649,15 @@ final readonly class Diagnostics
 
         if ($driver === 'redis') {
             $connection = is_string($settings['connection'] ?? null) && $settings['connection'] !== '' ? $settings['connection'] : 'default';
-            $redis = $this->redisSettings($connection);
+            $redis = $this->redis($connection);
 
             if ($redis === null) {
                 return CheckResult::error($section, $name, sprintf('%s uses the Redis connection [%s], which is not configured', $store, $connection), sprintf('Add database.redis.%s to config/database.php or point cache.stores.%s.connection at an existing connection.', $connection, $store));
             }
 
-            $missing = $this->missingRedisTimeouts($redis, $client);
+            $label = sprintf('%s (redis %s)', $store, $connection);
 
-            return $missing === []
-                ? CheckResult::ok($section, $name, sprintf('%s (redis %s) has %s', $store, $connection, $this->redisTimeoutText($redis, $client)))
-                : CheckResult::warning($section, $name, sprintf('%s (redis %s) has no %s: a hung store can cost a scrape its budget', $store, $connection, implode(' or ', $missing)), sprintf(
-                    'Add %s to database.redis.%s in config/database.php.',
-                    implode(' and ', array_map(static fn (string $key): string => "'".$key."' => 2.0", $missing)),
-                    $connection,
-                ));
+            return $this->redisTimeout($section, $name, $label, $label, $redis, 'a hung store can cost a scrape its budget');
         }
 
         if ($driver === 'database') {
@@ -651,7 +667,7 @@ final readonly class Diagnostics
         }
 
         if ($driver === 'failover') {
-            return $this->failoverTimeout($section, $name, $store, $settings, $client, $failovers);
+            return $this->failoverTimeout($section, $name, $store, $settings, $failovers);
         }
 
         if ($driver === 'storage') {
@@ -678,7 +694,7 @@ final readonly class Diagnostics
      * @param  array<array-key, mixed>  $settings
      * @param  list<string>  $failovers
      */
-    private function failoverTimeout(string $section, string $name, string $store, array $settings, string $client, array $failovers): CheckResult
+    private function failoverTimeout(string $section, string $name, string $store, array $settings, array $failovers): CheckResult
     {
         $stores = is_array($settings['stores'] ?? null) ? array_values(array_filter($settings['stores'], is_string(...))) : [];
 
@@ -699,7 +715,7 @@ final readonly class Diagnostics
                 break;
             }
 
-            $results[] = $this->storeTimeout($section, $name, $child, $client, $failovers);
+            $results[] = $this->storeTimeout($section, $name, $child, $failovers);
             $driver = $this->repository()->get('cache.stores.'.$child.'.driver');
 
             if (in_array($driver, self::LOCAL_CACHE_DRIVERS, true)) {
@@ -1229,92 +1245,55 @@ final readonly class Diagnostics
         ))];
     }
 
-    private function persistentWarning(string $section, string $connection): CheckResult
+    private function persistentWarning(string $section, string $connection, RedisClientSettings $settings): CheckResult
     {
+        $places = array_map(
+            static fn (string $place): string => $place === 'database.redis.options' ? $place.' (REDIS_PERSISTENT=false)' : $place,
+            $settings->persistentPlaces(),
+        );
+
         return CheckResult::warning(
             $section,
             'Persistent',
             sprintf('database.redis.%s is persistent: a timeout can leave a reply on the shared socket for the next request (Horizon\'s reads use it; the package\'s own clients never do)', $connection),
-            sprintf("Set 'persistent' => false in database.redis.options (REDIS_PERSISTENT=false) and in the options of database.redis.%s.", $connection),
+            sprintf("Set 'persistent' => false in %s.", implode(' and ', $places)),
         );
     }
 
     /**
-     * The settings a Redis client of the connection gets: the connection, the global `options`, then its own
-     * `options`, as Laravel's connectors merge them; for a cluster its first node and the cluster options. Null when
-     * the connection is not configured.
-     *
-     * @return array<array-key, mixed>|null
+     * The client settings of an app Redis connection ({@see RedisClientSettings}); for Horizon's `horizon` connection,
+     * which Horizon copies from `horizon.use` at boot, with the places of the copied connection in config/database.php.
      */
-    private function redisSettings(string $name): ?array
+    private function redis(string $name): ?RedisClientSettings
     {
-        $redis = $this->repository()->get('database.redis');
+        return RedisClientSettings::of($this->repository(), $name, $name === 'horizon' ? $this->horizonBase() : null);
+    }
 
-        if (! is_array($redis)) {
+    /**
+     * The place in config/database.php of the connection Horizon copies into `horizon` (`Horizon::use()`): a cluster
+     * (Horizon with cluster support), its first node (older Horizon, or Laravel without cluster support), or the
+     * connection itself. Null when `horizon.use` is `horizon` itself.
+     */
+    private function horizonBase(): ?string
+    {
+        $use = $this->horizonUse();
+
+        if ($use === 'horizon') {
             return null;
         }
 
-        $global = is_array($redis['options'] ?? null) ? $redis['options'] : [];
-
-        if (! in_array($name, ['client', 'options', 'clusters'], true) && is_array($redis[$name] ?? null)) {
-            $connection = $redis[$name];
-            $own = is_array($connection['options'] ?? null) ? $connection['options'] : [];
-            unset($connection['options']);
-
-            return array_merge($connection, $global, $own);
+        if (! is_array($this->repository()->get('database.redis.clusters.'.$use))) {
+            return 'database.redis.'.$use;
         }
 
-        $clusters = is_array($redis['clusters'] ?? null) ? $redis['clusters'] : [];
-
-        if ($name !== 'options' && is_array($clusters[$name] ?? null)) {
-            $nodes = $clusters[$name];
-            $own = is_array($nodes['options'] ?? null) ? $nodes['options'] : [];
-            $first = is_array($nodes[0] ?? null) ? $nodes[0] : [];
-            $clusterOptions = is_array($clusters['options'] ?? null) ? $clusters['options'] : [];
-
-            return array_merge($first, $global, $clusterOptions, $own);
-        }
-
-        return null;
+        return is_array($this->repository()->get('database.redis.horizon')) ? 'database.redis.clusters.'.$use.'.0' : 'database.redis.clusters.'.$use;
     }
 
-    /**
-     * @param  array<array-key, mixed>  $settings
-     */
-    private function persistent(array $settings): bool
+    private function horizonUse(): string
     {
-        return Config::flag($settings['persistent'] ?? false, false);
-    }
+        $use = $this->repository()->get('horizon.use');
 
-    /**
-     * The timeout keys a Redis connection lacks: `timeout` and `read_timeout` on phpredis; `read_write_timeout` on
-     * predis (its connector defaults the connect timeout to 10 s).
-     *
-     * @param  array<array-key, mixed>  $settings
-     * @return list<string>
-     */
-    private function missingRedisTimeouts(array $settings, string $client): array
-    {
-        $keys = $client === 'predis' ? ['read_write_timeout'] : ['timeout', 'read_timeout'];
-
-        return array_values(array_filter($keys, static fn (string $key): bool => ! self::positive($settings[$key] ?? null)));
-    }
-
-    /**
-     * @param  array<array-key, mixed>  $settings
-     */
-    private function redisTimeoutText(array $settings, string $client): string
-    {
-        $keys = $client === 'predis' ? ['timeout', 'read_write_timeout'] : ['timeout', 'read_timeout'];
-        $parts = [];
-
-        foreach ($keys as $key) {
-            if (self::positive($settings[$key] ?? null)) {
-                $parts[] = $key.' '.$this->scalarText($settings[$key]).' s';
-            }
-        }
-
-        return implode(', ', $parts);
+        return is_string($use) && $use !== '' ? $use : 'default';
     }
 
     private function plural(int $count, string $one, string $many): string
@@ -1408,13 +1387,6 @@ final readonly class Diagnostics
         $default = $this->repository()->get('database.default');
 
         return is_string($default) && $default !== '' ? $default : 'mysql';
-    }
-
-    private function redisClient(): string
-    {
-        $client = $this->repository()->get('database.redis.client');
-
-        return is_string($client) && $client !== '' ? $client : 'phpredis';
     }
 
     private function milliseconds(int|float $startedNs): string

@@ -31,6 +31,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Horizon\Horizon;
 use Laravel\Horizon\HorizonServiceProvider;
 use Predis\Client;
 
@@ -297,7 +298,9 @@ it('reads the predis timeout keys', function (): void {
 })->skip(fn (): bool => ! class_exists(Client::class), 'predis is not installed');
 
 it('warns about a persistent client, which --strict turns into a failure', function (): void {
-    // Laravel merges the global options over the connection, so REDIS_PERSISTENT=true makes every connection persistent.
+    // Laravel's phpredis connector merges the global options over the connection, so REDIS_PERSISTENT=true makes every
+    // phpredis connection persistent.
+    config()->set('database.redis.client', 'phpredis');
     config()->set('database.redis.options.persistent', true);
 
     [$code, $report] = checkReport();
@@ -305,13 +308,32 @@ it('warns about a persistent client, which --strict turns into a failure', funct
 
     expect($code)->toBe(0)
         ->and($persistent['status'])->toBe('warning')
-        ->and($persistent['fix'])->toBe("Set 'persistent' => false in database.redis.options (REDIS_PERSISTENT=false) and in the options of database.redis.horizon.")
+        ->and($persistent['fix'])->toBe("Set 'persistent' => false in database.redis.options (REDIS_PERSISTENT=false).")
         ->and(checkItem($report, 'Queues', 'Persistent')['message'])->toStartWith('database.redis.default is persistent');
 
     [$strict] = checkReport(['--strict' => true]);
 
     expect($strict)->toBe(1);
 });
+
+it('warns about a persistent predis client only where predis reads the flag', function (): void {
+    // predis takes every options array as client options: REDIS_PERSISTENT=true there is not a connection parameter.
+    config()->set('database.redis.client', 'predis');
+    config()->set('database.redis.options.persistent', true);
+
+    [, $report] = checkReport();
+
+    expect(array_filter($report['checks'], static fn (array $check): bool => $check['name'] === 'Persistent'))->toBe([]);
+
+    // On the connection Horizon copies into its horizon connection, it is.
+    config()->set('database.redis.default.persistent', true);
+    Horizon::use('default');
+
+    [, $report] = checkReport();
+
+    expect(checkItem($report, 'Storage', 'Persistent')['fix'])->toBe("Set 'persistent' => false in database.redis.default.")
+        ->and(checkItem($report, 'Queues', 'Persistent')['fix'])->toBe("Set 'persistent' => false in database.redis.default.");
+})->skip(fn (): bool => ! class_exists(Client::class), 'predis is not installed');
 
 it('reports an unreachable storage Redis without hanging', function (): void {
     config()->set('database.redis.horizon', ['host' => '127.0.0.1', 'port' => 1, 'database' => 0, 'options' => ['prefix' => TestCase::redisPrefix().'horizon:']]);
