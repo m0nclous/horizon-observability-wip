@@ -149,9 +149,9 @@ final readonly class Jobs
         $durationCount = $durationIncrease('count', ...$by);
         $max = Promql::max($this->promql->over('max_over_time', Metric::JobDurationMax, Promql::RANGE), ...$by);
         // The buckets are the largest per-class vector (16 series per class and application), so their batch scope
-        // (ADDENDUM R2.4 O2) comes after the sum by class, which keeps job_class: the same rows, fewer series in
-        // the set operation when several applications share the Prometheus. The selector carries the Job filter
-        // itself, so filtered() adds neither the filter nor the scope again.
+        // comes after the sum by class, which keeps job_class: the same rows, fewer series in the set operation
+        // when several applications share the Prometheus. The selector carries the Job filter itself, so
+        // filtered() adds neither the filter nor the scope again.
         $buckets = $this->promql->batchScoped(Promql::sum(
             $this->promql->over('increase', Metric::JobDuration, Promql::RANGE, [Promql::re('job_class', '$job_class')], series: 'bucket'),
             'le',
@@ -220,9 +220,9 @@ final readonly class Jobs
                     array_keys($targets),
                     $targets,
                 ),
-                // Failed, Timeouts, Retries and Success rate from one attempts query by status (ADDENDUM R2.4 O6; the
-                // legacy table evaluated attempts_delta five times): a series per (queue, class, status), 0 for the
-                // listed classes without such attempts. Pivoted into columns by "Labels to fields".
+                // Failed, Timeouts, Retries and Success rate from one attempts query by status (the legacy table
+                // evaluated attempts_delta five times): a series per (queue, class, status), 0 for the listed
+                // classes without such attempts. Pivoted into columns by "Labels to fields".
                 $this->common->target('B', $this->attemptsByStatus($rows)),
             ],
             // The row carries the title

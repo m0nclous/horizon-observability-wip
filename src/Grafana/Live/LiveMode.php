@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Grafana\Live;
 
 /**
- * How the Overview row gets its current values (owner decision 9, ADDENDUM R4.1, `--live=off|poll|stream`).
+ * How the Overview row gets its current values, chosen at render time (`--live=off|poll|stream`; the README's
+ * "Live Overview modes" compares them).
  *
  * - `Off`: every tile reads Prometheus, the pilot's look exactly.
  * - `Poll` (the package render): Supervisor Processes, Pending, Delayed and the Completed caption read the
@@ -30,7 +31,7 @@ enum LiveMode: string
     }
 
     /**
-     * The title of the Overview row (#10): "Live Overview" when live (ADDENDUM R4.1, R4.8).
+     * The title of the Overview row (#10): "Live Overview" when live.
      */
     public function overviewTitle(): string
     {

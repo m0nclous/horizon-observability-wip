@@ -19,10 +19,9 @@ use DF\HorizonObservability\Metrics\Metric;
  * {@see over()} from a catalog case (Metrics\Metric); {@see name()} gives the bare name only where a name is
  * needed as text (a `label_values()` query, an alert summary).
  *
- * Every package selector carries the job scope first (Arch Q5.6 step 4): `job=~"$prometheus_job"` in the
- * dashboard, the rendered job regex in the alert rules. With the replica dedupe (step 10) every package selector,
- * or the range function around it, sits in `max by (job, <the family's catalog labels>[, le]) (...)`, so two
- * replicas scraped under one job count once.
+ * Every package selector carries the job scope first: `job=~"$prometheus_job"` in the dashboard, the rendered job
+ * regex in the alert rules. With the replica dedupe every package selector, or the range function around it, sits
+ * in `max by (job, <the family's catalog labels>[, le]) (...)`, so two replicas scraped under one job count once.
  *
  * @internal
  */
@@ -76,7 +75,7 @@ final readonly class Promql
     private const JOB_FILTER = 'job_class=~"$job_class"';
 
     /**
-     * The sentinel label of the Batch scope (ADDENDUM R2.4 O2): no stored series can carry it.
+     * The sentinel label of the Batch scope: no stored series can carry it.
      */
     public const BATCH_SCOPE = '__batch_scope__';
 
@@ -93,14 +92,14 @@ final readonly class Promql
     private array $jobMetrics;
 
     /**
-     * The dashboard's job scope: the hidden `prometheus_job` variable (Arch Q5.2).
+     * The dashboard's job scope: the hidden `prometheus_job` variable.
      */
     public const JOB_VARIABLE = '$prometheus_job';
 
     /**
      * @param  string  $jobRegex  the `job` regex every package selector is scoped to: {@see JOB_VARIABLE} in the
      *                            dashboard, the rendered regex in the alert rules
-     * @param  bool  $dedupe  wrap every package selector in `max by (job, <labels>)` (Arch Q5.6 step 10)
+     * @param  bool  $dedupe  wrap every package selector in `max by (job, <labels>)`
      */
     public function __construct(
         private string $prefix,
@@ -122,8 +121,8 @@ final readonly class Promql
 
     /**
      * A package selector as an instant vector: `ho_queue_pending_jobs{job=~"$prometheus_job", queue="x"}`, wrapped
-     * in the replica dedupe `max by (job, connection, queue) (...)` (Arch Q1.5, Q5.6 step 10). Two replicas of the
-     * application export the same storage under different `instance` labels; the dedupe keeps one of them.
+     * in the replica dedupe `max by (job, connection, queue) (...)`. Two replicas of the application export the same
+     * storage under different `instance` labels; the dedupe keeps one of them.
      */
     public function selector(Metric $metric, string ...$matchers): string
     {
@@ -140,9 +139,9 @@ final readonly class Promql
     }
 
     /**
-     * A package selector without the replica dedupe, for the opt-in health rules, which look at each replica (Arch
-     * Q1.5, Q5.3): the duplicates rule counts the replicas, the collector rule finds a collector that fails on one
-     * of them (self-metrics are per replica, unlike the business series read from shared storage).
+     * A package selector without the replica dedupe, for the opt-in health rules, which look at each replica: the
+     * duplicates rule counts the replicas, the collector rule finds a collector that fails on one of them
+     * (self-metrics are per replica, unlike the business series read from shared storage).
      */
     public function replicas(Metric $metric, string ...$matchers): string
     {
@@ -266,10 +265,9 @@ final readonly class Promql
      * the family has a job_class label and the selector no job_class matcher of its own. The filters come first,
      * then the selector's own matchers. Names inside PromQL strings are not selectors.
      *
-     * A job-filtered selector also gets the Batch scope (ADDENDUM R2.4 O2): Job's "All" is `.+`, so the classes
-     * of the selected batch kinds are no longer in `$job_class`; the selector, with its range function and the
-     * replica dedupe around it, becomes `(<selector> unless on (job_class) <classes outside the kinds>)`, see
-     * {@see batchScoped()}.
+     * A job-filtered selector also gets the Batch scope: Job's "All" is `.+`, so the classes of the selected batch
+     * kinds are no longer in `$job_class`; the selector, with its range function and the replica dedupe around it,
+     * becomes `(<selector> unless on (job_class) <classes outside the kinds>)`, see {@see batchScoped()}.
      */
     public function filtered(string $expr, bool $jobFilter): string
     {
@@ -329,11 +327,11 @@ final readonly class Promql
     }
 
     /**
-     * The Batch scope of a per-series vector (ADDENDUM R2.4 O2): `(<vector> unless on (<label>) <excluded>)`, where
-     * <excluded> is every class (or queue) of the package series outside the selected batch kinds. While Batch is
-     * "All" (`$batch_kind` is `.*`) the set is empty and almost free; with kinds selected it holds what the legacy
-     * "All" list of the Job (or Queue) filter left out. $vector must be one operand: a selector with its range
-     * function and dedupe, or a parenthesised expression.
+     * The Batch scope of a per-series vector: `(<vector> unless on (<label>) <excluded>)`, where <excluded> is every
+     * class (or queue) of the package series outside the selected batch kinds. While Batch is "All" (`$batch_kind` is
+     * `.*`) the set is empty and almost free; with kinds selected it holds what the legacy "All" list of the Job (or
+     * Queue) filter left out. $vector must be one operand: a selector with its range function and dedupe, or a
+     * parenthesised expression.
      *
      * @param  'job_class'|'queue'  $label
      */

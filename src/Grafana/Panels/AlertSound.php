@@ -20,7 +20,7 @@ final readonly class AlertSound
     public const HEIGHT = 1;
 
     /**
-     * The panel shares the hidden top grid row with the queue source (#24, ADDENDUM R2.4 O5): half of it each.
+     * The panel shares the hidden top grid row with the queue source (#24): half of it each.
      */
     public const WIDTH = 12;
 

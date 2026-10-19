@@ -8,11 +8,12 @@ use DF\HorizonObservability\Metrics\Metric;
 use DF\HorizonObservability\Metrics\MetricType;
 
 /**
- * The static performance gates of a rendered dashboard (ADDENDUM R2.2 step 6, R2.3), computed from the JSON with
- * every filter at "All", without Prometheus or Grafana, so CI can run them on every change: requests and variable
- * queries per auto-refresh, interpolated PromQL per refresh and per panel, the variable refresh policy (O3), no
- * day-long lookback on a counter (O1), no `batch_filtered()`-style duplicate branch (O2) and an explicit
- * `maxDataPoints` on the hidden queue source (O5).
+ * The static performance gates of a rendered dashboard, the deterministic part of the budget in
+ * `docker/perf/budget.json`, computed from the JSON with every filter at "All", without Prometheus or Grafana, so CI
+ * can run them on every change: requests and variable queries per auto-refresh, interpolated PromQL per refresh and
+ * per panel, the variable refresh policy, no day-long lookback on a counter, no `batch_filtered()`-style duplicate
+ * branch and an explicit `maxDataPoints` on the hidden queue source. The wall times are measured with the tools of
+ * `docker/perf/README.md`.
  *
  * What runs on a refresh: every panel outside the collapsed rows, hidden ones included, one request per datasource
  * it queries (a panel on the `-- Dashboard --` datasource reads another panel and sends none, a Grafana Live channel
@@ -20,9 +21,9 @@ use DF\HorizonObservability\Metrics\MetricType;
  * variables that refresh on a time range change. Grafana interpolates the expressions the way {@see interpolate()}
  * does for a one-hour range at the reference scrape interval.
  *
- * The budget of 12 requests is the `--live=off` dashboard's (ADDENDUM R2.3); the live modes add the snapshot calls
- * of their Infinity targets (`${api_path}/live`), at most 5 per refresh, each served from the snapshot cache, which
- * {@see liveRequests()} counts apart.
+ * The budget of 12 requests is the `--live=off` dashboard's; the live modes add the snapshot calls of their Infinity
+ * targets (`${api_path}/live`), at most 5 per refresh, each served from the snapshot cache, which {@see liveRequests()}
+ * counts apart.
  *
  * @internal
  */
@@ -31,7 +32,7 @@ final readonly class StaticBudget
     public const MAX_REQUESTS = 12;
 
     /**
-     * Poll mode's extra cost per refresh: calls of the live snapshot endpoint (ADDENDUM R2.3).
+     * Poll mode's extra cost per refresh: calls of the live snapshot endpoint.
      */
     public const MAX_LIVE_REQUESTS = 5;
 
@@ -42,8 +43,8 @@ final readonly class StaticBudget
     public const MAX_PANEL_BYTES = 25 * 1024;
 
     /**
-     * The only variables that refresh on a time range change, because they read `$__range` (O3); every other
-     * query variable refreshes on dashboard load.
+     * The only variables that refresh on a time range change, because they read `$__range`; every other query variable
+     * refreshes on dashboard load.
      */
     public const RANGE_VARIABLES = ['batch_kind', 'batch_title'];
 
@@ -55,12 +56,12 @@ final readonly class StaticBudget
     public const ON_TIME_RANGE_CHANGE = 2;
 
     /**
-     * The hidden shared queue source (O5).
+     * The hidden shared queue source (`PanelRegistry::QUEUE_SOURCE`).
      */
     public const QUEUE_SOURCE = 24;
 
     /**
-     * Copies of a repeated panel: the supervisors of the reference profile (ADDENDUM R2.2, medium).
+     * Copies of a repeated panel: the supervisors of the reference profile (`medium`, docker/perf/README.md).
      */
     public const REFERENCE_REPEATS = 4;
 
@@ -70,7 +71,7 @@ final readonly class StaticBudget
     private const REPEAT_VALUE = 'supervisor-notifications';
 
     /**
-     * The interpolation of a one-hour range at S = 10 s (ADDENDUM R2.2 step 4: what Grafana's backend substitutes).
+     * The interpolation of a one-hour range at S = 10 s, as Grafana's backend substitutes the built-in variables.
      */
     private const BUILT_INS = [
         '__interval' => '10s',
@@ -230,8 +231,8 @@ final readonly class StaticBudget
     }
 
     /**
-     * The O3 policy: the query variables in {@see RANGE_VARIABLES} refresh on a time range change, every other
-     * query or datasource variable on dashboard load.
+     * The variable refresh policy: the query variables in {@see RANGE_VARIABLES} refresh on a time range change, every
+     * other query or datasource variable on dashboard load.
      *
      * @return list<string>
      */
@@ -258,7 +259,7 @@ final readonly class StaticBudget
     }
 
     /**
-     * Counter and histogram selectors with a literal range of an hour or more (O1: the start of a period looks back
+     * Counter and histogram selectors with a literal range of an hour or more (the start of a period looks back
      * max(10m, 10 x S), not a day), in every expression of the dashboard.
      *
      * @return list<string>
@@ -290,7 +291,7 @@ final readonly class StaticBudget
     }
 
     /**
-     * The legacy `batch_filtered()` (O2): an operand switched on by the Batch-is-All test (`(X) and on ()
+     * The legacy `batch_filtered()` pattern: an operand switched on by the Batch-is-All test (`(X) and on ()
      * (label_replace(vector(1), "filter", "${batch_kind:text}", ...))`) that the same expression evaluates in another
      * branch too. Prometheus evaluates both branches of an `or`, so X costs twice; the batch scope belongs in the
      * selectors (`unless on (job_class) <excluded classes>`, which is empty while Batch is All).
@@ -321,8 +322,8 @@ final readonly class StaticBudget
     }
 
     /**
-     * The hidden queue source (O5) must set `maxDataPoints`: without it a source hidden before its first render
-     * never runs and every queue table stays empty (ADDENDUM R2.4).
+     * The hidden queue source must set `maxDataPoints`: without it a source hidden before its first render never
+     * runs and every queue table stays empty.
      *
      * @return list<string>
      */
@@ -338,9 +339,9 @@ final readonly class StaticBudget
     }
 
     /**
-     * An expression as Grafana sends it with every filter at "All" (ADDENDUM R2.2 step 6): `${var:text}` is
-     * "All", a multi-value variable its allValue or the regex of its options, a textbox its value, and $repeat
-     * (the repeat variable of a panel copy) one option.
+     * An expression as Grafana sends it with every filter at "All": `${var:text}` is "All", a multi-value variable its
+     * allValue or the regex of its options, a textbox its value, and $repeat (the repeat variable of a panel copy) one
+     * option.
      */
     public function interpolate(string $expr, string $repeat = ''): string
     {

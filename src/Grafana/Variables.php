@@ -24,22 +24,22 @@ final readonly class Variables
     public const FILTERS = ['supervisor', 'batch_kind', 'queue', 'job_class', 'supervisor_title', 'batch_title'];
 
     /**
-     * Grafana's variable refresh: on dashboard load, or on every time range change, which for a relative range
-     * means every auto-refresh. Only the variables that read `$__range` refresh with the range (ADDENDUM R2.4 O3):
-     * the others are instant queries or day-long lookbacks, so their lists follow a time range change only after a
-     * reload; a reload or a change of a variable they depend on refreshes them.
+     * Grafana's variable refresh: on dashboard load, or on every time range change, which for a relative range means
+     * every auto-refresh. Only the variables that read `$__range` refresh with the range: the others are instant
+     * queries or day-long lookbacks, so their lists follow a time range change only after a reload; a reload or a
+     * change of a variable they depend on refreshes them.
      */
     public const ON_LOAD = 1;
 
     public const ON_TIME_RANGE_CHANGE = 2;
 
     /**
-     * The worker utilisation window as the panels read it (Arch Q5.2: the hidden `busy_window` textbox).
+     * The worker utilisation window as the panels read it (the hidden `busy_window` textbox).
      */
     public const BUSY_WINDOW = '$busy_window';
 
     /**
-     * The min interval of every Prometheus panel (ADDENDUM R3.3: the hidden `scrape_interval` textbox).
+     * The min interval of every Prometheus panel (the hidden `scrape_interval` textbox).
      */
     public const SCRAPE_INTERVAL = '$scrape_interval';
 
@@ -84,9 +84,9 @@ final readonly class Variables
             // "All" is the listed queues, not .*: so the Supervisor filter works on every panel (queue metrics
             // have no supervisor label)
             $this->filter('queue', 'Queue', $this->queueQuery(), '/queue="([^"]+)"/'),
-            // "All" is .+, not the listed jobs (ADDENDUM R2.4 O2: the list was inlined into every job-filtered
-            // selector); the Batch filter reaches the panels as the batch scope of those selectors instead. The
-            // text is the class without its namespace, the value the full class name.
+            // "All" is .+, not the listed jobs (a list is inlined into every job-filtered selector: over ten times
+            // the PromQL per refresh); the Batch filter reaches the panels as the batch scope of those selectors
+            // instead. The text is the class without its namespace, the value the full class name.
             $this->filter('job_class', 'Job', $this->jobQuery(), '/display="(?<text>[^"]+)".*job_class="(?<value>[^"]+)"/', '.+'),
             // Hidden: the queue table repeats by it, the text is the table title
             $this->hiddenFilter('supervisor_title', $this->supervisorTitleQuery(), '/display="(?<text>[^"]+)".*supervisor="(?<value>[^"]+)"/'),
@@ -113,7 +113,7 @@ final readonly class Variables
     }
 
     /**
-     * The hidden `prometheus_job` variable (Arch Q5.2): the jobs that export the Horizon status, "All" as `.+`.
+     * The hidden `prometheus_job` variable: the jobs that export the Horizon status, "All" as `.+`.
      *
      * @return array<string, mixed>
      */

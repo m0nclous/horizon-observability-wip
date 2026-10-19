@@ -35,17 +35,17 @@ final readonly class AlertRulesBuilder
     public function __construct(private DashboardOptions $options) {}
 
     /**
-     * The uid suffixes of the core rules, which the Alerts tile and the alert sound watch (Arch Q5.2, Q5.3).
+     * The uid suffixes of the core rules, which the Alerts tile and the alert sound watch.
      */
     public const CORE_RULES = ['no-metrics', 'down', 'long-wait', 'failures'];
 
     /**
-     * The uid suffix of the stall rule of the stream mode, a core rule there (ADDENDUM R4.11).
+     * The uid suffix of the stall rule of the stream mode, a core rule there.
      */
     public const LIVE_RULE = 'live';
 
     /**
-     * The uid suffixes of the opt-in health rules (Arch Q1.5).
+     * The uid suffixes of the opt-in health rules.
      */
     public const HEALTH_RULES = ['collector', 'duplicates'];
 
@@ -170,11 +170,11 @@ final readonly class AlertRulesBuilder
     }
 
     /**
-     * `<uid>-live` "Live overview stalled" (ADDENDUM R4.11), rendered with `--live=stream` only: no stream command has
-     * pushed the live tiles for 30 seconds, so they show stale values. The age of the last push is taken at scrape
-     * time, `timestamp(x) - x` on the raw replica series (after an aggregation `timestamp()` would return the
-     * evaluation time), so neither the scrape interval nor the rule evaluation adds to it; the outer max is the
-     * replica dedupe. No data is OK: the exporter has no push timestamp before the stream ever ran.
+     * `<uid>-live` "Live overview stalled", rendered with `--live=stream` only: no stream command has pushed the live
+     * tiles for 30 seconds, so they show stale values. The age of the last push is taken at scrape time,
+     * `timestamp(x) - x` on the raw replica series (after an aggregation `timestamp()` would return the evaluation
+     * time), so neither the scrape interval nor the rule evaluation adds to it; the outer max is the replica dedupe.
+     * No data is OK: the exporter has no push timestamp before the stream ever ran.
      *
      * @return array<string, mixed>
      */
@@ -198,10 +198,10 @@ final readonly class AlertRulesBuilder
     }
 
     /**
-     * The opt-in health rules (`--health-rules`, Arch Q1.5): a collector that keeps failing on any replica, and more
-     * than one scraped target per job (per-pod scraping), which the dedupe hides from the panels. Both read the
-     * replicas one by one, so they are the only selectors without the dedupe. Neither is in the Alerts tile: they
-     * are about the exporter, not the queues.
+     * The opt-in health rules (`--health-rules`): a collector that keeps failing on any replica, and more than one
+     * scraped target per job (per-pod scraping), which the dedupe hides from the panels. Both read the replicas one
+     * by one, so they are the only selectors without the dedupe. Neither is in the Alerts tile: they are about the
+     * exporter, not the queues.
      *
      * @return list<array<string, mixed>>
      */
@@ -209,8 +209,8 @@ final readonly class AlertRulesBuilder
     {
         return [
             // Self-metrics are per replica: each replica runs its own collectors, so a collector that fails on one
-            // replica only must fire, and the replica dedupe (a max) would hide it (Arch Q5.3). Auto-disabled
-            // collectors emit no success series, so they never fire.
+            // replica only must fire, and the replica dedupe (a max) would hide it. Auto-disabled collectors emit
+            // no success series, so they never fire.
             $this->rule(
                 'collector',
                 'Metrics collector failing',

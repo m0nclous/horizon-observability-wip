@@ -20,8 +20,8 @@ use DF\HorizonObservability\Grafana\Queries\Waits;
 use DF\HorizonObservability\Grafana\Queries\Workers;
 
 /**
- * Renders the dashboard model: panels, layout, variables and links (port of
- * `legacy/grafana/generate_queues_dashboard.py`).
+ * Renders the dashboard model: panels, layout, variables and links (a port of the pilot's Python generator,
+ * `generate_queues_dashboard.py`).
  *
  * Layout: the hidden alert sound panel takes the first grid row; then the Overview row with the tiles ("Live
  * Overview" when some of them read the live snapshot, {@see LivePanels}), the
@@ -41,7 +41,7 @@ final readonly class DashboardBuilder
     private const SCHEMA_VERSION = 42;
 
     /**
-     * The oldest supported Grafana (owner decision 4).
+     * The oldest supported Grafana: Business Text 6.3.0 needs 12.3.
      */
     public const MIN_GRAFANA = '12.3.0';
 
@@ -83,13 +83,13 @@ final readonly class DashboardBuilder
             'version' => 1,
         ];
 
-        // What the dashboard needs, for Grafana's import (Arch Q5.2); file provisioning ignores it
+        // What the dashboard needs, for Grafana's import; file provisioning ignores it
         return ['__requires' => self::requires(), ...$dashboard];
     }
 
     /**
      * Grafana, the datasources and the panels the dashboard uses, with the minimum versions that render it: Grafana
-     * 12.3 (Business Text 6.3.0 needs it), Infinity 4.1.1 and Business Text 6.3.0 (owner decision 4).
+     * 12.3 (Business Text 6.3.0 needs it), Infinity 4.1.1 and Business Text 6.3.0.
      *
      * @return list<array{type: string, id: string, name: string, version: string}>
      */
@@ -126,7 +126,7 @@ final readonly class DashboardBuilder
         $jobLists = new JobLists;
         $batches = new Batches($common, $promql, $attempts, $batchState, $this->options->rpmMinutes());
 
-        // The hidden top row: the alert sound and the shared source of the queue tables (O5)
+        // The hidden top row: the alert sound and the shared source of the queue tables
         $panels = [(new AlertSound($common, $alertState, Resources::alertSoundScript()))->panel(), $queues->source()];
         $y = AlertSound::HEIGHT;
 
@@ -161,8 +161,8 @@ final readonly class DashboardBuilder
 
     /**
      * Every Prometheus panel takes the scrape interval as its min interval, so `$__interval` is never below S
-     * whatever the datasource's `timeInterval` (ADDENDUM R3.3, verified on Grafana 12 and 13); the panels of a
-     * collapsed row too, and the Mixed live tiles for their Prometheus sparkline (ADDENDUM R4.8).
+     * whatever the datasource's `timeInterval` (verified on Grafana 12 and 13); the panels of a collapsed row too,
+     * and the Mixed live tiles for their Prometheus sparkline.
      *
      * @param  array<string, mixed>  $panel
      * @return array<string, mixed>

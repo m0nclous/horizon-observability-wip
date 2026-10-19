@@ -206,7 +206,7 @@ final readonly class Tiles
             'supervisor-(.+)',
         );
 
-        // Only the colour of the last point shows (O8): an instant query of the value at the last step of the range
+        // Only the colour of the last point shows: an instant query of the value at the last step of the range
         // query A. Grafana aligns that step to a multiple of $__interval at or before the end of the period, and so
         // does a subquery with that step, while an instant query runs at the end itself
         $colored = Promql::countValues(
@@ -455,8 +455,8 @@ final readonly class Tiles
     }
 
     /**
-     * The attempts per step of the Completed and Failed sparklines, whose sum is the tile number (O4: one subquery,
-     * per series); 0 while the application exports metrics without attempts.
+     * The attempts per step of the Completed and Failed sparklines, whose sum is the tile number (one subquery, per
+     * series); 0 while the application exports metrics without attempts.
      */
     private function attemptsPerStep(string $statuses): string
     {

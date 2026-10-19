@@ -16,8 +16,7 @@ final class Resources
     private const DIRECTORY = __DIR__.'/../../resources/grafana';
 
     /**
-     * The `afterRender` script of the hidden alert sound panel (Arch Q5.4): `js/alert-sound.js` without its final
-     * newline.
+     * The `afterRender` script of the hidden alert sound panel: `js/alert-sound.js` without its final newline.
      */
     public static function alertSoundScript(): string
     {

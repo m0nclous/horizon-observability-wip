@@ -62,7 +62,8 @@ final class PanelRegistry
     public const ALERT_SOUND = 23;
 
     /**
-     * The hidden shared source of the queue tables (ADDENDUM R2.4 O5): #5 repeats per supervisor and reads it.
+     * The hidden shared source of the queue tables: it runs their queries once for all supervisors, and #5, which
+     * repeats per supervisor, reads it.
      */
     public const QUEUE_SOURCE = 24;
 
