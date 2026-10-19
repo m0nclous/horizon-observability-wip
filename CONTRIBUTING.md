@@ -48,8 +48,9 @@ composer horizon         # Horizon of the workbench
 composer load            # workbench:simulate-load --continuous: a production-like job stream until Ctrl+C
 ```
 
-- Grafana: http://localhost:3000/d/horizon-observability (anonymous viewers; `admin`/`admin` to edit). It provisions
-  the committed render in `resources/grafana`, so the stack shows what users install.
+- Grafana: http://localhost:3000/d/horizon-observability (anonymous viewers; `admin`/`admin` logs in). It provisions
+  the committed render in `resources/grafana` read-only, so the stack shows what users install; change the dashboard
+  in `src/Grafana` (see [below](#changing-the-dashboard-and-the-alert-rules)).
 - Horizon: http://localhost:8000/horizon, with the "Grafana" link in its sidebar.
 - The exposition:
   `curl -H 'Authorization: Bearer workbench-token-0123456789abcdef' http://localhost:8000/horizon/observability/metrics`
@@ -154,8 +155,11 @@ checkout collide on Testbench's route cache.
   ```
 
 - **Time to first dashboard.** `tests/e2e/first-dashboard.sh [--grafana 12|13]` follows the README quick start on a
-  fresh Laravel app, installing this checkout's `git archive`, and fails when the dashboard does not show data within
-  5 minutes. See its header for the environment it needs.
+  fresh Laravel app, installing this checkout's `git archive` (`PACKAGE_REF`, default `HEAD`), and fails when the
+  dashboard does not show data within 5 minutes. See its header for the environment it needs. Leave `PACKAGE_PATH`
+  unset for a checkout: it copies the checkout's git-ignored `vendor/` into the app. The app uses the Redis on
+  127.0.0.1:6379 with the key prefixes of a new Laravel app and deletes nothing, so a second run starts with the
+  queues and counters of the first: run it against an empty Redis when the tile values matter.
 
 Expected skips on a typical machine: the `cluster` tests, the `e2e` tests, the promtool tests without `PROMTOOL` and
 a few tests for other Laravel or Horizon versions. CI runs all of them.
