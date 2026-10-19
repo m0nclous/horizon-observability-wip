@@ -123,19 +123,21 @@ None.
 ## Stage timings
 
 Seconds per stage of the slice (S01 and S02 on both versions; `timings.json` of the run). The CI column is the range
-of the green runs of the `dashboard-truth` job on the draft PR (ubuntu-24.04, 2 vCPU: 39257113648, 39258521067 and
-39259163392), which feeds the 15-minute bound of the PR set (design section 12).
+of the five green runs of the `dashboard-truth` job on the draft PR (ubuntu-24.04, 2 vCPU: 39257113648, 39258521067,
+39259163392, and 39267396955 and 39269327586 after the review fixes), which feeds the 15-minute bound of the PR set
+(design section 12).
 
 | Stage | Local (24 threads, slot 30) | CI runner (ubuntu-24.04, 2 vCPU) |
 |---|---|---|
-| setup (job start to the suite: Redis service, checkout, PHP, Composer, Playwright with its system packages, plugins) | - | 65 |
+| setup (job start to the suite: Redis service, checkout, PHP, Composer, Playwright with its system packages, plugins) | - | 65-70 |
 | record (one dataset, 1 h 40 min, 600 scrapes) | 5.5-6.3 | 4.4-7.4 |
-| ingest (55,869 samples; includes waiting for Prometheus) | 1.2-1.5 | 1.8-5.6 |
+| ingest (55,869 samples; includes waiting for Prometheus) | 1.2-1.5 | 1.5-5.6 |
 | stack (Grafanas healthy, router, imports, plan) | 1.2-3.0 | 1.7-2.2 |
 | capture (2 cases x 2 versions, two browsers in parallel) | 8.6-9.4 | 11.0-15.3 |
 | assert (3 frame comparisons per range target incl. the replays, DOM, checks, gate) | 0.5-0.6 | 0.6-0.9 |
 | slice total (`bin/run`) | 18-20 | 20-28 |
 | one mutant (stack, capture, assert of S01) | 5.5-5.6 | 6.8-9.7 |
+| the mutant step (completed-retried and drop-zeros) | 11 | 15-16 |
 | whole job (queue excluded) | - | 97-121 |
 
 Capture dominates: 4.4 to 8.1 s per page load on the runner (one Chromium per version, in parallel), so the 31 page
