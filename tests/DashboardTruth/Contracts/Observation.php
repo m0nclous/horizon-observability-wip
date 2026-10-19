@@ -119,7 +119,7 @@ final readonly class Observation
     /**
      * The DOM read of a panel by its key (`panel-8`, `panel-7-clone-1`).
      *
-     * @return array{key: string, panelId: string|null, title: string|null, lines: list<string>, sparkline: bool, error: bool, noData: bool}|null
+     * @return array{key: string, panelId: string|null, title: string|null, lines: list<string>, rows?: list<list<string>>, sparkline: bool, error: bool, noData: bool}|null
      */
     public function dom(string $key): ?array
     {

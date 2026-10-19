@@ -17,7 +17,7 @@
 // The observation (schema tests/DashboardTruth/Contracts/schema/observation.schema.json) holds every /api/ds/query
 // request body and response (with `meta.executedQueryString` and the frame grids), the scene variables (value, text,
 // options), the scene panels (data state, request panel id, the transformed frames of the stat panels), the DOM of
-// every panel, the router log lines of the page load, page errors and timings. Only cycle 0, the first load, is
+// every panel (its text lines and table rows), the router log lines of the page load, page errors and timings. Only cycle 0, the first load, is
 // captured.
 //
 // Needs Playwright 1.56.1 in ./node_modules (`npm i --no-save --no-package-lock playwright@1.56.1`) and Chromium.
@@ -345,12 +345,14 @@ async function sceneState(page) {
   });
 }
 
-// The DOM of every panel as a user sees it: the text lines, and for stat panels the title and the (caption, value)
-// pairs of `value_and_name`, the value colour, the sparkline and the error and no-data indicators.
+// The DOM of every panel as a user sees it: the text lines, the lines of every table row (`role="row"`, the header
+// row included, in display order), the title, the sparkline and the error and no-data indicators.
 async function readDom(page) {
   return page.$$eval('[data-viz-panel-key]', (elements) => Object.fromEntries(elements.map((element) => {
     const key = element.getAttribute('data-viz-panel-key');
-    const lines = (element.innerText ?? '').split('\n').map((line) => line.trim()).filter((line) => line !== '');
+    const split = (text) => (text ?? '').split('\n').map((line) => line.trim()).filter((line) => line !== '');
+    const lines = split(element.innerText);
+    const rows = Array.from(element.querySelectorAll('[role="row"]')).map((row) => split(row.innerText));
     const header = element.querySelector('h2');
     const error = element.querySelector('[data-testid*="Panel status error"], [data-testid*="panel-status-error"]') !== null;
     return [key, {
@@ -358,6 +360,7 @@ async function readDom(page) {
       panelId: element.getAttribute('data-viz-panel-id'),
       title: header ? header.innerText.trim() : null,
       lines,
+      rows,
       sparkline: element.querySelector('canvas, svg path') !== null,
       error,
       noData: lines.includes('No data'),

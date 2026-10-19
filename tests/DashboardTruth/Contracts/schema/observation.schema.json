@@ -76,6 +76,7 @@
         "properties": {
           "key": {"type": "string"},
           "lines": {"type": "array", "items": {"type": "string"}},
+          "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}, "description": "the text lines of every table row (role=row, the header row included), in display order"},
           "sparkline": {"type": "boolean"},
           "error": {"type": "boolean"},
           "noData": {"type": "boolean"}

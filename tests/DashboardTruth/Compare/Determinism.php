@@ -20,9 +20,10 @@ use DF\HorizonObservability\Tests\DashboardTruth\Contracts\Observation as Captur
  * Measured durations ({@see self::MEASURED}) are real time on every run: attempt durations (`hrtime`, the #6 F, G, I
  * and J columns) and Horizon's job runtimes and record stamps (the Repositories clock shim adds the real time since
  * the clock last moved, so the job lists' Runtime and their completed and failed times move by milliseconds). Their
- * frames are compared by shape (label sets, rows, times to the second) with the values masked, and duration cells of
- * their DOM are masked. Job and batch ids are random UUIDs (the job lists' links), so every UUID is masked too.
- * Everything else must be byte-identical.
+ * frames are compared by shape (label sets, rows, times to the second) with the values masked; in their DOM the
+ * duration cells are masked and the table rows compare as a multiset, because a panel may sort by a measured column
+ * (#6 sorts by Pending, then Avg, so two classes with Pending 0 swap with their measured averages). Job and batch ids
+ * are random UUIDs (the job lists' links), so every UUID is masked too. Everything else must be byte-identical.
  */
 final class Determinism
 {
@@ -115,8 +116,7 @@ final class Determinism
 
         foreach ($observation->data['dom'] as $key => $dom) {
             $measured = isset(self::MEASURED[(string) preg_replace('/^panel-(\d+).*$/', '$1', (string) $key)]);
-            $lines = array_map(static fn (string $line): string => $measured && preg_match(self::DURATION, $line) === 1 ? self::MASK : $line, $dom['lines']);
-            $canonical['dom '.$key] = implode(' | ', $lines);
+            $canonical['dom '.$key] = $measured ? self::measuredDom($dom) : implode(' | ', $dom['lines']);
         }
 
         foreach ($observation->variables() as $name => $variable) {
@@ -126,6 +126,41 @@ final class Determinism
         ksort($canonical);
 
         return array_map(static fn (string $text): string => (string) preg_replace(self::UUID, '<uuid>', $text), $canonical);
+    }
+
+    /**
+     * The DOM of a panel with measured values, its duration cells masked: its table rows as a multiset (such a panel
+     * may sort its rows by a measured column, as #6 sorts by Pending, then Avg), then the lines outside the rows in
+     * order. An observation without rows (captured before the row read) compares its lines as a multiset.
+     *
+     * @param  array{lines: list<string>, rows?: list<list<string>>}  $dom
+     */
+    private static function measuredDom(array $dom): string
+    {
+        $mask = static fn (array $lines): array => array_map(static fn (string $line): string => preg_match(self::DURATION, $line) === 1 ? self::MASK : $line, $lines);
+        $lines = $mask($dom['lines']);
+        $rows = array_map($mask, $dom['rows'] ?? []);
+
+        if ($rows === []) {
+            sort($lines);
+
+            return 'lines '.implode(' | ', $lines);
+        }
+
+        foreach ($rows as $row) {
+            foreach ($row as $line) {
+                $index = array_search($line, $lines, true);
+
+                if ($index !== false) {
+                    unset($lines[$index]);
+                }
+            }
+        }
+
+        $rows = array_map(static fn (array $row): string => implode(' | ', $row), $rows);
+        sort($rows);
+
+        return implode(' | ', $lines)."\nrows\n".implode("\n", $rows);
     }
 
     /**

@@ -8,8 +8,9 @@ use DF\HorizonObservability\Tests\DashboardTruth\Contracts\Observation;
 /*
 | The determinism check of two runs (T17, design sections 4 and 9, `bin/run compare`) on synthetic observations: the
 | order of series and rows, the measured durations (#6 F/G/I/J, the job lists' Runtime and their stamps to the
-| second, the duration cells of those panels' DOM) and random job ids never count; any other value, the sent query,
-| the DOM of another panel and the variables do.
+| second, the duration cells of those panels' DOM), the order of those panels' table rows (#6 sorts by its measured
+| Avg) and random job ids never count; any other value, a cell moved between rows, the sent query, the DOM of another
+| panel and the variables do.
 */
 
 pest()->group('grafana');
@@ -39,7 +40,10 @@ function dashboardTruthDeterminismObservation(array $change = []): Observation
     $change += [
         'order' => false, 'value' => 3.0, 'duration' => 0.0012, 'runtime' => 0.0009, 'completedMs' => 1740962430120,
         'uuid' => '51e07fa0-b268-4f99-8f8b-507448cf9263', 'expr' => 'x', 'dom8' => '304', 'dom6' => '1.24 ms', 'queue' => 'default',
+        'rows6' => [['Born', '0', '0', '823.38 µs'], ['Invoice', '0', '30', '$dom6']], 'withRows' => true,
     ];
+    $rows6 = array_map(static fn (array $row): array => array_map(static fn (string $cell): string => $cell === '$dom6' ? $change['dom6'] : $cell, $row), $change['rows6']);
+    $rows6 = [['Job', 'Pending', 'Failed', 'Avg'], ...$rows6];
     $series = [
         dashboardTruthFrame(['job_class' => 'Truth\\Invoice'], [[1740962400000, $change['value']], [1740962415000, 1.0]], $change['expr']),
         dashboardTruthFrame(['job_class' => 'Truth\\Born'], [[1740962400000, 0.0], [1740962415000, 2.0]], $change['expr']),
@@ -53,7 +57,7 @@ function dashboardTruthDeterminismObservation(array $change = []): Observation
         'schema' => ['fields' => [['name' => 'Completed', 'type' => 'time'], ['name' => 'Job', 'type' => 'string'], ['name' => 'Runtime', 'type' => 'number']]],
         'data' => ['values' => [[$change['completedMs'], 1740962460000], ['<a href="/horizon/jobs/completed/'.$change['uuid'].'">Invoice</a>', 'Invoice'], [$change['runtime'], 0.001]]],
     ];
-    $dom = static fn (string $key, array $lines): array => ['key' => $key, 'panelId' => $key, 'title' => $lines[0], 'lines' => $lines, 'sparkline' => false, 'error' => false, 'noData' => false];
+    $dom = static fn (string $key, array $lines, ?array $rows = null): array => ['key' => $key, 'panelId' => $key, 'title' => $lines[0], 'lines' => $lines, ...($rows === null ? [] : ['rows' => $rows]), 'sparkline' => false, 'error' => false, 'noData' => false];
     $path = tempnam(sys_get_temp_dir(), 'ho-t17-determinism');
     file_put_contents($path, json_encode([
         'schema' => 1, 'case' => 'S01', 'grafana' => '13', 'grafanaVersion' => '13.2.4', 'url' => 'http://x/d/t17-off/', 'fakeNow' => 1740966000000,
@@ -67,7 +71,10 @@ function dashboardTruthDeterminismObservation(array $change = []): Observation
             ['name' => 'queue', 'type' => 'query', 'value' => [$change['queue']], 'text' => [$change['queue']], 'options' => [['text' => 'default', 'value' => 'default'], ['text' => 'slow', 'value' => 'slow']]],
         ],
         'panels' => [],
-        'dom' => ['panel-8' => $dom('panel-8', ['Completed', 'RPM: 5', $change['dom8']]), 'panel-6' => $dom('panel-6', ['Job', 'Avg', 'Invoice', $change['dom6']])],
+        'dom' => [
+            'panel-8' => $dom('panel-8', ['Completed', 'RPM: 5', $change['dom8']], []),
+            'panel-6' => $dom('panel-6', ['Jobs', ...array_merge(...$rows6)], $change['withRows'] ? $rows6 : null),
+        ],
         'router' => [], 'errors' => [], 'timing' => (object) [],
     ], JSON_UNESCAPED_UNICODE));
 
@@ -77,6 +84,18 @@ function dashboardTruthDeterminismObservation(array $change = []): Observation
         unlink($path);
     }
 }
+
+it('finds no difference in the order of the rows of a panel sorted by a measured column', function (bool $withRows): void {
+    $swapped = ['rows6' => [['Invoice', '0', '30', '$dom6'], ['Born', '0', '0', '829.57 µs']], 'withRows' => $withRows];
+
+    expect(Determinism::differences(dashboardTruthDeterminismObservation(['withRows' => $withRows]), dashboardTruthDeterminismObservation($swapped)))->toBe([]);
+})->with(['the table rows' => true, 'the lines of an observation without rows' => false]);
+
+it('finds a cell that moved to another row of a panel sorted by a measured column', function (): void {
+    $moved = ['rows6' => [['Born', '0', '30', '823.38 µs'], ['Invoice', '0', '0', '$dom6']]];
+
+    expect(Determinism::differences(dashboardTruthDeterminismObservation(), dashboardTruthDeterminismObservation($moved)))->toBe(['dom panel-6 differs']);
+});
 
 it('finds no difference in the order of series, the measured durations and random job ids', function (): void {
     $base = dashboardTruthDeterminismObservation();
