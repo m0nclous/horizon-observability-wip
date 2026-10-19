@@ -19,6 +19,13 @@ final readonly class Selection
     /**
      * Non-empty while the filter shows "All": its text (`${var:text}`) is compared with "All" through labels
      * (legacy `filter_is_all`).
+     *
+     * The text sits in a PromQL string literal unescaped (Grafana's `text` format is raw). The Job option texts are the
+     * classes without their namespace (Variables::jobQuery()), so a real option holds no backslash. Known limit, as in
+     * the pilot: a value that matches no option (a shared link with a class that is no longer exported) has the value
+     * as its text, and a batch kind, queue or supervisor is its own text; a backslash or a double quote in such a text
+     * makes the expression unparseable, and the panels that test the filter show the query error, never a number
+     * (T13 QA round 3).
      */
     public static function isAll(string $variable): string
     {
