@@ -12,6 +12,9 @@ The first public release: a rewrite of the internal pilot `sushi-market/horizon-
 
 ### Added
 
+- Several applications in one Grafana: every render carries the tag `horizon-observability` and an "Apps" dropdown of
+  the dashboards with that tag, so the per-application dashboards (`--uid`, `--job`, `--title`,
+  `--infinity-datasource`) link to each other; the README describes the setup.
 - `horizon-observability:grafana --down-for=<duration>`: how long Horizon must be down before "Horizon is down" fires
   (default 5 minutes, as before).
 - Live columns of now in the Current Workload tables (poll and stream renders): Utilization, Processes, Pending,
@@ -124,6 +127,14 @@ The first public release: a rewrite of the internal pilot `sushi-market/horizon-
 
 ### Fixed
 
+- The Horizon tile stayed red for up to a graph step after Horizon came back (minutes on long ranges) and counted the
+  time before the first scrape as down. It now shows the current status, in poll and stream renders the live one,
+  and its Uptime counts only the time with metrics.
+- `balance => false` pools were missing from the off-mode Supervisor Processes tile, from the queue tables (rows,
+  processes and utilisation; the utilisation of such a pool always read 0), from the Queue filter of their supervisor
+  and from the queue table titles under Queue = All: the dashboard joins through `horizon_supervisor_queues`.
+- Under a Job or Batch filter, Supervisor Processes showed a dash, or left a supervisor out, where no worker ran the
+  selected classes; it shows 0 for every supervisor, in every live mode.
 - A missing batches table, a non-database batching driver, a database error or an unreachable Horizon Redis turned
   the whole metrics response into a 500; now only the failing collector's families are missing, with
   `exporter_collector_success` 0.

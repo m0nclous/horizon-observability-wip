@@ -7,6 +7,7 @@ namespace DF\HorizonObservability\Grafana\Live;
 use DF\HorizonObservability\Grafana\Glyph;
 use DF\HorizonObservability\Grafana\PanelRegistry;
 use DF\HorizonObservability\Grafana\Panels\Common;
+use DF\HorizonObservability\Grafana\Panels\Tiles;
 use DF\HorizonObservability\Grafana\Promql;
 use DF\HorizonObservability\Grafana\Queries\Selection;
 use DF\HorizonObservability\Live\Captions;
@@ -20,6 +21,9 @@ use stdClass;
  * and caption size stay those of the off render.
  *
  * Poll mode:
+ * - #1 Horizon is Mixed: the Prometheus band A with the snapshot's status L appended to it (`merge`, so the shown
+ *   value and its colour are the current status, and Prometheus' when the live status is null or the call fails),
+ *   and the Prometheus uptime and mappings B; the off render merges Prometheus' current status N instead.
  * - #3 Supervisor Processes reads the snapshot's `tiles[]` (Infinity) through {@see tileRows()}: one value per
  *   supervisor with the caption "name \u{00B7} max N" and the utilisation colour; no sparkline.
  * - #2 Pending is Mixed: the Prometheus sparkline A, the live value L appended to it (`merge`, so the last value is
@@ -34,8 +38,8 @@ use stdClass;
  * token without access) Grafana would otherwise name the value after its query and show the PromQL.
  *
  * Stream mode: #3 and #2 read the Grafana Live channel `stream/<id>/tiles` through {@see tileRows()}, #9 the windowed
- * channel `stream/<id>/delayed` (15 minutes at 5 s), and #8 is the poll panel. The other tiles read Prometheus in
- * every mode.
+ * channel `stream/<id>/delayed` (15 minutes at 5 s), and #1 and #8 are the poll panels (Mixed cannot carry a stream).
+ * The other tiles read Prometheus in every mode.
  *
  * The queue tables (Current Workload) read their columns of now (Utilization, Processes, Pending, Delayed, Oldest
  * wait) from the snapshot's `workload` in both live modes, through the hidden queue source #24
@@ -93,6 +97,11 @@ final readonly class LivePanels
     public const QUEUE_SOURCE_LIVE_REFS = ['A', 'B', 'D', 'F', 'G'];
 
     /**
+     * The Horizon tile's snapshot query, the live status merged into its band in place of the off render's query N.
+     */
+    public const HORIZON_REF = 'L';
+
+    /**
      * The queue source's snapshot query (W for workload; L is a live value merged into a tile's series).
      */
     public const WORKLOAD_REF = 'W';
@@ -130,6 +139,7 @@ final readonly class LivePanels
         }
 
         return array_map(fn (array $tile): array => match ($tile['id'] ?? null) {
+            PanelRegistry::HORIZON => $this->horizon($tile),
             PanelRegistry::SUPERVISOR_PROCESSES => $this->supervisorProcesses($tile),
             PanelRegistry::PENDING => $this->pending($tile),
             PanelRegistry::COMPLETED => $this->completed($tile),
@@ -296,6 +306,25 @@ final readonly class LivePanels
             'root_selector' => $root,
             'columns' => array_map(static fn (array $column): array => ['selector' => $column[0], 'text' => $column[1], 'type' => $column[2]], $columns),
         ];
+    }
+
+    /**
+     * #1: the Prometheus band and uptime with the live status as the last point, in poll and stream modes.
+     *
+     * @param  array<string, mixed>  $panel
+     * @return array<string, mixed>
+     */
+    private function horizon(array $panel): array
+    {
+        return $this->changed($panel, [
+            'datasource' => self::mixed(),
+            'targets' => [
+                $this->prometheusTarget($panel, 'A'),
+                $this->prometheusTarget($panel, 'B'),
+                self::snapshotTarget(self::HORIZON_REF, '', [['generated_at', 'Time', 'timestamp_epoch'], ['horizon.status', 'Value', 'number']]),
+            ],
+            'transformations' => Tiles::horizonTransformations(self::HORIZON_REF),
+        ]);
     }
 
     /**

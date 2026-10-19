@@ -37,6 +37,7 @@ it('maps the value of the last step of the tile, not the value at the end of the
             // One more process at every scrape: 38 at 19m, 39 at 19m30s
             ['series' => 'ho_horizon_supervisor_processes{'.$labels.', supervisor="supervisor-a", queue="default"}', 'values' => '0+1x40'],
             ['series' => 'ho_horizon_supervisor_max_processes{'.$labels.', supervisor="supervisor-a"}', 'values' => '100x40'],
+            ['series' => 'ho_horizon_supervisor_queues{'.$labels.', supervisor="supervisor-a", queue="default", pool="default"}', 'values' => '1x40'],
         ],
         'promql_expr_test' => [[
             // The end of the period is 19m30s; the last step of A is 19m

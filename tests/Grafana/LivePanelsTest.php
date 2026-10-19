@@ -13,8 +13,9 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
  * The live tiles of the poll and stream renders are their --live=off panels with exactly the live changes
- * (tests/Grafana/Support/LiveShapes, written out by hand, not from the renderer): poll #3 reads the snapshot's tile
- * rows (TILE_ROWS, the null sentinel, no sparkline), poll #2 and #9 merge the live value into the Prometheus sparkline,
+ * (tests/Grafana/Support/LiveShapes, written out by hand, not from the renderer): #1 merges the live Horizon status
+ * into its Prometheus band in both modes, poll #3 reads the snapshot's tile rows (TILE_ROWS, the null sentinel, no
+ * sparkline), poll #2 and #9 merge the live value into the Prometheus sparkline,
  * #2 also takes the live caption and colour, #8 takes the live "RPM: n" caption in both modes, stream #3 and #2 read
  * the Grafana Live tiles channel with a 500 ms buffer and #9 the 15-minute delayed window. Everything else (the other
  * panels, the variables, links, annotations, __requires) is the off render's; the Overview row is "Live Overview" in
@@ -42,8 +43,8 @@ it('renders the live tiles exactly as LiveShapes writes them out', function (Liv
     $off = livePanelsById(Rendered::dashboard(LiveMode::Off));
     $live = livePanelsById(Rendered::dashboard($mode));
 
-    // Supervisor Processes, Pending, Delayed and Completed in both modes; Horizon, Failed and Alerts read Prometheus
-    expect(LiveShapes::tiles($mode))->toBe([PanelRegistry::SUPERVISOR_PROCESSES, PanelRegistry::PENDING, PanelRegistry::DELAYED, PanelRegistry::COMPLETED]);
+    // Horizon, Supervisor Processes, Pending, Delayed and Completed in both modes; Failed and Alerts read Prometheus
+    expect(LiveShapes::tiles($mode))->toBe([PanelRegistry::HORIZON, PanelRegistry::SUPERVISOR_PROCESSES, PanelRegistry::PENDING, PanelRegistry::DELAYED, PanelRegistry::COMPLETED]);
 
     foreach (LiveShapes::tiles($mode) as $id) {
         expect(LiveShapes::canonical($live[$id]))->toBe(LiveShapes::canonical(LiveShapes::expected($mode, $off[$id])), 'panel '.$id);
@@ -105,7 +106,7 @@ it('keeps every other panel and the dashboard settings of the off render', funct
     unset($off['panels'], $off['refresh'], $live['panels'], $live['refresh']);
 
     // Variables, links, annotations, __requires (Infinity kept, nothing added for stream), time picker, identity
-    expect($compared)->toBe($panels - 4)
+    expect($compared)->toBe($panels - 5)
         ->and(count($livePanels))->toBe($panels)
         ->and($live)->toBe($off);
 })->with([LiveMode::Poll, LiveMode::Stream]);

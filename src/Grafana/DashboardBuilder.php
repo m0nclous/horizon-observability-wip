@@ -45,6 +45,12 @@ final readonly class DashboardBuilder
      */
     public const MIN_GRAFANA = '12.3.0';
 
+    /**
+     * The tag every render carries besides its own tags: the Apps dropdown lists the dashboards with it, the
+     * dashboards of the other applications rendered from this package.
+     */
+    public const APPS_TAG = 'horizon-observability';
+
     public function __construct(private DashboardOptions $options) {}
 
     /**
@@ -72,7 +78,7 @@ final readonly class DashboardBuilder
             // Grafana accepts only an interval of timepicker.refresh_intervals
             'refresh' => $this->options->refresh(),
             'schemaVersion' => self::SCHEMA_VERSION,
-            'tags' => $this->options->tags,
+            'tags' => array_values(array_unique([...$this->options->tags, self::APPS_TAG])),
             'templating' => ['list' => $this->variables()],
             'time' => ['from' => 'now-1h', 'to' => 'now'],
             // Refreshing less often than every 5 minutes makes no sense: the dashboard shows the current state
@@ -257,7 +263,9 @@ final readonly class DashboardBuilder
     /**
      * Reset sets every filter to All on this same dashboard and keeps the time range and the job scope: without
      * explicit values in the URL Grafana would keep the selection. The URL uses the current dashboard's uid, because another
-     * Grafana may store it elsewhere; Grafana adds its sub-path itself. Horizon opens this environment's Horizon.
+     * Grafana may store it elsewhere; Grafana adds its sub-path itself. Horizon opens this environment's Horizon. Apps
+     * lists the dashboards with {@see APPS_TAG}, one per application (each rendered with its own `--uid`, `--job` and
+     * `--title`), and keeps the time range; not the filters, whose queues and classes belong to this application.
      *
      * @return list<array<string, mixed>>
      */
@@ -276,6 +284,10 @@ final readonly class DashboardBuilder
             [
                 'asDropdown' => false, 'icon' => 'external link', 'includeVars' => false, 'keepTime' => false, 'tags' => [],
                 'targetBlank' => true, 'title' => 'Horizon', 'tooltip' => '', 'type' => 'link', 'url' => '${horizon_url}',
+            ],
+            [
+                'asDropdown' => true, 'icon' => 'external link', 'includeVars' => false, 'keepTime' => true, 'tags' => [self::APPS_TAG],
+                'targetBlank' => false, 'title' => 'Apps', 'tooltip' => '', 'type' => 'dashboards', 'url' => '',
             ],
         ];
     }

@@ -158,8 +158,9 @@ final readonly class Variables
     private function queueQuery(): string
     {
         $queues = Promql::group($this->promql->selector(Metric::QueuePendingJobs), 'queue');
+        // The queue names of horizon_supervisor_queues: the processes' queue label of a balance=false pool is its queue list
         $supervised = fn (string ...$matchers): string => Promql::group(
-            $this->promql->over('last_over_time', Metric::SupervisorProcesses, self::KNOWN_FOR, array_values($matchers)),
+            $this->promql->over('last_over_time', Metric::SupervisorQueues, self::KNOWN_FOR, array_values($matchers)),
             'queue',
         );
 
@@ -210,7 +211,7 @@ final readonly class Variables
     {
         $known = Promql::group($this->promql->over(
             'last_over_time',
-            Metric::SupervisorProcesses,
+            Metric::SupervisorQueues,
             self::KNOWN_FOR,
             [Promql::re('supervisor', '$supervisor'), Promql::re('queue', '$queue')],
         ), 'supervisor');

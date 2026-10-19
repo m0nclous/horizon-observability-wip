@@ -435,7 +435,7 @@ final readonly class LiveSnapshot
     /**
      * The tile rows in push order: pending, delayed, supervisors by display name, throughput. A
      * supervisor tile shows the running processes, or with a Job or Batch filter the busy workers of the selected
-     * classes, and then only the supervisors with such workers, as the off-mode tile lists them.
+     * classes, 0 for a supervisor without such workers, as the off-mode tile shows them.
      *
      * @return list<array{tile: string, key: string, caption: string, value: float|null, color: string, level: int}>
      */
@@ -448,12 +448,7 @@ final readonly class LiveSnapshot
 
         foreach ($this->supervisors as $supervisor) {
             // With a Job or Batch filter the tile counts the workers busy with the selected classes, as the off-mode
-            // tile does, which lists only the supervisors whose queues run them (it joins their
-            // reserved jobs); like the processes, they read 0 while Horizon is not running.
-            if ($this->scope['job_filter'] && $supervisor['busy'] === 0) {
-                continue;
-            }
-
+            // tile does; like the processes, they read 0 while Horizon is not running.
             $value = $this->scope['job_filter'] ? ($this->horizon['status'] === 1 ? $supervisor['busy'] : 0) : $supervisor['processes'];
             $tiles[] = $this->tile('supervisor', $supervisor['name'], $supervisor['caption'], $value, $supervisor['color'], $supervisor['level']);
         }

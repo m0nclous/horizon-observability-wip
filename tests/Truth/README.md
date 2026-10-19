@@ -210,8 +210,9 @@ map pairs the queue `sms` with that pool. A pool label longer than 200 bytes is 
 (`Labels::sanitize()`), so a long balance=false list before and after a deploy that adds a queue at its end stays two
 label values instead of one label set twice, which would drop the supervisor families.
 
-The dashboard does not join through the map yet (known issue #32, listed in the main README's known limitations):
-balance=false pools are left out of the off-mode Supervisor Processes tile and of the queue tables under Queue = All.
+The dashboard joins through the map (#32): the Supervisor Processes tile, the queue tables (rows, processes,
+utilisation), the Queue filter and the queue table titles count a balance=false pool for each of its queues
+(`tests/Grafana/SupervisorProcessesTest.php`).
 
 ### Known limits
 
