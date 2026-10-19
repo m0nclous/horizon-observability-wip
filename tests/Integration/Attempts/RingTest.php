@@ -102,5 +102,5 @@ it('a disabled live mode writes no ring key', function (): void {
     expect(array_filter(Storage::packageKeys(), static fn (string $key): bool => str_contains($key, ':live:')))->toBe([])
         ->and(Storage::hash($this->keys->attempts()))->toBe(['redis|default|App\\Jobs\\SendInvoice|completed' => '1'])
         ->and($commands->names(RedisClients::STORAGE))->toBe(['EVAL'])
-        ->and(Storage::evalKeyCounts($commands->commands(RedisClients::STORAGE)))->toBe([10]);
+        ->and(Storage::evalKeyCounts($commands->commands(RedisClients::STORAGE)))->toBe([11]);
 });

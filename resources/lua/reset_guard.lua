@@ -1,7 +1,8 @@
 -- reset_guard.lua: resets the attempt counters after a Redis restart or restore (Arch Q6.10, Appendix D, C21).
 --
 -- KEYS[1]     meta: hash with run_id, reset_at, dropped, live_push_at, live_push_failures
--- KEYS[2..]   the counter and histogram keys: attempts, duration:buckets, duration:sum, wait:buckets, wait:sum
+-- KEYS[2..]   the counter and histogram keys: attempts, duration:buckets, duration:sum, wait:buckets, wait:sum, and
+--             created (the creation times of the new-series hold, stamped with the old node's clock; T16)
 -- ARGV[1]     now (Unix seconds)
 --
 -- Runs once per scrape before the counters are read. run_id comes from INFO server, inside the script, so it is the
@@ -12,7 +13,15 @@
 -- - a different run_id: delete the counter keys and the counter fields of meta (dropped, live_push_failures), then
 --   store run_id and reset_at. A restored dataset would otherwise make increase() count old totals again.
 --
+-- INFO is non-deterministic and followed by writes: the script asks for effects replication first (the default since
+-- Redis 5, the only mode since Redis 7 and in Valkey, where the call is a no-op; required on Redis 6.2 with
+-- lua-replicate-commands no, T16).
+--
 -- Returns 1 when the counters were deleted, else 0.
+
+if redis.replicate_commands then
+    redis.replicate_commands()
+end
 
 local info = redis.pcall('INFO', 'server')
 if type(info) ~= 'string' then

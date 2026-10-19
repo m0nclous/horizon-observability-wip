@@ -1430,15 +1430,26 @@ New Lua files (headers frozen by their tasks; Appendix D is aligned with them): 
 
 **Phase B alignment (2026-10-17):** the headers of `resources/lua/*.lua` are the source of the contracts; Arch Appendix D was aligned with them in place: `record_attempt` deletes a passed `ready_at` key even without `startedAt` and returns the effective class; `extremes_read` returns the values as stored around `'\x1e'`; `reset_guard` also `HDEL`s `meta.dropped` and `meta.live_push_failures` on a changed `run_id` and is a no-op when `INFO` fails; `queue_state` caps the reserved scan at 16 MB and reads a payload with a duplicated key through cjson; `job_details` takes `max_exception_bytes = 0` for "not read"; `delayed_jobs` takes `max_bytes` and returns `{read, more, row…}`, under the cluster-aware key. `job_details` and `delayed_jobs` look for each key in the first and last 4 KB first.
 
-**`record_attempt.lua`** (WP2):
+**`record_attempt.lua`** (WP2; T16 additions 2026-10-17, aligned with Arch Appendix D and the script header on 2026-10-18):
 - **KEYS:**
   1. `attempts`, `duration:buckets`, `duration:sum`, `wait:buckets`, `wait:sum`;
   2. **`extremes:<unix div 15>:min`, `extremes:<unix div 15>:max`**;
   3. `job_classes`, `meta`;
   4. **`live:ring:<unix div 5>`**;
-  5. optionally `ready_at:<uuid>`.
-- **ARGV:** as before, with the extremes TTL now **300**, plus **`ring_ttl`** (180, or 0 = disabled), inserted after the class idle TTL and before `now`. PHP derives both bucket keys from the same `now` it passes in `ARGV`.
+  5. **`created`** (T16, KEYS[11]): the creation times of the counter series;
+  6. optionally `ready_at:<uuid>` (KEYS[12]).
+- **ARGV:** as before, with the extremes TTL now **300**, plus **`ring_ttl`** (180, or 0 = disabled), inserted after the class idle TTL and before `now`, **ARGV[17]** (T16): the attempt statuses, comma-separated (`completed,released,retried,failed,timed_out`), and **ARGV[18]** (T16 QA round 2): `''`, or the server time a test pinned (`Redis\ServerClock`). PHP derives both bucket keys from the same `now` it passes in `ARGV`.
+- **First (T16 QA round 2):** `redis.replicate_commands()` (`TIME` below is non-deterministic and followed by writes; a no-op on Redis 7+ and Valkey, needed on Redis 6.2 with `lua-replicate-commands no`).
+- **Step 2 (T16):** when `HINCRBY attempts` created the field and no other status of the tuple exists (`HEXISTS` of the others in ARGV[17]), `HSET created <c␟q␟j> <server TIME>` (QA round 2: the server's clock as `seconds.microseconds`, read at most once per call, or ARGV[18]; never the worker's `now`).
+- **Step 4 (T16):** before the wait is added, when `wait:sum` has no `c␟q` field yet, `HSET created <c␟q> <server TIME>`.
 - **Step 6 (new):** if `ring_ttl > 0`: `HINCRBY KEYS[ring] conn␟queue␟status 1` and `EXPIRE KEYS[ring] ring_ttl`.
+- **`reset_guard.lua`** (T16): its counter keys include `created`, so a reset deletes the creation times with the counters (and with them every creation time of the old node's clock); it calls `redis.replicate_commands()` first (`INFO` is non-deterministic and followed by writes; QA round 2).
+
+**`new_series.lua`** (new, T16 QA round 2; the clock of the new-series hold):
+- **KEYS:** `created`.
+- **ARGV:** the hold in seconds (90); `''`, or the server time a test pinned.
+- **Behaviour:** `redis.replicate_commands()`; `now` = the server's `TIME`; a field whose creation time is less than the hold from `now`, in either direction, is held; every other one (older, the hold or more ahead after a step back of the server clock, not a number) is deleted (`HDEL`, chunks of 500), so its series is released for good and no later clock step or replica can hold it again.
+- **Returns:** the held fields. One call per scrape, right after the counter hashes, in place of `HGETALL created`.
 
 **`extremes_read.lua`** (new, WP2):
 - **KEYS:** the 10 min keys (current bucket and 9 previous), then the 10 max keys.

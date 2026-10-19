@@ -29,6 +29,13 @@ use Throwable;
  *   running the same supervisor (a deploy, several hosts) the processes are summed per queue, the minimum and maximum
  *   are the largest reported, and the settings come from the first master by name. The `queue` label is Horizon's
  *   pool label, so a balance=false supervisor keeps its comma-joined queue list (C14).
+ * - **horizon_supervisor_queues** maps every queue a supervisor works to the pool label of its processes: the queue
+ *   itself for balance=auto and simple (a pool per queue), the comma-joined list for balance=false (one pool for all).
+ *   PromQL cannot split a label value into several series, so without it a pooled queue had no supervisor, no
+ *   processes and no row in the dashboard's queue table (T16, the pilot's #5 bug). The queues come from the
+ *   supervisor's `queue` option, the pool labels from its process map (the joined option without one), over every
+ *   master: when the masters disagree (a deploy that changes a balance=false queue list, or the balance), a queue has
+ *   a series per pool that works it, so the processes per queue count every master's.
  * - **Wait thresholds** follow Horizon's `LongWaitDetected`: the `horizon.waits` entry or 60 s; a queue whose entry
  *   is 0 has no series.
  * - **horizon_info** carries the Horizon URL, the job-list API path and the TTS URL (`''`, i.e. absent, for tone
@@ -130,10 +137,23 @@ final readonly class HorizonCollector implements Collector
             ];
         }
 
+        /** @var array<string, array<array-key, array<array-key, true>>> $pools supervisor => queue => pool label => true */
+        $pools = [];
+
+        foreach ($snapshots as $snapshot) {
+            // Every master's pools: while a deploy changes the queue option of a balance=false supervisor, the old
+            // and the new master's pools (e.g. "mail,sms" and "mail,sms,push") both work the common queues, and the
+            // processes per queue add up over both. Queue names and pool labels like "1" are integer keys.
+            foreach ($this->pools($snapshot) as $queue => $pool) {
+                $pools[$snapshot->name][$queue][$pool] = true;
+            }
+        }
+
         $processFamily = MetricFamily::of(Metric::SupervisorProcesses);
         $minFamily = MetricFamily::of(Metric::SupervisorMinProcesses);
         $maxFamily = MetricFamily::of(Metric::SupervisorMaxProcesses);
         $infoFamily = MetricFamily::of(Metric::SupervisorInfo);
+        $queuesFamily = MetricFamily::of(Metric::SupervisorQueues);
 
         foreach ($settings as $name => $setting) {
             $name = (string) $name;
@@ -145,9 +165,78 @@ final readonly class HorizonCollector implements Collector
             $minFamily->set(['supervisor' => $name], $setting['min']);
             $maxFamily->set(['supervisor' => $name], $setting['max']);
             $infoFamily->set(['supervisor' => $name, 'balance' => $setting['balance'], 'connection' => $setting['connection']], 1);
+
+            foreach ($pools[$name] ?? [] as $queue => $labels) {
+                foreach (array_keys($labels) as $pool) {
+                    $queuesFamily->set(['supervisor' => $name, 'queue' => (string) $queue, 'pool' => (string) $pool], 1);
+                }
+            }
         }
 
-        return [$processFamily, $minFamily, $maxFamily, $infoFamily];
+        return [$processFamily, $minFamily, $maxFamily, $infoFamily, $queuesFamily];
+    }
+
+    /**
+     * Queue => the queue label of the process pool that works it (Horizon's `Supervisor::createProcessPools()`): a pool
+     * per queue when the supervisor balances (auto, simple), else one pool for the whole `queue` option, labelled with
+     * the option as it is (`mail,sms,mail` stays). The label is taken from the process map, where Horizon writes every
+     * pool, even one without processes: for balance=false the label whose queue list ({@see self::queues()}) is the
+     * supervisor's. Only a record without a matching label gets one rebuilt from the queue list. A supervisor
+     * without a `queue` option maps the queues of its process labels. Numeric queue names are integer keys.
+     *
+     * @return array<array-key, string>
+     */
+    private function pools(SupervisorSnapshot $snapshot): array
+    {
+        $labels = array_map(strval(...), array_keys($snapshot->processes));
+        $pools = [];
+
+        if ($snapshot->queues === []) {
+            foreach ($labels as $label) {
+                foreach ($this->queues($label) as $queue) {
+                    $pools[$queue] ??= $label;
+                }
+            }
+
+            return $pools;
+        }
+
+        foreach ($snapshot->queues as $queue) {
+            $pool = $snapshot->balance === 'off' ? implode(',', $snapshot->queues) : $queue;
+
+            foreach ($labels as $label) {
+                if ($snapshot->balance === 'off' ? $this->queues($label) === $snapshot->queues : trim($label) === $queue) {
+                    $pool = $label;
+
+                    break;
+                }
+            }
+
+            $pools[$queue] = $pool;
+        }
+
+        return $pools;
+    }
+
+    /**
+     * The queues of a pool label or `queue` option as {@see Supervisors::snapshot()} splits them: comma-separated,
+     * trimmed, without empty names and repeats, in order.
+     *
+     * @return list<string>
+     */
+    private function queues(string $label): array
+    {
+        $queues = [];
+
+        foreach (explode(',', $label) as $queue) {
+            $queue = trim($queue);
+
+            if ($queue !== '' && ! in_array($queue, $queues, true)) {
+                $queues[] = $queue;
+            }
+        }
+
+        return $queues;
     }
 
     /**

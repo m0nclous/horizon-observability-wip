@@ -13,6 +13,7 @@ use DF\HorizonObservability\Redis\CircuitBreaker;
 use DF\HorizonObservability\Redis\Keys;
 use DF\HorizonObservability\Redis\Lua;
 use DF\HorizonObservability\Redis\RedisClients;
+use DF\HorizonObservability\Redis\ServerClock;
 use DF\HorizonObservability\Support\FailureReporter;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Redis\Connections\Connection;
@@ -25,9 +26,13 @@ use Illuminate\Redis\Connections\Connection;
  * circuit breaker (C11), so an unreachable storage costs at most one timeout per cooldown and nothing reaches the
  * worker. The `EVAL` goes through Laravel's normalised `Connection::eval()` on phpredis and predis alike (C2).
  *
- * Reads (for the attempts collector): the counter hashes, the job-class set, the merged extremes of the last 150
- * seconds (`extremes_read.lua`) and `meta`, all on a reader client of the storage connection with
- * `redis.scrape_timeout`, without the breaker: read failures fail the collector visibly.
+ * Reads (for the attempts collector): the counter hashes, the series inside the new-series hold (`new_series.lua`,
+ * which also releases the others), the job-class set, the merged extremes of the last 150 seconds
+ * (`extremes_read.lua`) and `meta`, all on a reader client of the storage connection with `redis.scrape_timeout`,
+ * without the breaker: read failures fail the collector visibly.
+ *
+ * The creation times of new series and their age are on the storage Redis' own clock ({@see ServerClock}): both
+ * scripts read `TIME` (or the time a test pinned), never the worker's or the exporter's clock.
  *
  * A container singleton whose constructor touches neither Redis nor {@see Config}: the config snapshot is resolved
  * per call.
@@ -59,6 +64,7 @@ final readonly class AttemptStore
         private Keys $keys,
         private CircuitBreaker $breaker,
         private FailureReporter $reporter,
+        private ServerClock $clock,
     ) {}
 
     /**
@@ -70,7 +76,8 @@ final readonly class AttemptStore
      * @param  float|null  $readyAt  payload readiness of a first attempt
      * @param  string|null  $uuid  payload id of a first attempt on a legacy stack (Horizon: the uuid): the EVAL reads
      *                             and deletes its `ready_at` key; null on a modern stack
-     * @param  CarbonImmutable  $now  the attempt end; it picks the extremes and ring buckets and the class scores
+     * @param  CarbonImmutable  $now  the attempt end; it picks the extremes and ring buckets and the class scores (the
+     *                                creation time of a new series is the server clock's, {@see ServerClock})
      */
     public function record(
         string $connection,
@@ -103,6 +110,7 @@ final readonly class AttemptStore
                 $this->keys->jobClasses(),
                 $this->keys->meta(),
                 $ring->key($unix),
+                $this->keys->created(),
             ];
 
             if ($uuid !== null && $uuid !== '' && $waits) {
@@ -128,6 +136,8 @@ final readonly class AttemptStore
                 $now->getPreciseTimestamp(3) / 1000,
                 $dropped,
                 Labels::OTHER,
+                implode(',', array_map(static fn (AttemptStatus $status): string => $status->value, AttemptStatus::cases())),
+                $this->clock->argument(),
             ]);
 
             if ($effective === Labels::OTHER && $class !== Labels::OTHER) {
@@ -164,6 +174,32 @@ final readonly class AttemptStore
             'waitBuckets' => $this->hash($redis->hgetall($this->keys->waitBuckets())),
             'waitSum' => $this->hash($redis->hgetall($this->keys->waitSum())),
         ];
+    }
+
+    /**
+     * The raw fields of the series inside the new-series hold: `conn\x1fqueue\x1fclass` (attempt series) and
+     * `conn\x1fqueue` (wait histogram) whose creation time ({@see Keys::created()}) is less than `$seconds` from the
+     * server clock, in either direction. One `new_series.lua` `EVAL`, which deletes every other creation time: a
+     * released series is never held again.
+     *
+     * @return list<string>
+     */
+    public function held(int $seconds): array
+    {
+        $reply = $this->lua->eval($this->reader(), 'new_series', [$this->keys->created()], [$seconds, $this->clock->argument()]);
+
+        return array_values(array_map(strval(...), array_filter(is_array($reply) ? $reply : [], is_scalar(...))));
+    }
+
+    /**
+     * Every field that still has a creation time ({@see Keys::created()}), none released: what the collector holds
+     * when {@see self::held()} fails.
+     *
+     * @return list<string>
+     */
+    public function createdFields(): array
+    {
+        return array_map(strval(...), array_keys($this->hash($this->reader()->hgetall($this->keys->created()))));
     }
 
     /**

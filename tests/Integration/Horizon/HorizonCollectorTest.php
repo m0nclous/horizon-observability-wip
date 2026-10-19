@@ -194,7 +194,7 @@ it('reports a broken Horizon config as a topology failure and keeps the rest (C5
 
     expect($samples->failedSources())->toBe(['topology'])
         ->and($samples->failures[0]['exception']->getMessage())->toContain('minProcesses] must be greater than 0')
-        ->and($samples->families)->toBe(['horizon_status', 'horizon_supervisor_processes', 'horizon_supervisor_min_processes', 'horizon_supervisor_max_processes', 'horizon_supervisor_info', 'horizon_info']);
+        ->and($samples->families)->toBe(['horizon_status', 'horizon_supervisor_processes', 'horizon_supervisor_min_processes', 'horizon_supervisor_max_processes', 'horizon_supervisor_info', 'horizon_supervisor_queues', 'horizon_info']);
 });
 
 test('only its own catalog families, without horizon_current_processes (C17)', function (): void {
