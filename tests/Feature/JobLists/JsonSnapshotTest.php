@@ -116,6 +116,19 @@ it('answers 200 with a null runtime when a stored time is not a finite number', 
         ->assertJsonPath('data.0.runtime', null);
 });
 
+it('answers 200 with a null time when a stored time is finite but past an integer of milliseconds (PHP 8.5, T18 QA)', function (string $list): void {
+    // 1e17 s is 1e20 ms, above PHP_INT_MAX: (int) wraps it to a garbage timestamp on PHP 8.2-8.4 and warns on 8.5,
+    // which Laravel's error handler turns into an ErrorException, so the list would fail until the hash expires.
+    $jobs = HorizonJobs::using($this->app);
+    $list === 'pending' ? $jobs->pending(id: 'j-1') : $jobs->completed(id: 'j-1');
+    $jobs->connection()->hset('j-1', 'created_at', '1e17');
+
+    $this->get('/horizon/observability/jobs/'.$list)
+        ->assertOk()
+        ->assertJsonPath('data.0.id', 'j-1')
+        ->assertJsonPath('data.0.queued_at', null);
+})->with(['pending', 'completed']);
+
 it('caps the rows at the limit', function (): void {
     $jobs = HorizonJobs::using($this->app);
 

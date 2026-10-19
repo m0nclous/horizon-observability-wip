@@ -103,9 +103,13 @@ it('does not rerun a discovery that died until the marker expires, and warns onc
         ->and(Cache::has(jobClassScanMarker($this->classes->directory())))->toBeFalse();
 });
 
-it('turns a discovery that dies with a fatal error into one failed scrape, not one per scrape', function (): void {
-    // Loads (it extends a class) and then fails with an uncatchable "Trait not found" fatal error.
-    $this->classes->write('Unloadable', "final class Unloadable extends \\ArrayObject implements \\Illuminate\\Contracts\\Queue\\ShouldQueue\n{\n    use \\Missing\\DevOnlyTrait;\n\n    public function handle(): void {}\n}");
+it('turns a discovery that dies with a fatal error into one failed scrape, not one per scrape', function (string $member, string $fatal, int $fatalBelow): void {
+    if ($fatalBelow <= PHP_VERSION_ID) {
+        $this->markTestSkipped('Not a fatal error on PHP '.PHP_VERSION.' (see the next test).');
+    }
+
+    // Loads (it extends a class) and then fails with an uncatchable fatal error.
+    $this->classes->write('Unloadable', "final class Unloadable extends \\ArrayObject implements \\Illuminate\\Contracts\\Queue\\ShouldQueue\n{\n    {$member}\n\n    public function handle(): void {}\n}");
     $root = dirname(__DIR__, 3);
     $script = sprintf(<<<'PHP'
         require %s;
@@ -137,13 +141,29 @@ it('turns a discovery that dies with a fatal error into one failed scrape, not o
     $first = $scrape();
 
     expect($first->getExitCode())->toBe(255)
-        ->and($first->getErrorOutput())->toContain('Trait "Missing\DevOnlyTrait" not found');
+        ->and($first->getErrorOutput())->toContain($fatal);
 
     $second = $scrape(); // the next scrape: the marker of the dead discovery stops it from loading the class again
 
     expect($second->getExitCode())->toBe(0, $second->getErrorOutput())
         ->and($second->getOutput())->toBe('[]')
-        ->and($second->getErrorOutput())->not->toContain('Trait "Missing\DevOnlyTrait" not found');
+        ->and($second->getErrorOutput())->not->toContain($fatal);
+})->with([
+    'a method incompatible with its parent' => ['public function count(string $mode): string { return $mode; }', 'must be compatible with ArrayObject::count()', PHP_INT_MAX],
+    // PHP 8.5 throws an Error instead.
+    'a trait of a dev-only package' => ['use \\Missing\\DevOnlyTrait;', 'Trait "Missing\DevOnlyTrait" not found', 80500],
+]);
+
+it('skips a class whose trait is missing where PHP throws an Error for it (PHP 8.5+)', function (): void {
+    if (PHP_VERSION_ID < 80500) {
+        $this->markTestSkipped('A missing trait is an uncatchable fatal error before PHP 8.5 (see the previous test).');
+    }
+
+    $a = $this->classes->job('Alpha');
+    $this->classes->write('Unloadable', "final class Unloadable extends \\ArrayObject implements \\Illuminate\\Contracts\\Queue\\ShouldQueue\n{\n    use \\Missing\\DevOnlyTrait;\n\n    public function handle(): void {}\n}");
+
+    expect(freshJobClassCache()->classes())->toBe([$a])
+        ->and(Cache::has(jobClassScanMarker($this->classes->directory())))->toBeFalse();
 });
 
 it('leaves a discovery that is running to its request without a warning', function (): void {
@@ -313,7 +333,8 @@ it('ignores an unusable cache file and warns once', function (string $contents):
 
 it('keeps discovering when the cache store fails, and warns once', function (): void {
     $a = $this->classes->job('Alpha');
-    Cache::extend('broken', static fn (): Repository => Cache::repository(new class extends ArrayStore
+    // Not static: CacheManager::extend() binds the closure to the manager on Laravel 11, 12 and the first 13.x.
+    Cache::extend('broken', fn (): Repository => Cache::repository(new class extends ArrayStore
     {
         public function get($key): mixed
         {

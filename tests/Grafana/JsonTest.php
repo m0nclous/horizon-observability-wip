@@ -71,3 +71,13 @@ it('refuses values JSON cannot represent', function (mixed $value): void {
     'infinity' => [INF],
     'resource' => [fn () => STDIN],
 ]);
+
+it('names a non-finite value in the error without coercing it to a string (PHP 8.5 warns for NAN)', function (float $value, string $name): void {
+    // A warning would surface as an ErrorException instead of the InvalidArgumentException (Laravel's error handler).
+    expect(fn (): string => Json::encode(['value' => $value]))->toThrow(InvalidArgumentException::class, 'JSON cannot represent '.$name.'.')
+        ->and(fn (): string => Json::number($value))->toThrow(InvalidArgumentException::class, 'JSON cannot represent '.$name.'.');
+})->with([
+    'NaN' => [NAN, 'NAN'],
+    'infinity' => [INF, 'INF'],
+    'negative infinity' => [-INF, '-INF'],
+]);

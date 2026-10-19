@@ -2,11 +2,14 @@
 
 declare(strict_types=1);
 
+use DF\HorizonObservability\HorizonObservabilityServiceProvider;
 use DF\HorizonObservability\Http\RoutePath;
+use Laravel\Horizon\HorizonServiceProvider;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Yaml\Yaml;
 use Workbench\App\Console\Commands\PerfDataCommand;
+use Workbench\App\Providers\WorkbenchServiceProvider;
 
 /*
 | The Docker dev stack (Arch 8.3, ADDENDUM R2.2, R3.2, R4.9; T11) agrees with the package and the workbench: the
@@ -85,6 +88,16 @@ it('scrapes the package endpoint as its own 10-second job with the bearer token'
 it('gives Prometheus the workbench token', function (): void {
     expect(trim((string) file_get_contents(devStackRoot().'/docker/prometheus/token')))->toBe(devStackToken())
         ->and(devStackToken())->not->toBe('');
+});
+
+it('registers Horizon and the package after the workbench provider in testbench.yaml (T18)', function (): void {
+    // Package discovery finds both, but Larastan and the vendor refresh of defineCacheRoutes() rebuild the skeleton's
+    // manifest without the root package on a fresh checkout: no view namespace for PHPStan, no routes in route:cache.
+    expect(devStackYaml('testbench.yaml')['providers'] ?? null)->toBe([
+        WorkbenchServiceProvider::class,
+        HorizonServiceProvider::class,
+        HorizonObservabilityServiceProvider::class,
+    ]);
 });
 
 it('scrapes two replicas in one job for the dedupe gate', function (): void {

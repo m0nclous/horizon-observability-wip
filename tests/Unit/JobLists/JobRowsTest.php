@@ -116,6 +116,19 @@ it('rounds milliseconds and runtimes like the pilot', function (): void {
         ->and(JobRows::runtime(1.0, null))->toBeNull();
 });
 
+it('gives no milliseconds for a time past the integer range instead of a wrapped one (PHP 8.5, T18)', function (): void {
+    // 2^63 ms is the first value (int) cannot hold: it wraps on PHP 8.2-8.4 and warns on 8.5 (failOnWarning).
+    expect(JobRows::milliseconds(1e17))->toBeNull()
+        ->and(JobRows::milliseconds(-1e17))->toBeNull()
+        ->and(JobRows::milliseconds(9.2233720368547758E15))->toBeNull()
+        ->and(JobRows::milliseconds(9.223372036854774E15))->toBe(9223372036854773760)
+        ->and(JobRows::milliseconds(-9.2233720368547758E15))->toBe(PHP_INT_MIN)
+        ->and(JobRows::milliseconds(INF))->toBeNull()
+        ->and(JobRows::milliseconds(NAN))->toBeNull()
+        ->and(JobRows::delayed(['id' => 'abc', 'name' => 'x', 'queue' => 'slow', 'attempts' => 0, 'pushed_at' => 1e17, 'available_at' => 1e300]))
+        ->toMatchArray(['queued_at' => null, 'available_at' => null]);
+});
+
 it('refuses to format delayed rows as Horizon rows', function (): void {
     JobRows::horizon(JobList::Delayed, jobRowsTestRow(), ExceptionMode::Full);
 })->throws(LogicException::class);
