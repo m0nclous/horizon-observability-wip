@@ -145,25 +145,40 @@ final class Observation
     }
 
     /**
-     * The grid of a range target: every point time of its frames, ascending.
+     * Grafana's grid of a range target (design section 5.3): every multiple of the step at the phase of the returned
+     * points, from the one in (from - step, from] to the one in (to - step, to]. Grafana's backend aligns the start
+     * and the end of the range query down to the step; the phase (0, or the zone offset of a relative range, design
+     * section 5.5) is read from the earliest returned point, never computed. A point the dashboard leaves out (a gap,
+     * a cut start or end) is therefore a missing point of the comparison, never a smaller grid, and a point off the
+     * grid is an unexpected one. Without any returned point the phase is 0 (an absolute range, or UTC).
      *
      * @param  list<array<array-key, mixed>>  $frames
      * @return list<int>
      */
-    public static function grid(array $frames): array
+    public static function grid(array $frames, int $stepMs, int $fromMs, int $toMs): array
     {
-        $times = [];
+        if ($stepMs <= 0 || $toMs < $fromMs) {
+            return [];
+        }
+
+        $earliest = null;
 
         foreach (self::series($frames) as $series) {
             foreach (array_keys($series['points']) as $time) {
-                $times[$time] = true;
+                $earliest = $earliest === null ? $time : min($earliest, $time);
             }
         }
 
-        $times = array_keys($times);
-        sort($times);
+        $phase = $earliest === null ? 0 : self::modulo($earliest, $stepMs);
+        $first = $fromMs - self::modulo($fromMs - $phase, $stepMs);
+        $last = $toMs - self::modulo($toMs - $phase, $stepMs);
 
-        return $times;
+        return $last < $first ? [] : range($first, $last, $stepMs);
+    }
+
+    private static function modulo(int $value, int $divisor): int
+    {
+        return (($value % $divisor) + $divisor) % $divisor;
     }
 
     /**

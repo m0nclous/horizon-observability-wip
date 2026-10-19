@@ -74,6 +74,23 @@ it('splits C(from, to) into tile steps that add up to it on any grid', function 
         ->and($counters->count($from, $to))->toBeGreaterThan(0.0);
 })->with([[15_000, 0], [20_000, 0], [10_000, 0], [120_000, 0], [120_000, 60_000], [300_000, 0]]);
 
+it('counts each tile step left-open and right-closed, with samples on the step boundaries, at from and at to', function (): void {
+    // samples every 10 s from 1000 s, on every 20 s boundary; increments +1 at 1010 s ... +6 at 1060 s; from = 1000 s
+    // (a sample, the baseline, never counted) and to = 1060 s (a sample, counted)
+    $counters = dashboardTruthCounter([0.0, 1.0, 3.0, 6.0, 10.0, 15.0, 21.0]);
+
+    expect($counters->count(1000_000, 1060_000))->toBe(21.0)
+        // the step ending at from counts nothing; (1000, 1020] holds 1010 and 1020; the last point ends at to
+        ->and($counters->tileSteps([980_000, 1000_000, 1020_000, 1040_000, 1060_000], 20_000, 1000_000, 1060_000))
+        ->toBe([980_000 => null, 1000_000 => 3.0, 1020_000 => 7.0, 1040_000 => 11.0, 1060_000 => 0.0])
+        // a grid shifted by 10 s (a zone offset): P = floor(t / s) x s, the last point counts (1040, to]
+        ->and($counters->tileSteps([990_000, 1010_000, 1030_000, 1050_000], 20_000, 1000_000, 1060_000))
+        ->toBe([990_000 => null, 1010_000 => 3.0, 1030_000 => 7.0, 1050_000 => 11.0])
+        // a period starting inside a step: the step that holds from starts at from
+        ->and($counters->tileSteps([1000_000, 1020_000, 1040_000, 1060_000], 20_000, 1010_000, 1060_000))
+        ->toBe([1000_000 => 2.0, 1020_000 => 7.0, 1040_000 => 11.0, 1060_000 => 0.0]);
+});
+
 it('fails loudly on replicas until WP5 models the dedupe', function (): void {
     new Counters([
         'a' => ['labels' => ['__name__' => 'x', 'job' => 'app', 'instance' => 'a'], 't' => [1000], 'v' => [1.0]],

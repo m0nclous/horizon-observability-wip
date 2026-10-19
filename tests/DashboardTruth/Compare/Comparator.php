@@ -145,7 +145,7 @@ final readonly class Comparator
 
         try {
             $grid = $target->range
-                ? new Grid(Observation::grid($frames), $stepMs ?? throw new RuntimeException('infrastructure: the frame has no step'), $source)
+                ? new Grid(Observation::grid($frames, $stepMs ?? throw new RuntimeException('infrastructure: the frame has no step'), $context->fromMs, $context->toMs), $stepMs, $source)
                 : new Grid([$context->toMs], $stepMs ?? 0, $source);
             $expected = ($target->expect)($context, $grid);
         } catch (Throwable $e) {
@@ -219,7 +219,9 @@ final readonly class Comparator
     }
 
     /**
-     * Every difference between the expected and the actual series: label sets, then points.
+     * Every difference between the expected and the actual series: label sets, then every point of the grid the
+     * expectation was evaluated on (a point the dashboard left out reads `no point`). A series without points is no
+     * series, on either side (Prometheus has no empty series; Grafana may send a frame without rows).
      *
      * @param  list<array{labels: array<string, string>, points: array<int, float|null>}>  $actual
      * @return list<string>
@@ -230,6 +232,10 @@ final readonly class Comparator
         $byKey = [];
 
         foreach ($actual as $series) {
+            if ($series['points'] === []) {
+                continue;
+            }
+
             $key = SeriesStore::key($series['labels']);
 
             if (isset($byKey[$key])) {
@@ -242,6 +248,10 @@ final readonly class Comparator
         $wanted = [];
 
         foreach ($expected->series as $series) {
+            if ($series['points'] === []) {
+                continue;
+            }
+
             $key = SeriesStore::key($series['labels']);
             $wanted[$key] = true;
 
