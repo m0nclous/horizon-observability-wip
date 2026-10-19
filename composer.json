@@ -17,7 +17,8 @@
     "homepage": "https://github.com/sushi-market/horizon-observability",
     "support": {
         "issues": "https://github.com/sushi-market/horizon-observability/issues",
-        "source": "https://github.com/sushi-market/horizon-observability"
+        "source": "https://github.com/sushi-market/horizon-observability",
+        "security": "https://github.com/sushi-market/horizon-observability/security/policy"
     },
     "require": {
         "php": "^8.2",
