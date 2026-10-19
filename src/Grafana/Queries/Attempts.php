@@ -127,25 +127,30 @@ final readonly class Attempts
      * exports a new series as 0 first, so the attempts it is born with count. A counter reset counts 0 for its step on
      * that series (after a Redis restart T16 recreates the series at 0 as well), and a pruned class stops counting.
      *
-     * The step edges are subquery points at the graph step (one evaluation of the counter values per point and edge).
-     * Subquery points are multiples of the step since 1970, Grafana's steps too unless the browser's UTC offset shifts
-     * them (a 2-hour step at UTC+3); point t counts the step between the subquery points around it, (PREV, PREV + step].
-     * The step that holds the period start starts at `${__from}` instead, the last point (the one whose step reaches
-     * `${__to}`) ends at `${__to}`, both with the series' values at those fixed times (evaluated once per query), and
-     * the points whose step ends before the period are dropped. The first value inside a step is the smallest sample
-     * from one step before t to one step after it: a series without a value at PREV has no sample before PREV in that
-     * window, and the window reaches `${__to}` from the last point at any UTC offset.
+     * The step edges are subquery points at the graph step. Subquery points are multiples of the step since 1970,
+     * Grafana's steps too unless the browser's UTC offset shifts them (a 2-hour step at UTC+3); point t counts the step
+     * between the subquery points around it, (PREV, PREV + step]. Inside the period that is `idelta()` of the two
+     * points (one evaluation of the counter values per point, shared by the steps), where a series without a value at
+     * a subquery point takes its first value of the step after it (its smallest sample there): a series without a
+     * value at PREV counts from its first value in the step. The point whose step holds `${__from}` starts at the
+     * series' values at `${__from}`, and the last point (`end()`, the one whose step reaches `${__to}`) ends at their
+     * values at `${__to}`: per series again, from vectors at those fixed times (evaluated once per query). A series
+     * without a value at the start of such a step starts at its smallest sample from one step before the step's point
+     * to one step after it, which holds the step's first value at any UTC offset and reaches `${__to}` from the last
+     * point; a series without a value at `${__to}` appeared after the period. The points whose step ends before the
+     * period are dropped.
      *
      * The aggregate-first form of ADDENDUM R2.4 O4 counted the whole value of a series that appears inside the period
-     * (T13 QA round 2); the round 2 form, `idelta()` of the two subquery points, gave a series without a value at the
-     * earlier point no step, so a series that appears between two subquery points lost its attempts up to the next one
-     * whenever the graph step was longer than the scrape interval (T13 QA round 3).
+     * (T13 QA round 2); the round 2 form, `idelta()` alone, gave a series without a value at the earlier point no step,
+     * so a series that appears between two subquery points lost its attempts up to the next one whenever the graph step
+     * was longer than the scrape interval (T13 QA round 3).
      */
     public function perStepTotal(string $statuses): string
     {
         $status = [Promql::re('status', $statuses)];
         $values = Promql::paren($this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status));
         $at = fn (string $time): string => $this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status, at: $time);
+        $firstAround = fn (string $time): string => $this->promql->over('min_over_time', Metric::JobsTotal, self::TWO_STEPS, $status, offset: '-'.Promql::INTERVAL, at: $time);
         $subquery = Promql::INTERVAL.':'.Promql::INTERVAL;
         $step = Promql::paren(Promql::INTERVAL_MS.' / 1000');
         $previous = 'floor(vector(time()) / '.$step.') * '.$step;
@@ -154,23 +159,35 @@ final readonly class Attempts
         $startStep = Promql::paren(Promql::paren($previous.' <= '.Promql::FROM_SECONDS).' + '.$step.' > '.Promql::FROM_SECONDS);
         $lastStep = Promql::paren('vector(time()) + '.$step.' > '.Promql::TO_SECONDS);
         $beforePeriod = Promql::paren($previous.' + '.$step.' <= '.Promql::FROM_SECONDS);
+        $clamped = static fn (string $end, string $start): string => Promql::paren(Promql::sum(Promql::call('clamp_min', $end.' - '.Promql::paren($start), '0')));
 
-        // The counter at the end of the step: at the next subquery point, or at the period end for the last point (a
-        // series without a value then appeared after the period)
-        $end = Promql::either(
-            Promql::andOn($at(Promql::TO_SECONDS), $lastStep),
-            Promql::unlessOn(Promql::range('last_over_time', $values, $subquery, '-'.Promql::INTERVAL), $lastStep),
-        );
-        // At the start: at the period start for the step that holds it, else at the subquery point, else the first
-        // value inside the step
-        $start = Promql::either(
-            Promql::andOn($at(Promql::FROM_SECONDS), $startStep),
-            Promql::range('last_over_time', $values, $subquery),
-            $this->promql->over('min_over_time', Metric::JobsTotal, self::TWO_STEPS, $status, offset: '-'.Promql::INTERVAL),
-        );
+        // Inside the period: the increase between the two subquery points around t, a series without a value at a
+        // subquery point taking its first value of the step after it there (one subquery shared by the steps)
+        $startable = Promql::paren(Promql::either(
+            $this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status),
+            $this->promql->over('min_over_time', Metric::JobsTotal, Promql::INTERVAL, $status, offset: '-'.Promql::INTERVAL),
+        ));
+        $steps = Promql::paren(Promql::sum(Promql::call(
+            'clamp_min',
+            Promql::range('idelta', $startable, self::TWO_STEPS.':'.Promql::INTERVAL, '-'.Promql::INTERVAL),
+            '0',
+        )));
+        // The edge points, per series from vectors at fixed times (evaluated once per query, so the selection by the
+        // point below costs one sample per step): the step that holds the period start, from the values at ${__from}
+        // to those at the next subquery point; the last point, from the values at its subquery point to those at
+        // ${__to}; and a point that is both (a range shorter than two steps), from ${__from} to ${__to}
+        $fromStart = Promql::either($at(Promql::FROM_SECONDS), $firstAround(Promql::FROM_SECONDS));
+        $first = $clamped(Promql::range('last_over_time', $values, $subquery, '-'.Promql::INTERVAL, Promql::FROM_SECONDS), $fromStart);
+        $last = $clamped($at(Promql::TO_SECONDS), Promql::either(Promql::range('last_over_time', $values, $subquery, at: 'end()'), $firstAround('end()')));
+        $only = $clamped($at(Promql::TO_SECONDS), $fromStart);
 
         return Promql::unlessOn(
-            Promql::paren(Promql::sum(Promql::call('clamp_min', Promql::paren($end).' - '.Promql::paren($start), '0'))),
+            Promql::paren(Promql::either(
+                Promql::unlessOn($steps, Promql::paren(Promql::either($startStep, $lastStep))),
+                Promql::andOn(Promql::andOn($only, $startStep), $lastStep),
+                Promql::andOn($first, $startStep),
+                Promql::andOn($last, $lastStep),
+            )),
             $beforePeriod,
         );
     }

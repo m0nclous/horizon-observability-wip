@@ -129,6 +129,28 @@ it('loses only the reset series in the step of a counter reset, not the period',
     expect($status)->toBe(0, $output);
 });
 
+it('counts a reset between the first step\'s start and the period start from the value after it', function (): void {
+    // 15-second samples, the period (4m15s, 19m] at 1-minute steps: the first point (4m) counts the step (4m, 5m]
+    // from the period start. A was flushed at 4m15s (116, then 1, 2, ...): its attempts in the period are 60 - 1. The
+    // round 2 form subtracted the sum of V(from) - V(4m) = 1 - 116 from the first point and counted 115 more
+    $series = 'ho_queue_jobs_total{job="app", instance="app:8080", connection="redis", queue="default", job_class="App\\\\Jobs\\\\A", status="completed"}';
+    $tile = Promtool::interpolate(Rendered::expressions()['panel '.PanelRegistry::COMPLETED.' A'], '.+', 19 * 60, 19 * 60 - 255);
+
+    [$status, $output] = Promtool::testRules([], [[
+        'interval' => '15s',
+        'input_series' => [
+            ['series' => 'ho_horizon_status{job="app", instance="app:8080"}', 'values' => '1x80'],
+            ['series' => $series, 'values' => '100+1x16 1+1x62'],
+        ],
+        'promql_expr_test' => [
+            ['expr' => 'sum_over_time(('.$tile.')[16m:1m])', 'eval_time' => '19m', 'exp_samples' => [['labels' => '{}', 'value' => 59]]],
+            ['expr' => '('.$tile.')', 'eval_time' => '4m', 'exp_samples' => [['labels' => '{}', 'value' => 3]]],
+        ],
+    ]]);
+
+    expect($status)->toBe(0, $output);
+});
+
 it('adds up to the period when the browser UTC offset shifts the graph steps off the subquery points', function (): void {
     // Grafana aligns its steps to the dashboard time zone: at a 1-minute step and a UTC offset of 30 seconds the points
     // are at hh:mm:30, while the subquery points of the tile are whole minutes. Each point is evaluated as the range

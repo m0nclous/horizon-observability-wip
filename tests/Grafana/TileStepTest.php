@@ -25,8 +25,8 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
  * after it) or in the past (samples go on: a series that appears after the end is not counted).
  *
  * Grafana's range query (points from the start rounded down to the step up to the end, reduced with sum) evaluates
- * each point as an instant query at its time; promtool does the same, one test per point (a subquery over the range
- * would hold more samples than promtool's engine allows). Every point must equal the attempts of its step
+ * each point as an instant query at its time, `end()` being the last point; promtool does the same, one test per point
+ * (a subquery over the range would hold more samples than promtool's engine allows). Every point must equal the attempts of its step
  * (tileStepPoint(), Attempts::perStepTotal()), and the points must add up to the truth. Where the browser's UTC offset
  * shifts Grafana's points off the subquery points (multiples of the step since 1970), the points are at the offset.
  */
@@ -214,7 +214,7 @@ function tileStepExpr(int $id, string $refId, int $to, int $range, int $step): s
  */
 function tileStepPoint(array $series, int $point, int $step, int $from, int $to): int
 {
-    $previous = intdiv($point, $step) * $step;
+    $previous = (int) floor($point / $step) * $step;
     $end = $point + $step > $to ? $to : $previous + $step;
 
     if ($previous + $step <= $from) {
@@ -244,7 +244,9 @@ function tileStepGroup(int $from, int $to, int $step, int $offset, string $statu
     $range = $to - $from;
     $series = tileStepSeries($from, $to);
     $truth = array_sum(array_map(static fn (array $samples): int => tileStepAttempts($samples, $from, $to), $series));
-    $tile = tileStepExpr($status === 'completed' ? PanelRegistry::COMPLETED : PanelRegistry::FAILED, 'A', $to, $range, $step);
+    // `end()` is the range query's last point
+    $end = (int) floor(($to - $offset) / $step) * $step + $offset;
+    $tile = str_replace('end()', (string) $end, tileStepExpr($status === 'completed' ? PanelRegistry::COMPLETED : PanelRegistry::FAILED, 'A', $to, $range, $step));
     $graph = tileStepExpr(PanelRegistry::COMPLETED_BY_JOB, 'B', $to, $range, $step);
     $one = static fn (float|int $value): array => [['labels' => '{}', 'value' => $value]];
     $tests = [
@@ -255,7 +257,7 @@ function tileStepGroup(int $from, int $to, int $step, int $offset, string $statu
     ];
     $points = [];
 
-    for ($point = intdiv($from - $offset, $step) * $step + $offset; $point <= $to; $point += $step) {
+    for ($point = (int) floor(($from - $offset) / $step) * $step + $offset; $point <= $to; $point += $step) {
         $points[] = $value = tileStepPoint($series, $point, $step, $from, $to);
         $tests[] = ['expr' => $tile, 'eval_time' => $point.'s', 'exp_samples' => $one($value)];
 
@@ -299,7 +301,7 @@ it('adds up to the truth and to the tables at the steps Grafana sends', function
 it('adds up to the truth where the UTC offset shifts the points off the subquery points', function (int $step, int $offset, bool $past): void {
     // Grafana's points are at the offset plus multiples of the step, the tile's subquery points at multiples of the
     // step: point t counts the step around it, the first point(s) whose step ends before the period count nothing
-    $from = 1205;
+    $from = 4805;
     $to = $from + 1800;
     [$group, $points] = tileStepGroup($from, $to, $step, $offset, 'completed', $past);
     [$code, $output] = Promtool::testRules([], [$group]);
@@ -311,6 +313,20 @@ it('adds up to the truth where the UTC offset shifts the points off the subquery
     '2 minutes, 90 s' => [120, 90, false],
     '2 minutes, 90 s, a period in the past' => [120, 90, true],
     '1 hour, 30 minutes' => [3600, 1800, false],
+]);
+
+it('counts a range of one or two points, shorter than two steps', function (int $from, int $to, int $points): void {
+    // One point is both the step that holds the period start and the last point; two points are one of each
+    [$group, $values] = tileStepGroup($from, $to, 60, 0, 'completed', true);
+    [$code, $output] = Promtool::testRules([], [$group]);
+
+    expect(count($values))->toBe($points)
+        ->and(array_sum($values))->toBe(array_sum(array_map(static fn (array $samples): int => tileStepAttempts($samples, $from, $to), tileStepSeries($from, $to))))
+        ->and(array_sum($values))->toBeGreaterThan(0)
+        ->and($code)->toBe(0, tileStepOutput($output));
+})->with([
+    'one point' => [4815, 4855, 1],
+    'two points' => [4830, 4875, 2],
 ]);
 
 /**
