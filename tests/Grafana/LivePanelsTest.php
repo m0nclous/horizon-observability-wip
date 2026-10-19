@@ -80,6 +80,18 @@ it('keeps every other panel and the dashboard settings of the off render', funct
             $panel['title'] = 'Live Overview';
         }
 
+        // The queue source reads its columns of now from the snapshot: Mixed, without A, B, D, F and G, with W
+        if ($panel['id'] === PanelRegistry::QUEUE_SOURCE) {
+            $panel = (new LivePanels($mode, 'horizon_observability'))->queueSource($panel);
+            expect(array_column($livePanels[$panel['id']]['targets'], 'refId'))->toBe(['M', 'K', 'C', 'Z', LivePanels::WORKLOAD_REF]);
+        }
+
+        // The queue tables merge the Prometheus frames and join the snapshot rows by queue
+        if ($panel['id'] === PanelRegistry::QUEUES) {
+            $panel = json_decode(json_encode((new LivePanels($mode, 'horizon_observability'))->queueTable($panel), JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
+            expect(array_column($livePanels[PanelRegistry::QUEUES]['transformations'], 'id'))->toContain('joinByField');
+        }
+
         // The Alerts tile and the alert sound also watch the stall rule in stream mode
         if ($mode === LiveMode::Stream && in_array($panel['id'], [PanelRegistry::ALERTS, PanelRegistry::ALERT_SOUND], true)) {
             $json = json_encode($panel, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);

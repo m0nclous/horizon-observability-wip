@@ -3,9 +3,9 @@
 declare(strict_types=1);
 
 /*
-| Caption, level and colour cases of the Overview tiles (Addendum R4.2, R4.4), shared by tests/Unit/Live/CaptionsTest
-| (T02) and the Grafana renderer tests (T13), so the poll/stream captions and the PromQL captions of the off mode
-| agree. Each case is [arguments, expected]. Glyphs are escapes: U+00B7 MIDDLE DOT, U+2014 EM DASH.
+| Caption, level and colour cases of the Overview tiles and the queue tables' live cells, shared by
+| tests/Unit/Live/CaptionsTest and the Grafana renderer tests, so the poll/stream captions and the PromQL captions of
+| the off mode agree. Each case is [arguments, expected]. Glyphs are escapes: U+00B7 MIDDLE DOT, U+2014 EM DASH.
 */
 
 $dot = "\u{00B7}";
@@ -102,5 +102,26 @@ return [
         'level 2' => [[2], 'red'],
         'above 2' => [[3], 'red'],
         'below 0' => [[-1], 'green'],
+    ],
+    'percent_cell' => [
+        'unknown' => [[null], 1999],
+        'not finite' => [[NAN], 1999],
+        'idle' => [[0.0], 1000],
+        'rounds' => [[0.496], 1050],
+        'full' => [[1.0], 1100],
+    ],
+    'duration' => [
+        'zero' => [[0.0], '0 s'],
+        'rounds half up' => [[9.5], '10 s'],
+        'last second value' => [[119.4], '119 s'],
+        'unit from the exact value' => [[119.6], '120 s'],
+        'first minute value' => [[120.0], '2 min'],
+        'minutes' => [[1020.0], '17 min'],
+    ],
+    'oldest_cell' => [
+        'no limit' => [[12.3, null, 0], '0|12 s'],
+        'within the limit' => [[5.0, 30, 0], '0|5 s / 30 s'],
+        'over the limit' => [[45.0, 30, 1], '1|45 s / 30 s'],
+        'minutes, the limit below 120 s in seconds' => [[300.0, 60, 2], '2|5 min / 60 s'],
     ],
 ];

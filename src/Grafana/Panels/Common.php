@@ -7,6 +7,7 @@ namespace DF\HorizonObservability\Grafana\Panels;
 use DF\HorizonObservability\Grafana\Glyph;
 use DF\HorizonObservability\Grafana\Promql;
 use DF\HorizonObservability\Grafana\Thresholds;
+use DF\HorizonObservability\Live\Captions;
 use stdClass;
 
 /**
@@ -21,11 +22,11 @@ final readonly class Common
 
     /**
      * Percent bars: the cell value is OFFSET + percent, so a four-digit string sorts like the number;
-     * OFFSET + UNKNOWN means "unknown" and prints a dash.
+     * OFFSET + UNKNOWN means "unknown" and prints a dash. The live snapshot builds the same values.
      */
-    public const PERCENT_OFFSET = 1000;
+    public const PERCENT_OFFSET = Captions::PERCENT_OFFSET;
 
-    public const UNKNOWN_PERCENT = 999;
+    public const UNKNOWN_PERCENT = Captions::UNKNOWN_PERCENT;
 
     /**
      * A centred dash for markdown cells.

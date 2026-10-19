@@ -32,9 +32,10 @@ final readonly class StaticBudget
     public const MAX_REQUESTS = 12;
 
     /**
-     * Poll mode's extra cost per refresh: calls of the live snapshot endpoint.
+     * Poll mode's extra cost per refresh: calls of the live snapshot endpoint: the five live tile
+     * queries and the queue source's columns of now. The endpoint serves them from its 1-second cache.
      */
-    public const MAX_LIVE_REQUESTS = 5;
+    public const MAX_LIVE_REQUESTS = 6;
 
     public const MAX_VARIABLE_REQUESTS = 2;
 

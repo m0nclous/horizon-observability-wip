@@ -142,8 +142,8 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
+        "type": "datasource",
+        "uid": "-- Mixed --"
       },
       "gridPos": {
         "h": 1,
@@ -166,71 +166,6 @@
           "range": false,
           "instant": true,
           "refId": "M"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "1000 + (round(100 * max by (queue) (group by (supervisor, queue) (max by (job, supervisor, queue) (ho_horizon_supervisor_processes{job=~\"$prometheus_job\"})) * on (supervisor) group_left () last_over_time((clamp_max((sum by (supervisor) (group by (supervisor, queue) (max by (job, supervisor, queue) (ho_horizon_supervisor_processes{job=~\"$prometheus_job\"})) * on (queue) group_left () (sum by (queue) (max by (job, connection, queue, job_class) (sum_over_time(ho_queue_jobs_reserved{job=~\"$prometheus_job\", queue=~\".+\"}[$busy_window]))) / on (queue) max by (queue) (max by (job, supervisor, queue) (count_over_time(ho_horizon_supervisor_processes{job=~\"$prometheus_job\", queue=~\".+\"}[$busy_window]))))) or on (supervisor) 0 * group by (supervisor) (group by (supervisor, queue) (max by (job, supervisor, queue) (ho_horizon_supervisor_processes{job=~\"$prometheus_job\"})))) / on (supervisor) (max by (supervisor) (max by (job, supervisor) (ho_horizon_supervisor_max_processes{job=~\"$prometheus_job\"})) > 0), 1))[1s:1s] @ ${__to:date:seconds}))) and on (queue) group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})) or on (queue) 999 + 0 * group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})))",
-          "legendFormat": "__auto",
-          "range": false,
-          "instant": true,
-          "refId": "A",
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "((sum by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"}))) and on () ((label_replace(vector(1), \"filter\", \"${job_class:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\")) and on () (label_replace(vector(1), \"filter\", \"${batch_kind:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\")))) or ((sum by (queue) ((max by (job, connection, queue, job_class) (ho_queue_jobs_pending{job=~\"$prometheus_job\", queue=~\"$queue\", job_class=~\"$job_class\"}) unless on (job_class) (group by (job_class) ({__name__=~\"ho_queue_jobs_total|ho_queue_jobs_pending|ho_queue_jobs_reserved\", job=~\"$prometheus_job\", __batch_scope__!~\"$batch_kind\"}) unless on (job_class) group by (job_class) ({__name__=~\"ho_queue_batch_job_classes\", job=~\"$prometheus_job\", batch=~\"$batch_kind\", __batch_scope__!~\"$batch_kind\"})))) and on (queue) group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})) or 0 * group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"}))) unless on () ((label_replace(vector(1), \"filter\", \"${job_class:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\")) and on () (label_replace(vector(1), \"filter\", \"${batch_kind:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\"))))",
-          "legendFormat": "__auto",
-          "range": false,
-          "instant": true,
-          "refId": "B",
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "((sum by (queue) (max by (job, supervisor, queue) (ho_horizon_supervisor_processes{job=~\"$prometheus_job\", queue=~\"$queue\"})) * on () group_left () (min(max by (job) (ho_horizon_status{job=~\"$prometheus_job\"})) >= bool 1) and on (queue) group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})) or 0 * group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"}))) and on () ((label_replace(vector(1), \"filter\", \"${job_class:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\")) and on () (label_replace(vector(1), \"filter\", \"${batch_kind:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\")))) or ((sum by (queue) ((max by (job, connection, queue, job_class) (ho_queue_jobs_reserved{job=~\"$prometheus_job\", queue=~\"$queue\", job_class=~\"$job_class\"}) unless on (job_class) (group by (job_class) ({__name__=~\"ho_queue_jobs_total|ho_queue_jobs_pending|ho_queue_jobs_reserved\", job=~\"$prometheus_job\", __batch_scope__!~\"$batch_kind\"}) unless on (job_class) group by (job_class) ({__name__=~\"ho_queue_batch_job_classes\", job=~\"$prometheus_job\", batch=~\"$batch_kind\", __batch_scope__!~\"$batch_kind\"})))) and on (queue) group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})) or 0 * group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"}))) unless on () ((label_replace(vector(1), \"filter\", \"${job_class:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\")) and on () (label_replace(vector(1), \"filter\", \"${batch_kind:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\"))))",
-          "legendFormat": "__auto",
-          "range": false,
-          "instant": true,
-          "refId": "D",
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "((label_join(label_join((label_replace(count_values by (queue) (\"age\", round(((max by (queue) (max by (job, connection, queue) (ho_queue_oldest_pending_job_age_seconds{job=~\"$prometheus_job\", queue=~\"$queue\"})) and on (queue) group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})) or 0 * group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})))) < 120, 1)), \"age\", \"$1 s\", \"age\", \"(.*)\") or label_replace(count_values by (queue) (\"age\", round((((max by (queue) (max by (job, connection, queue) (ho_queue_oldest_pending_job_age_seconds{job=~\"$prometheus_job\", queue=~\"$queue\"})) and on (queue) group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})) or 0 * group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})))) >= 120) / 60)), \"age\", \"$1 min\", \"age\", \"(.*)\")) * on (queue) group_left (limit) (label_replace(count_values by (queue) (\"limit\", round((max by (queue) (max by (job, connection, queue) (ho_horizon_wait_threshold_seconds{job=~\"$prometheus_job\", queue=~\"$queue\"}))) < 120, 1)), \"limit\", \"$1 s\", \"limit\", \"(.*)\") or label_replace(count_values by (queue) (\"limit\", round(((max by (queue) (max by (job, connection, queue) (ho_horizon_wait_threshold_seconds{job=~\"$prometheus_job\", queue=~\"$queue\"}))) >= 120) / 60)), \"limit\", \"$1 min\", \"limit\", \"(.*)\")) * on (queue) group_left (level) count_values by (queue) (\"level\", clamp(ceil((max by (queue) (max by (job, connection, queue) (ho_queue_oldest_pending_job_age_seconds{job=~\"$prometheus_job\", queue=~\"$queue\"})) and on (queue) group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})) or 0 * group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"}))) / on (queue) max by (queue) (max by (job, connection, queue) (ho_horizon_wait_threshold_seconds{job=~\"$prometheus_job\", queue=~\"$queue\"}))) - 1, 0, 2)), \"cell\", \" / \", \"age\", \"limit\"), \"cell\", \"|\", \"level\", \"cell\") or on (queue) label_replace((label_replace(count_values by (queue) (\"age\", round(((max by (queue) (max by (job, connection, queue) (ho_queue_oldest_pending_job_age_seconds{job=~\"$prometheus_job\", queue=~\"$queue\"})) and on (queue) group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})) or 0 * group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})))) < 120, 1)), \"age\", \"$1 s\", \"age\", \"(.*)\") or label_replace(count_values by (queue) (\"age\", round((((max by (queue) (max by (job, connection, queue) (ho_queue_oldest_pending_job_age_seconds{job=~\"$prometheus_job\", queue=~\"$queue\"})) and on (queue) group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})) or 0 * group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})))) >= 120) / 60)), \"age\", \"$1 min\", \"age\", \"(.*)\")), \"cell\", \"0|$1\", \"age\", \"(.*)\")) and on () ((label_replace(vector(1), \"filter\", \"${job_class:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\")) and on () (label_replace(vector(1), \"filter\", \"${batch_kind:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\"))))",
-          "legendFormat": "__auto",
-          "range": false,
-          "instant": true,
-          "refId": "F",
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "editorMode": "code",
-          "expr": "(((sum by (queue) (max by (job, connection, queue) (ho_queue_delayed_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})) - sum by (queue) (max by (job, connection, queue) (ho_queue_delayed_due_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"}))) and on (queue) group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"})) or 0 * group by (queue) (max by (job, connection, queue) (ho_queue_pending_jobs{job=~\"$prometheus_job\", queue=~\"$queue\"}))) and on () ((label_replace(vector(1), \"filter\", \"${job_class:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\")) and on () (label_replace(vector(1), \"filter\", \"${batch_kind:text}\", \"\", \"\") and on (filter) label_replace(vector(1), \"filter\", \"All\", \"\", \"\"))))",
-          "legendFormat": "__auto",
-          "range": false,
-          "instant": true,
-          "refId": "G",
-          "format": "table"
         },
         {
           "datasource": {
@@ -269,6 +204,55 @@
           "instant": true,
           "refId": "Z",
           "format": "table"
+        },
+        {
+          "refId": "W",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${app_api}"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "${api_path}/live?${supervisor:queryparam}&${batch_kind:queryparam}&${queue:queryparam}&${job_class:queryparam}",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "root_selector": "workload",
+          "columns": [
+            {
+              "selector": "queue",
+              "text": "queue",
+              "type": "string"
+            },
+            {
+              "selector": "utilization",
+              "text": "Value #A",
+              "type": "number"
+            },
+            {
+              "selector": "processes",
+              "text": "Value #D",
+              "type": "number"
+            },
+            {
+              "selector": "pending",
+              "text": "Value #B",
+              "type": "number"
+            },
+            {
+              "selector": "delayed",
+              "text": "Value #G",
+              "type": "number"
+            },
+            {
+              "selector": "oldest_cell",
+              "text": "cell",
+              "type": "string"
+            }
+          ]
         }
       ],
       "title": "Queues source",
@@ -1917,7 +1901,38 @@
         },
         {
           "id": "merge",
-          "options": {}
+          "options": {},
+          "filter": {
+            "id": "byRefId",
+            "options": "M|C|K|Z"
+          }
+        },
+        {
+          "id": "organize",
+          "filter": {
+            "id": "byRefId",
+            "options": "W"
+          },
+          "options": {
+            "excludeByName": {},
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {
+              "queue": "queue",
+              "Value #A": "Value #A",
+              "Value #D": "Value #D",
+              "Value #B": "Value #B",
+              "Value #G": "Value #G",
+              "cell": "cell"
+            }
+          }
+        },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "queue",
+            "mode": "outerTabular"
+          }
         },
         {
           "id": "filterByValue",

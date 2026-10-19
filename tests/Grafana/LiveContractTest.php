@@ -112,7 +112,7 @@ it('reads only fields of the snapshot JSON with their types (schema v1)', functi
         foreach (snapshotTargets($mode) as [$id, $target]) {
             $rows = $target['root_selector'] === '' ? [$document] : $document[$target['root_selector']];
 
-            expect($target['root_selector'])->toBeIn(['', 'tiles']);
+            expect($target['root_selector'])->toBeIn(['', 'tiles', 'workload']);
 
             foreach ($rows as $row) {
                 foreach ($target['columns'] as $column) {
@@ -133,8 +133,9 @@ it('reads only fields of the snapshot JSON with their types (schema v1)', functi
     ksort($read);
 
     expect(array_keys($read))->toBe(match ($mode) {
-        LiveMode::Poll => ['caption', 'color', 'delayed.value', 'generated_at', 'key', 'pending.caption', 'pending.color', 'pending.value', 'throughput.caption', 'tile', 'value'],
-        LiveMode::Stream => ['throughput.caption'],
+        // The tiles, and the queue source's workload rows (delayed, oldest_cell, pending, processes, queue, utilization)
+        LiveMode::Poll => ['caption', 'color', 'delayed', 'delayed.value', 'generated_at', 'key', 'oldest_cell', 'pending', 'pending.caption', 'pending.color', 'pending.value', 'processes', 'queue', 'throughput.caption', 'tile', 'utilization', 'value'],
+        LiveMode::Stream => ['delayed', 'oldest_cell', 'pending', 'processes', 'queue', 'throughput.caption', 'utilization'],
         LiveMode::Off => [],
     });
 })->with(Rendered::modes());
@@ -279,9 +280,10 @@ it('reads the Prometheus targets of the off render unchanged', function (LiveMod
 
     expect($prometheus)->toBe(match ($mode) {
         LiveMode::Off => $offPrometheus,
-        // Without #3 A and B, #2 B and C (#8 B stays, for a Job or Batch filter)
-        LiveMode::Poll => $offPrometheus - 4,
+        // Without #3 A and B, #2 B and C (#8 B stays, for a Job or Batch filter), and the queue source's columns of
+        // now (#24 A, B, D, F, G), which read the snapshot
+        LiveMode::Poll => $offPrometheus - 4 - 5,
         // and without #2 A, #9 A
-        LiveMode::Stream => $offPrometheus - 6,
+        LiveMode::Stream => $offPrometheus - 6 - 5,
     });
 })->with(Rendered::modes());

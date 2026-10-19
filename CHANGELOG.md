@@ -12,6 +12,9 @@ The first public release: a rewrite of the internal pilot `sushi-market/horizon-
 
 ### Added
 
+- Live columns of now in the Current Workload tables (poll and stream renders): Utilization, Processes, Pending,
+  Delayed and Oldest wait read the new `workload` rows of the `/live` snapshot, so they agree with the Live Overview
+  tiles instead of the last scrape; the totals of the period stay Prometheus queries.
 - `config/horizon-observability.php` with the `HORIZON_OBSERVABILITY_*` environment variables, validated by a typed
   snapshot that replaces invalid values by defaults and reports them (security values fail closed).
 - Routes `GET {horizon.path}/observability/metrics`, `/jobs/{pending|completed|failed|delayed}` and `/live`, registered

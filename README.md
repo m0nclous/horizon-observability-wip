@@ -338,7 +338,10 @@ origin).
 
 The top row shows the current load without scrape lag. Its live tiles are Supervisor Processes, Pending and Delayed,
 plus the caption "RPM: n" of Completed. Every other tile, and the numbers of Completed and Failed, read Prometheus in
-every mode. Pick the mode when you render the dashboard:
+every mode. The Current Workload tables follow the same mode for their columns of now (Utilization, Processes,
+Pending, Delayed and Oldest wait, read from the `workload` rows of `{base}/live`); their totals of the period (Wait
+p95, Completed, Failed, Timeouts, Retries, Success rate) always come from Prometheus. Pick the mode when you render
+the dashboard:
 
 | | `off` | `poll` (default) | `stream` |
 |---|---|---|---|
@@ -355,6 +358,8 @@ Look and caveats:
   modes only.
 - In poll and stream modes, Supervisor Processes has no per-supervisor sparkline.
 - In stream mode, Pending has no sparkline, and Delayed shows the last 15 minutes whatever the dashboard range.
+- In both live modes the Current Workload tables read `{base}/live` at each dashboard refresh (stream mode too: a table
+  cannot carry a stream). A balance=false pool counts its processes for each of its queues there.
 - In both live modes, the Completed caption "RPM: n" counts the last complete 60 s instead of the 5-minute average.
   In stream mode it still reads `{base}/live` through Infinity, at each dashboard refresh.
 - In poll mode, the whole dashboard refreshes every 5 s, and every viewer re-runs all of its Prometheus queries at

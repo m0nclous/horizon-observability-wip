@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /*
-| Extra readiness parity cases of the queue reader (T05), in the format of tests/Fixtures/payloads.php: raw payloads
+| Extra readiness parity cases of the queue reader, in the format of tests/Fixtures/payloads.php: raw payloads
 | with the readiness PayloadClock::readyAt() computes, whether they are first attempts, and the decoded display name.
 | They cover the edges of the string extraction in queue_state.lua: JSON escapes, PHP's is_numeric() and is_int()
 | rules, whitespace after a colon, keys that occur twice (string jobs whose data has a key of the same name), and

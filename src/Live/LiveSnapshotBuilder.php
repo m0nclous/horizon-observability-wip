@@ -183,7 +183,7 @@ final readonly class LiveSnapshotBuilder
 
         $narrowed = $this->narrowed($scope);
         $supervisorRows = $this->supervisorInputs($scope, $running, $inScope, $snapshots, $narrowed);
-        $queueRows = $this->queueInputs($snapshots, $supervisorRows, $window, (float) $now->format('U.u'));
+        $queueRows = $this->queueInputs($scope, $snapshots, $supervisorRows, $window, (float) $now->format('U.u'));
 
         $snapshot = LiveSnapshot::compose(
             $scope,
@@ -206,7 +206,7 @@ final readonly class LiveSnapshotBuilder
      * @param  list<SupervisorSnapshot>  $running
      * @param  array<string, true>  $inScope  `conn\x1fqueue` of the queues in scope
      * @param  array<string, QueueSnapshot>  $snapshots  the queues read
-     * @return list<array{name: string, connection: string, balance: string, processes: int, min_processes: int, max_processes: int, busy: int, queues: list<string>}>
+     * @return list<array{name: string, connection: string, balance: string, processes: int, min_processes: int, max_processes: int, busy: int, queues: list<string>, pools: array<string, int>}>
      */
     private function supervisorInputs(LiveScope $scope, array $running, array $inScope, array $snapshots, bool $narrowed): array
     {
@@ -283,6 +283,8 @@ final readonly class LiveSnapshotBuilder
                 'max_processes' => $entry['max'],
                 'busy' => $busy,
                 'queues' => $queues,
+                // Processes per pool (`queue` or `queue,queue` for balance=false), for the queue tables' Processes
+                'pools' => $entry['pools'],
             ];
         }
 
@@ -291,22 +293,43 @@ final readonly class LiveSnapshotBuilder
 
     /**
      * @param  array<string, QueueSnapshot>  $snapshots
-     * @param  list<array{name: string, connection: string, balance: string, processes: int, min_processes: int, max_processes: int, busy: int, queues: list<string>}>  $supervisors
+     * @param  list<array{name: string, connection: string, balance: string, processes: int, min_processes: int, max_processes: int, busy: int, queues: list<string>, pools: array<string, int>}>  $supervisors
      * @param  array<string, array<string, int>>|null  $window
-     * @return list<array{connection: string, queue: string, pending: int, reserved: int, delayed: int, delayed_due: int, oldest_seconds: float, wait_threshold_seconds: int|null, completed_per_minute: int|null, failed_per_minute: float|null, supervisors: list<string>}>
+     * @return list<array{connection: string, queue: string, pending: int, reserved: int, delayed: int, delayed_due: int, oldest_seconds: float, wait_threshold_seconds: int|null, completed_per_minute: int|null, failed_per_minute: float|null, supervisors: list<string>, processes: int, utilization: float|null, job_pending: int, job_reserved: int}>
      */
-    private function queueInputs(array $snapshots, array $supervisors, ?array $window, float $now): array
+    private function queueInputs(LiveScope $scope, array $snapshots, array $supervisors, ?array $window, float $now): array
     {
         $rows = [];
 
         foreach ($snapshots as $field => $snapshot) {
             $age = $snapshot->oldestAgeSeconds($now);
             $counts = $window[$field] ?? [];
-            $served = array_values(array_map(
-                static fn (array $supervisor): string => $supervisor['name'],
-                array_filter($supervisors, static fn (array $supervisor): bool => $supervisor['connection'] === $snapshot->connection && in_array($snapshot->queue, $supervisor['queues'], true)),
-            ));
+            $working = array_filter($supervisors, static fn (array $supervisor): bool => $supervisor['connection'] === $snapshot->connection && in_array($snapshot->queue, $supervisor['queues'], true));
+            $served = array_values(array_map(static fn (array $supervisor): string => $supervisor['name'], $working));
             sort($served, SORT_STRING);
+
+            // The queue tables' columns of now: the processes of the pools that work this queue, and the utilisation of
+            // the busiest supervisor that works it, over all its queues and whatever the job filter (as the Prometheus
+            // query of the column)
+            $processes = 0;
+            $utilization = null;
+
+            foreach ($working as $supervisor) {
+                foreach ($supervisor['pools'] as $pool => $count) {
+                    if (in_array($snapshot->queue, array_map(trim(...), explode(',', (string) $pool)), true)) {
+                        $processes += $count;
+                    }
+                }
+
+                $busy = 0;
+
+                foreach ($supervisor['queues'] as $queue) {
+                    $busy += $snapshots[Keys::field($supervisor['connection'], $queue)]->reserved ?? 0;
+                }
+
+                $load = $supervisor['max_processes'] > 0 ? min(1.0, $busy / $supervisor['max_processes']) : 0.0;
+                $utilization = max($utilization ?? 0.0, $load);
+            }
 
             $rows[] = [
                 'connection' => $snapshot->connection,
@@ -322,10 +345,35 @@ final readonly class LiveSnapshotBuilder
                 'completed_per_minute' => $window === null ? null : (int) round(($counts['completed'] ?? 0) * 60 / LiveSnapshot::WINDOW_SECONDS),
                 'failed_per_minute' => $window === null ? null : round((($counts['failed'] ?? 0) + ($counts['timed_out'] ?? 0)) * 60 / LiveSnapshot::WINDOW_SECONDS, 2),
                 'supervisors' => $served,
+                'processes' => $processes,
+                'utilization' => $utilization,
+                'job_pending' => $scope->jobFilter ? $this->pendingOf($snapshot, $scope->jobClasses) : 0,
+                'job_reserved' => $scope->jobFilter ? $this->reservedOf($snapshot, $scope->jobClasses) : 0,
             ];
         }
 
         return $rows;
+    }
+
+    /**
+     * Ready jobs of $classes in the scanned head of the queue (all ready jobs for null), like the per-class pending
+     * the exporter reports.
+     *
+     * @param  list<string>|null  $classes
+     */
+    private function pendingOf(QueueSnapshot $snapshot, ?array $classes): int
+    {
+        if ($classes === null) {
+            return $snapshot->pending();
+        }
+
+        $pending = 0;
+
+        foreach (array_unique($classes) as $class) {
+            $pending += $snapshot->pendingByClass[$class] ?? 0;
+        }
+
+        return $pending;
     }
 
     /**
