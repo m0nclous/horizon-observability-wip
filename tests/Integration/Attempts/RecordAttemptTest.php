@@ -16,8 +16,9 @@ use DF\HorizonObservability\Tests\Support\RedisKeys;
 use DF\HorizonObservability\Tests\TestCase;
 
 /*
-| record_attempt.lua through AttemptStore::record() (Arch Appendix D, Addendum D'). The redis group runs on phpredis
-| and on predis (REDIS_CLIENT=predis): the pilot's pipelined EVAL threw a TypeError on predis and recorded nothing (C2).
+| record_attempt.lua (its contract is in the script header) through AttemptStore::record(). The redis group runs on
+| phpredis and on predis (REDIS_CLIENT=predis): the pilot's pipelined EVAL threw a TypeError on predis and recorded
+| nothing.
 */
 
 pest()->group('redis');
@@ -27,7 +28,7 @@ beforeEach(function (): void {
     $this->now = CarbonImmutable::createFromTimestamp(1_700_000_012.5);
 });
 
-it('records an attempt with one EVAL on the private storage client on every Redis client (C2)', function (): void {
+it('records an attempt with one EVAL on the private storage client on every Redis client', function (): void {
     $commands = RedisCommands::start($this->app);
 
     expect(Storage::record(duration: 0.3, now: $this->now))->toBeTrue()
@@ -94,7 +95,7 @@ it('keeps the duration digits a string cast would round', function (): void {
     expect(Storage::hash($this->keys->extremes(113_333_334, 'min')))->toBe(['redis|default|App\\Jobs\\SendInvoice' => '0.123456789012345']);
 });
 
-it('writes the extremes of the 15-second bucket of the attempt end with a 300 s TTL (Addendum R3.4)', function (): void {
+it('writes the extremes of the 15-second bucket of the attempt end with a 300 s TTL', function (): void {
     Storage::record(duration: 1.0, now: CarbonImmutable::createFromTimestamp(1_700_000_024.9));
     Storage::record(duration: 2.0, now: CarbonImmutable::createFromTimestamp(1_700_000_025.0));
 

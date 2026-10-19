@@ -22,8 +22,9 @@ use Illuminate\Queue\Jobs\SyncJob;
 use Illuminate\Queue\MaxAttemptsExceededException;
 
 /*
-| AttemptTracker state machine (Arch Q6.2): every event sequence of the table, with real RedisJobs and real events of
-| the installed Laravel, dispatched through the app's event dispatcher (the provider subscribed the tracker at boot).
+| AttemptTracker state machine: every sequence of JobProcessing, JobExceptionOccurred, JobAttempted and JobTimedOut it
+| handles, with real RedisJobs and real events of the installed Laravel, dispatched through the app's event dispatcher
+| (the provider subscribed the tracker at boot).
 */
 
 pest()->group('redis');
@@ -48,7 +49,7 @@ it('records a completed attempt with its duration and the wait of a first attemp
         ->and(Storage::hash($this->keys->waitSum()))->toBe(['redis|default' => '2']);
 });
 
-it('makes no Redis call at JobProcessing (C11)', function (): void {
+it('makes no Redis call at JobProcessing', function (): void {
     $job = ($this->job)();
     $commands = RedisCommands::start($this->app);
 
@@ -72,7 +73,7 @@ it('records a released attempt without a wait', function (): void {
         ->and(Storage::exists($this->keys->waitBuckets()))->toBeFalse();
 });
 
-it('records the wait of a payload whose attempts is not finite, as the queue reader counts it (T18 QA round 2)', function (string $attempts): void {
+it('records the wait of a payload whose attempts is not finite, as the queue reader counts it', function (string $attempts): void {
     // json_decode() reads 1e999 as INF; (int) and queue_state.lua truncate it to 0, a first attempt.
     $job = FakeRedisJob::raw('{"uuid":"u-inf","displayName":"App\\\\Jobs\\\\SendInvoice","job":"Illuminate\\\\Queue\\\\CallQueuedHandler@call","data":{"commandName":"App\\\\Jobs\\\\SendInvoice","command":"x"},"id":"u-inf","attempts":'.$attempts.',"pushedAt":"1700000098.5"}');
 
@@ -140,7 +141,7 @@ it('records a timeout with the duration capped at the timeout', function (): voi
         ->and(Storage::hash($this->keys->extremes(113_333_340, 'max')))->toBe(['redis|default|App\\Jobs\\SendInvoice' => '0.001']);
 });
 
-it('records the real wait of a retried job that was delayed (C19)', function (): void {
+it('records the real wait of a retried job that was delayed', function (): void {
     // A Horizon retry keeps createdAt and delay but gets a fresh pushedAt; the pilot added the old delay to it and
     // recorded a wait of 0.
     $job = ($this->job)(['createdAt' => 1_699_996_500, 'delay' => 600, 'pushedAt' => '1700000095.5', 'attempts' => 0]);
@@ -176,7 +177,7 @@ it('ignores JobAttempted without JobProcessing', function (): void {
     expect(RedisKeys::all(TestCase::redisPrefix()))->toBe([]);
 });
 
-it('ignores jobs that are not RedisJobs (C6)', function (): void {
+it('ignores jobs that are not RedisJobs', function (): void {
     $sync = new SyncJob($this->app, QueuePayloads::encode(QueuePayloads::job()), 'sync', 'default');
     $other = new FakeJob(QueuePayloads::job(), 'database');
 

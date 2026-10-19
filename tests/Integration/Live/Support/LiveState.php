@@ -59,7 +59,7 @@ final class LiveState
             ->supervisor('host-a:supervisor-default', HorizonState::options('host-a:supervisor-default', queue: 'default', maxProcesses: 3), ['redis:default' => 3])
             // balance=auto: one pool per queue; busy 0 of 2 -> level 0
             ->supervisor('host-a:supervisor-slow', HorizonState::options('host-a:supervisor-slow', queue: 'slow,reports', maxProcesses: 2), ['redis:slow' => 1, 'redis:reports' => 1])
-            // balance=false: one pool "mail,sms" (C14); busy: mail 1 + sms 1 = 2/2 = 100 % -> level 2
+            // balance=false: one pool "mail,sms"; busy: mail 1 + sms 1 = 2/2 = 100 % -> level 2
             ->supervisor('host-a:supervisor-pool', HorizonState::options('host-a:supervisor-pool', queue: 'mail,sms', balance: false, maxProcesses: 2), ['redis:mail,sms' => 2]);
     }
 
@@ -67,8 +67,8 @@ final class LiveState
      * The queues:
      * - default: ready jobs pushed 17 s and 5 s ago, one due delayed job (due 3 s ago), one delayed for 300 s, two
      *   reserved (SendInvoice, Export): pending 3, delayed 1, due 1, reserved 2, oldest 17 s, ratio 1.7 (level 1);
-     * - slow: a retry 45 s old (attempts 1, which C8 does not count) at the head, then a fresh job 12 s old: pending
-     *   2, oldest 12 s (the first fresh job), ratio 0.4;
+     * - slow: a retry 45 s old (attempts 1, which the oldest age does not count) at the head, then a fresh job 12 s
+     *   old: pending 2, oldest 12 s (the first fresh job), ratio 0.4;
      * - reports: empty;
      * - mail: one reserved SendInvoice;
      * - sms: one reserved Welcome, one delayed for 60 s.

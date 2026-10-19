@@ -16,8 +16,8 @@ use DF\HorizonObservability\Tests\Support\RedisKeys;
 use DF\HorizonObservability\Tests\TestCase;
 
 /*
-| Adversarial probes of the live snapshot (T12 QA round 1): the numbers must equal what the exporter and the
-| off-mode dashboard show for the same Redis state (owner decision 13).
+| Adversarial probes of the live snapshot: the numbers must equal what the exporter and the off-mode dashboard show for
+| the same Redis state.
 */
 
 pest()->group('redis');

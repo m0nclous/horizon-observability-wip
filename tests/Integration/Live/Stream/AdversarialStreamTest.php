@@ -10,9 +10,8 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
 /*
-| Adversarial probes of the stream loop (T12 QA round 1) on a fake clock where a push takes time, as it does
-| against a real Grafana: the backoff schedule of Addendum R4.6 (1, 2, 4, 8, 15 s) and the release after 5 failed
-| ticks must not drift by one tick per failure.
+| Adversarial probes of the stream loop on a fake clock where a push takes time, as it does against a real Grafana: the
+| backoff schedule (1, 2, 4, 8, 15 s) and the release after 5 failed ticks must not drift by one tick per failure.
 */
 
 pest()->group('redis');
@@ -57,8 +56,8 @@ it('retries a refused push after 1, 2, 4 and 8 s when each push takes 50 ms', fu
 
     // Each retry is due `backoff` seconds after the failed push; the tick loop may round it up to the next tick,
     // which is at most one interval (1 s) late, but never a whole extra second per failure.
-    // (Round 2: the 6th push is the lease taken again 10 s after the release at the 5th failed tick, 15 + 10 = 25 s,
-    // inside --max-time=25; the late schedule released at 19 s and competed again at 29 s, after the run.)
+    // (The 6th push is the lease taken again 10 s after the release at the 5th failed tick, 15 + 10 = 25 s, inside
+    // --max-time=25; the late schedule released at 19 s and competed again at 29 s, after the run.)
     expect($this->pushes)->toHaveCount(6)
         ->and($this->pushes)->toBe([0.0, 1.0, 3.0, 7.0, 15.0, 25.0])
         ->and($this->pushes[1] - $this->pushes[0])->toBeLessThan(1.5)

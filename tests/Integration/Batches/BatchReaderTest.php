@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /*
-| BatchReader on SQLite (Arch Q6.7, C1, C15): detection, the two bounded queries, the status matrix and the windows.
+| BatchReader on SQLite: detection, the two bounded queries, the status matrix and the windows.
 */
 
 const BATCH_READER_TEST_NOW = 1_760_000_000;
@@ -53,7 +53,7 @@ describe('detection', function (): void {
     })->with([null, 'database', 'Database']);
 
     test('dynamodb driver skipped', function (): void {
-        // C1: DynamoDB batching made every scrape of the pilot a 500; here the collector is simply not run.
+        // DynamoDB batching made every scrape of the pilot a 500; here the collector is simply not run.
         BatchTable::create();
         config()->set('queue.batching.driver', 'dynamodb');
         DB::connection(BatchTable::CONNECTION)->enableQueryLog();
@@ -102,7 +102,7 @@ describe('detection', function (): void {
     });
 
     it('throws when the database cannot be asked, and memoises nothing', function (): void {
-        // A real failure, not "no batching": the exporter reports exporter_collector_success 0 (Arch C1).
+        // A real failure, not "no batching": the exporter reports exporter_collector_success 0.
         config()->set('database.connections.unreachable', [
             'driver' => 'mysql', 'host' => '127.0.0.1', 'port' => 1, 'database' => 'app', 'username' => 'app', 'password' => '',
             'options' => [PDO::ATTR_TIMEOUT => 1],

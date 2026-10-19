@@ -23,9 +23,9 @@ use Laravel\Horizon\Repositories\RedisMasterSupervisorRepository;
 use Laravel\Horizon\Repositories\RedisSupervisorRepository;
 
 /*
-| The live snapshot builder (Addendum R4.2, R4.4) over a seeded state (Support\LiveState): the JSON golden with every
-| R4.4 field and unit, the Supervisor, Queue, Job and Batch scopes, the Q + 5 round trips, failure isolation per
-| source and the 50 ms p95 budget for 20 queues. Runs on phpredis and on predis.
+| The live snapshot builder over a seeded state (Support\LiveState): the JSON golden with every field and unit of the
+| schema v1, the Supervisor, Queue, Job and Batch scopes, the Q + 5 round trips (Q = queues in scope), failure
+| isolation per source and the 50 ms p95 budget for 20 queues. Runs on phpredis and on predis.
 */
 
 pest()->group('redis');
@@ -84,7 +84,7 @@ it('matches the golden document of the seeded state', function (): void {
     expect($json)->toBe(file_get_contents(dirname(__DIR__, 2).'/Fixtures/live/snapshot.json'));
 });
 
-it('uses the R4.4 units: Unix ms, the cache TTL in ms, seconds and per-minute rates', function (): void {
+it('uses the schema v1 units: Unix ms, the cache TTL in ms, seconds and per-minute rates', function (): void {
     liveSeed();
     config()->set('horizon-observability.live.cache_ttl', 2.5);
     app()->forgetInstance(Config::class);
@@ -152,7 +152,7 @@ it('gives null pending and delayed values, no throughput and busy workers of the
         ->and($snapshot->throughput['caption'])->toBe("RPM: \u{2014}")
         ->and(array_column($snapshot->supervisors, 'busy', 'name'))->toBe(['supervisor-default' => 1, 'supervisor-pool' => 1, 'supervisor-slow' => 0])
         // the tiles count the busy workers of the class and list the supervisors that have them, as the off-mode
-        // tile does (T13 QA round 2)
+        // tile does
         ->and(liveTileValues($snapshot, 'supervisor'))->toBe(['supervisor-default' => 1.0, 'supervisor-pool' => 1.0])
         ->and(liveTileValues($snapshot, 'pending'))->toBe(['' => null])
         ->and(liveTileValues($snapshot, 'delayed'))->toBe(['' => null])
@@ -331,7 +331,7 @@ it('reads Horizon as stopped without a master and lists no supervisor', function
 });
 
 it('scopes a Supervisor filter by the configured queues while Horizon is stopped', function (): void {
-    // No master and no supervisor: supervisor-default is configured for `default`, which keeps its jobs (QA round 1).
+    // No master and no supervisor: supervisor-default is configured for `default`, which keeps its jobs.
     LiveState::queues(app());
 
     $snapshot = liveBuild(['supervisors' => ['supervisor-default']]);

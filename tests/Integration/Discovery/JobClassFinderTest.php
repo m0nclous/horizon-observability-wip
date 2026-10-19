@@ -9,9 +9,9 @@ use Symfony\Component\Process\Process;
 use Workbench\App\Discovery\Jobs\ImportChunk;
 
 /*
-| Job class discovery over real files (Arch Q6.9, Q9 WP6, C22): the workbench fixture matrix, and temporary class
-| files for the cases the workbench cannot hold. "Never included" is checked in a separate PHP process, so classes
-| other tests (e.g. the architecture tests) autoloaded in this process cannot hide an include.
+| Job class discovery over real files: the workbench fixture matrix, and temporary class files for the cases the
+| workbench cannot hold. "Never included" is checked in a separate PHP process, so classes other tests (e.g. the
+| architecture tests) autoloaded in this process cannot hide an include.
 */
 
 /**
@@ -91,7 +91,7 @@ it('finds a class queued only through its parent', function (): void {
         ->and((new JobClassFinder)->find([DiscoveryFixtures::directory().'/Jobs']))->toContain(ImportChunk::class);
 });
 
-test('functions file never included (C22)', function (): void {
+test('functions file never included', function (): void {
     $run = discoverInSeparateProcess(preloadHelpers: false);
     $fixture = static fn (string $path): string => (string) realpath(DiscoveryFixtures::directory().'/'.$path);
 
@@ -106,7 +106,7 @@ test('functions file never included (C22)', function (): void {
         ->and($run['classes'])->toBe(DiscoveryFixtures::FOUND);
 });
 
-it('survives a functions file the application already loaded (C22: no "Cannot redeclare")', function (): void {
+it('survives a functions file the application already loaded (no "Cannot redeclare")', function (): void {
     $run = discoverInSeparateProcess(preloadHelpers: true);
 
     expect($run['exit'])->toBe(0, $run['error'])

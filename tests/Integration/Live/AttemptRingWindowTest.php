@@ -13,9 +13,9 @@ use DF\HorizonObservability\Tests\Support\RedisKeys;
 use DF\HorizonObservability\Tests\TestCase;
 
 /*
-| The ring reader (Addendum R4.5, D'): AttemptRing::window() sums the 12 complete 5-second buckets before the current
-| one with one ring_read.lua EVAL on the reader of the storage connection. The writer is record_attempt.lua (T04,
-| RingTest); here the attempts go through the real AttemptStore so reader and writer share the contract.
+| The ring reader: AttemptRing::window() sums the 12 complete 5-second buckets before the current one with one
+| ring_read.lua EVAL on the reader of the storage connection. The writer is record_attempt.lua (see Attempts/RingTest);
+| here the attempts go through the real AttemptStore so reader and writer share the contract.
 */
 
 pest()->group('redis');

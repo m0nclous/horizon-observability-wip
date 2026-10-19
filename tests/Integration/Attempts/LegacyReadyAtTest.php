@@ -22,9 +22,9 @@ use Illuminate\Support\Facades\Event;
 use Laravel\Horizon\HorizonServiceProvider;
 
 /*
-| The ready_at side channel (Arch Q6.8, C18): only on a legacy stack (payloads without `delay`, i.e. Laravel < 12.11
-| or Horizon < 5.49), read and deleted inside the record EVAL. The pilot wrote one key per delayed dispatch and ran a
-| GET+DEL round trip per started job on every stack.
+| The ready_at side channel: only on a legacy stack (payloads without `delay`, i.e. Laravel < 12.11 or Horizon < 5.49),
+| read and deleted inside the record EVAL. The pilot wrote one key per delayed dispatch and ran a GET+DEL round trip per
+| started job on every stack.
 */
 
 pest()->group('redis');
@@ -59,7 +59,7 @@ beforeEach(function (): void {
     );
 });
 
-it('no keys on a modern stack (C18)', function (): void {
+it('no keys on a modern stack', function (): void {
     $modern = new Versions(config(), '13.0.0', static fn (string $package): ?string => $package === 'laravel/horizon' ? '5.50.0.0' : null);
 
     expect(($this->wiring)($modern))->toBe(['listeners' => false, 'keys' => []]);
@@ -85,7 +85,7 @@ it('passes no ready_at key to the record EVAL on a modern stack', function (): v
         ->and(Storage::waits())->toBe(1);
 });
 
-it('uses ready_at for the wait on a legacy stack and deletes it inside the EVAL (C18)', function (): void {
+it('uses ready_at for the wait on a legacy stack and deletes it inside the EVAL', function (): void {
     $this->app->instance(Versions::class, new Versions(config(), '12.10.0'));
 
     // A legacy stack under test has the listener from the provider already.

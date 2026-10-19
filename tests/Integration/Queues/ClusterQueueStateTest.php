@@ -17,10 +17,10 @@ use Illuminate\Queue\RedisQueue;
 use Predis\Client;
 
 /*
-| Queue state on a Redis Cluster (Arch Q6.5, 8.5 `cluster` leg: a single-node cluster on 127.0.0.1:7000, override
-| with REDIS_CLUSTER_HOST and REDIS_CLUSTER_PORT). A hash-tagged queue is read with one script. An untagged queue is
-| read where the framework keeps it (queues:{<q>} with first-class cluster queues, Laravel 13); on an older framework
-| it is reported as an unsupported topology instead of failing with CROSSSLOT. Skipped when no cluster answers.
+| Queue state on a Redis Cluster (the CI `cluster` job: a single-node cluster on 127.0.0.1:7000, override with
+| REDIS_CLUSTER_HOST and REDIS_CLUSTER_PORT). A hash-tagged queue is read with one script. An untagged queue is read
+| where the framework keeps it (queues:{<q>} with first-class cluster queues, Laravel 13); on an older framework it is
+| reported as an unsupported topology instead of failing with CROSSSLOT. Skipped when no cluster answers.
 */
 
 pest()->group('cluster');

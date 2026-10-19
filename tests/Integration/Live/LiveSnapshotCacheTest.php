@@ -19,9 +19,9 @@ use Laravel\Horizon\Contracts\MasterSupervisorRepository;
 use Laravel\Horizon\Repositories\RedisMasterSupervisorRepository;
 
 /*
-| The snapshot cache (Addendum R4.2): 1 MGET per hit, freshness by Redis key expiry (never by comparing clocks),
-| one build per TTL across workers and replicas, the stale copy while another request builds, the wait for the
-| builder, the uncached fallback, nothing stored for a failed build, and "Live unavailable" when its Redis fails.
+| The snapshot cache: 1 MGET per hit, freshness by Redis key expiry (never by comparing clocks), one build per TTL
+| across workers and replicas, the stale copy while another request builds, the wait for the builder, the uncached
+| fallback, nothing stored for a failed build, and "Live unavailable" when its Redis fails.
 */
 
 pest()->group('redis');

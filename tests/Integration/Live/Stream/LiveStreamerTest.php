@@ -23,9 +23,9 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 
 /*
-| The stream loop (Addendum R4.6, R4.10) on a fake clock against a fake Grafana (Http::fake): the push and its
-| bookkeeping, the per-URL backoff for 200, 401, 403, 500 and timeouts, the release after 5 failed ticks, one pusher
-| among two streamers, a leader that lost its lease pushes nothing, the delayed window and the "unavailable" frame.
+| The stream loop on a fake clock against a fake Grafana (Http::fake): the push and its bookkeeping, the per-URL backoff
+| for 200, 401, 403, 500 and timeouts, the release after 5 failed ticks, one pusher among two streamers, a leader that
+| lost its lease pushes nothing, the delayed window and the "unavailable" frame.
 */
 
 pest()->group('redis');
@@ -202,7 +202,7 @@ it('backs off 60 s after a 401 or a 403', function (int $status): void {
 })->with([401, 403]);
 
 it('counts each backoff from the start of the failed tick, so a slow push still retries on time', function (int|string $answer, array $times): void {
-    // Each refused push costs 300 ms, as it does against a real Grafana (QA round 1: the retries came one tick late).
+    // Each refused push costs 300 ms, as it does against a real Grafana (the retries once came one tick late).
     $this->answers = array_fill(0, 5, $answer);
     $this->onPush = fn (): mixed => $this->time->advance(0.3);
 
@@ -308,7 +308,7 @@ it('renews before every push and stops when the lease is gone', function (): voi
 });
 
 it('keeps the lease between ticks at the longest interval by renewing it every second while it waits', function (): void {
-    // Appendix A': live.stream.interval up to 10 s; the lease lives 5 s (Addendum R4.6).
+    // live.stream.interval goes up to 10 s; the lease lives 5 s.
     config()->set('horizon-observability.live.stream.interval', 10.0);
     $this->app->forgetInstance(Config::class);
     $streamer = liveAgingStreamer();

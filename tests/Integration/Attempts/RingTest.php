@@ -12,9 +12,9 @@ use DF\HorizonObservability\Tests\Fixtures\Attempts\Storage;
 use DF\HorizonObservability\Tests\Support\RedisCommands;
 
 /*
-| The live ring buffer written inside record_attempt.lua (Addendum R4.5, D'): live:ring:<unix div 5> hashes of
-| conn\x1fqueue\x1fstatus => attempts, TTL 180 s, read by T12 over the 12 complete buckets before the current one.
-| Writing it costs no extra round trip; with live disabled the EVAL writes no ring key.
+| The live ring buffer written inside record_attempt.lua: live:ring:<unix div 5> hashes of conn\x1fqueue\x1fstatus =>
+| attempts, TTL 180 s, read by the live snapshot over the 12 complete buckets before the current one. Writing it costs
+| no extra round trip; with live disabled the EVAL writes no ring key.
 */
 
 pest()->group('redis');
@@ -26,8 +26,8 @@ beforeEach(function (): void {
     $this->at = static fn (float $seconds): CarbonImmutable => CarbonImmutable::createFromTimestamp($seconds);
 
     /*
-     * The window of a reader at $now: the sum of the 12 complete buckets before the current one, per queue and
-     * status, from the raw ring keys (the reader itself, AttemptRing::window(), belongs to T12).
+     * The window of a reader at $now: the sum of the 12 complete buckets before the current one, per queue and status,
+     * from the raw ring keys (the reader itself, AttemptRing::window(), is tested in Live/AttemptRingWindowTest).
      */
     $this->window = static function (CarbonImmutable $now): array {
         $current = intdiv($now->getTimestamp(), Keys::RING_BUCKET_SECONDS);

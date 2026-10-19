@@ -17,8 +17,8 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /*
-| BatchesCollector (Arch Q4, Q6.7): the queue_batch* families from the batch table and the batch links, and the
-| partial failure of each source (C1).
+| BatchesCollector: the queue_batch* families from the batch table and the batch links, and the partial failure of each
+| source.
 */
 
 pest()->group('redis');
@@ -190,7 +190,7 @@ it('runs two SQL queries per scrape', function (): void {
     expect(DB::connection(BatchTable::CONNECTION)->getQueryLog())->toHaveCount(2);
 });
 
-it('keeps the links when the batch table fails (C1, collectors.batches = true)', function (): void {
+it('keeps the links when the batch table fails (collectors.batches = true)', function (): void {
     // No table: the read fails, which is a reported failure, not a 500 and not a lost scrape.
     config()->set('queue.batching.database', BatchTable::CONNECTION);
     batchesCollectorTestLink('import', 'redis', 'default', 'A');

@@ -18,9 +18,9 @@ use Illuminate\Queue\Jobs\DatabaseJob;
 use Illuminate\Support\Defer\DeferredCallbackCollection;
 
 /*
-| Only RedisJobs that passed JobProcessing are recorded (C6). Laravel 12.45+ fires JobAttempted in SyncQueue, which
-| deferred and background queues extend; the pilot recorded those attempts and wrote to Redis from the web process
-| (a 60 s connect timeout per sync dispatch with an unreachable metrics Redis).
+| Only RedisJobs that passed JobProcessing are recorded. Laravel 12.45+ fires JobAttempted in SyncQueue, which deferred
+| and background queues extend; the pilot recorded those attempts and wrote to Redis from the web process (a 60 s
+| connect timeout per sync dispatch with an unreachable metrics Redis).
 */
 
 pest()->group('redis');
@@ -29,7 +29,7 @@ beforeEach(function (): void {
     $this->commands = RedisCommands::start($this->app);
 });
 
-it('sync, deferred and background leave no keys (C6)', function (): void {
+it('sync, deferred and background leave no keys', function (): void {
     config()->set('queue.connections.deferred', ['driver' => 'deferred']);
     config()->set('queue.connections.background', ['driver' => 'background']);
     // The background queue defers to the process concurrency driver; run it in this process instead.
@@ -66,7 +66,7 @@ it('sync, deferred and background leave no keys (C6)', function (): void {
         ->and($this->commands->count(RedisClients::STORAGE))->toBe(0);
 });
 
-it('makes no Redis call for a sync dispatch even when the storage is unreachable (C6, C11)', function (): void {
+it('makes no Redis call for a sync dispatch even when the storage is unreachable', function (): void {
     config()->set('database.redis.unreachable', ['host' => '10.255.255.1', 'port' => 6379, 'database' => 0]);
     config()->set('horizon-observability.redis.connection', 'unreachable');
     $this->app->forgetInstance(Config::class);

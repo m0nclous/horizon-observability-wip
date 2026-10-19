@@ -15,9 +15,9 @@ use Laravel\Horizon\Contracts\MasterSupervisorRepository;
 use Laravel\Horizon\Contracts\SupervisorRepository;
 
 /*
-| The horizon collector (Arch Q1.3, Q4, C5, C14, C17): the status from Horizon's masters, the supervisors from its
-| repository, the wait thresholds of the workbench topology (redis:default 10 s, redis:slow 30 s, the rest 60 s)
-| and horizon_info. Every source fails on its own.
+| The horizon collector: the status from Horizon's masters, the supervisors from its repository, the wait thresholds of
+| the workbench topology (redis:default 10 s, redis:slow 30 s, the rest 60 s) and horizon_info. Every source fails on
+| its own.
 */
 
 pest()->group('redis');
@@ -99,7 +99,7 @@ it('exports no supervisor series while Horizon is down', function (): void {
         ->and($samples->failures)->toBe([]);
 });
 
-test('balance=false supervisors keep the pooled queue label (C14)', function (): void {
+test('balance=false supervisors keep the pooled queue label', function (): void {
     // Horizon runs one pool for a balance=false supervisor and keys its processes "redis:mail,sms"; the metrics keep
     // that label (the job lists split it, see SupervisorSnapshot::$queues).
     horizonCollectorWorkbench();
@@ -152,7 +152,7 @@ it('exports the links of horizon_info', function (array $config, string $info): 
     'override' => [['horizon-observability.horizon_url' => 'https://ops.example.com/horizon'], 'api_path="/horizon/observability",tts_url="",url="https://ops.example.com/horizon"'],
 ]);
 
-test('redis down keeps the links and the thresholds and reports the failed sources (C5)', function (): void {
+test('redis down keeps the links and the thresholds and reports the failed sources', function (): void {
     // The pilot read Horizon's status through spatie's unguarded collector and WorkloadRepository, so a Redis outage
     // turned the whole scrape into a 500. Each source fails on its own now; nothing is thrown.
     foreach (['default', 'horizon'] as $connection) {
@@ -186,7 +186,7 @@ it('does not read the supervisors when the status read used up the scrape budget
         ->and($samples->families)->toBe(['horizon_status', 'horizon_wait_threshold_seconds', 'horizon_info']);
 });
 
-it('reports a broken Horizon config as a topology failure and keeps the rest (C5)', function (): void {
+it('reports a broken Horizon config as a topology failure and keeps the rest', function (): void {
     horizonCollectorWorkbench();
     config()->set('horizon.environments.testing.supervisor-default.minProcesses', 0);
 
@@ -197,7 +197,7 @@ it('reports a broken Horizon config as a topology failure and keeps the rest (C5
         ->and($samples->families)->toBe(['horizon_status', 'horizon_supervisor_processes', 'horizon_supervisor_min_processes', 'horizon_supervisor_max_processes', 'horizon_supervisor_info', 'horizon_supervisor_queues', 'horizon_info']);
 });
 
-test('only its own catalog families, without horizon_current_processes (C17)', function (): void {
+test('only its own catalog families, without horizon_current_processes', function (): void {
     // The pilot exported horizon_current_processes{queue} (a duplicate of sum by (queue) of the supervisor processes,
     // under a name spatie also registers); it is gone, and every family belongs to this collector.
     horizonCollectorWorkbench();

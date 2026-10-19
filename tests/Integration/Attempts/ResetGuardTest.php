@@ -14,9 +14,9 @@ use DF\HorizonObservability\Tests\Support\RedisKeys;
 use DF\HorizonObservability\Tests\TestCase;
 
 /*
-| reset_guard.lua (Arch Q6.10, Appendix D). The pilot wiped every counter whenever meta.run_id differed, including
-| a missing meta on the first scrape (C21); a restored or restarted Redis must reset the counters so increase()
-| does not count old totals again.
+| reset_guard.lua (its contract is in the script header). The pilot wiped every counter whenever meta.run_id differed,
+| including a missing meta on the first scrape; a restored or restarted Redis must reset the counters so increase() does
+| not count old totals again.
 */
 
 pest()->group('redis');
@@ -31,7 +31,7 @@ beforeEach(function (): void {
     Storage::record(duration: 0.5, startedAt: 1_700_000_000.0, readyAt: 1_699_999_999.0, now: $this->now);
 });
 
-it('stores the run_id on the first scrape and deletes nothing (C21)', function (): void {
+it('stores the run_id on the first scrape and deletes nothing', function (): void {
     expect(($this->guard)()->check($this->now))->toBeFalse()
         ->and(Storage::hash($this->keys->meta()))->toBe(['run_id' => $this->runId])
         ->and(Storage::hash($this->keys->attempts()))->toBe(['redis|default|App\\Jobs\\SendInvoice|completed' => '1']);

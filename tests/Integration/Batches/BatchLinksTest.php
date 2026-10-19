@@ -21,8 +21,8 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 
 /*
-| BatchLinks (Arch Q6.7): the JobQueued listener (memo, breaker, redis connections only) and the reads (7-day window,
-| prune), on phpredis and predis.
+| BatchLinks: the JobQueued listener (memo, breaker, redis connections only) and the reads (7-day window, prune), on
+| phpredis and predis.
 */
 
 pest()->group('redis');
@@ -233,7 +233,7 @@ describe('writing', function (): void {
     });
 
     it('skips writes while the breaker is open without counting them as dropped attempts', function (): void {
-        // C11: an unreachable storage costs one timeout per cooldown; the dispatch itself is unaffected.
+        // An unreachable storage costs one timeout per cooldown; the dispatch itself is unaffected.
         config()->set('database.redis.horizon.port', 1);
         config()->set('database.redis.horizon.max_retries', 0);
         config()->set('horizon-observability.redis.worker_timeout', 0.2);
@@ -342,7 +342,7 @@ describe('reading', function (): void {
 
         app(BatchLinks::class)->forKinds(['import']);
 
-        // On the scrape-timeout reader of the storage connection, never the worker-side storage client (Arch Q1.3).
+        // On the scrape-timeout reader of the storage connection, never the worker-side storage client.
         expect($commands->names(RedisClients::READER.'horizon'))->toBe(['ZRANGE'])
             ->and($commands->count(RedisClients::STORAGE))->toBe(0);
     });

@@ -28,7 +28,7 @@ afterEach(function (): void {
     rmdir($this->directory);
 });
 
-it('passes keys with the connection prefix and arguments in their exact form (C2)', function (): void {
+it('passes keys with the connection prefix and arguments in their exact form', function (): void {
     $key = (new Keys)->meta();
     $result = $this->lua->eval($this->storage, 'echo_args', [$key], [1700000000.123456, 42]);
     $prefixed = TestCase::redisPrefix().'horizon:'.$key;

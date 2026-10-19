@@ -11,10 +11,10 @@ use Illuminate\Queue\RedisQueue;
 use Predis\Client;
 
 /*
-| The delayed list on a Redis Cluster (Arch Q2.1, Q6.5, 8.5 `cluster` leg: a single-node cluster on 127.0.0.1:7000,
-| override with REDIS_CLUSTER_HOST and REDIS_CLUSTER_PORT). The delayed set is read under the key Laravel's
-| RedisQueue writes: `queues:{<q>}:delayed` for an untagged queue with first-class cluster queues (Laravel 13), the
-| name as given for a hash-tagged one. Skipped when no cluster answers.
+| The delayed list on a Redis Cluster (the CI `cluster` job: a single-node cluster on 127.0.0.1:7000, override with
+| REDIS_CLUSTER_HOST and REDIS_CLUSTER_PORT). The delayed set is read under the key Laravel's RedisQueue writes:
+| `queues:{<q>}:delayed` for an untagged queue with first-class cluster queues (Laravel 13), the name as given for a
+| hash-tagged one. Skipped when no cluster answers.
 */
 
 pest()->group('cluster');
