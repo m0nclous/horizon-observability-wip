@@ -112,6 +112,14 @@ that the next task points to. Everything here is export-ignored and will be dele
 - Local prerequisites: PHP 8.3+ with `redis`, `pcntl`, `posix`, `pdo_sqlite`; Composer; Docker for Redis, Prometheus and
   Grafana; Node 20+ for screenshots.
   - Redis before T11 lands: `docker run -d --name ho-redis -p 6379:6379 redis:7.4-alpine redis-server --save "" --appendonly no`.
+  - Several agents on one machine: run Redis with host networking, never through a published port (stop the compose
+    `redis` service first and start the rest with `docker compose up -d prometheus grafana`):
+    `docker run -d --name ho-redis --network host --restart unless-stopped redis:7.4-alpine redis-server --bind 127.0.0.1 --port 6379 --save "" --appendonly no`.
+    One `vendor/bin/pest` run opens ~7.5k Redis connections; through `docker-proxy` the ephemeral ports run out at ~3
+    concurrent runs (mass `ConnectionException`, Redis unreachable for everyone for ~60 s). With host networking 8
+    concurrent runs in separate worktrees pass; above that the CPU saturates (24 threads) and timing tests such as
+    `LiveSnapshotCacheTest` can flake. Every agent needs its own worktree with its own `composer install`: runs in one
+    checkout collide on testbench's `route:cache`.
   - Screenshots: `npm i --no-save playwright@1.56.1 && npx playwright install chromium`.
   - Images: `grafana/grafana:12.4.13`, `grafana/grafana:13.2.4`, `quay.io/prometheus/prometheus:v3.15.0`.
 - Lowest-version legs locally (CI does this once T11 lands; otherwise write "lowest legs: deferred to CI" in the task note):
@@ -156,7 +164,8 @@ The cloud session hit its usage limit during the phase C QA rounds; work resumed
 
 - **Alone:** you are the integrator (Arch Q9 rule 2) and may edit the shared files; commit shared-file changes separately
   with the subject prefix `integrator:`.
-- **Parallel:** one worktree per task: `git worktree add ../ho-Txx -b wip/Txx-<slug> master`.
+- **Parallel:** one worktree per task: `git worktree add ../ho-Txx -b wip/Txx-<slug> master`, then `composer install`
+  in it; run Redis with host networking (see "Git and environment").
   Only the integrator edits TASKS.md and the shared files, merges `wip/*` branches with `--no-ff` into
   `master` and pushes.
 - **Phase review:** when a phase is done, a fresh agent reviews `git diff <first commit of the phase>^..HEAD` against each
