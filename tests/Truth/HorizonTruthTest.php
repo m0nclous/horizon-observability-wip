@@ -138,6 +138,53 @@ it('maps numeric queue names and a balance=false option that repeats a queue as 
         ->and($samples->value(Metric::SupervisorProcesses->value, ['supervisor' => 'supervisor-shards', 'queue' => '1']))->toBe(3.0);
 });
 
+it('maps a queue to every pool that works it while a deploy changes the queue options', function (): void {
+    // A rolling deploy: the old master still runs the old options while the new one runs the new ones. The pool of
+    // supervisor-pool gains push (balance=false, mail,sms -> mail,sms,push), supervisor-slow turns its pool into
+    // balanced queues (balance=false slow,reports -> auto). Both masters' processes work the common queues, so each
+    // queue has a series per pool and the processes per queue (the dashboard's join, Truth README decision 2) add up.
+    $scenario = Scenario::start($this);
+    HorizonState::using(app())
+        ->master('host-a', 'running', ['host-a:supervisor-pool', 'host-a:supervisor-slow'])
+        ->supervisor('host-a:supervisor-pool', HorizonState::options('host-a:supervisor-pool', queue: 'mail,sms', balance: false), ['redis:mail,sms' => 2])
+        ->supervisor('host-a:supervisor-slow', HorizonState::options('host-a:supervisor-slow', queue: 'slow,reports', balance: false), ['redis:slow,reports' => 4])
+        ->master('host-b', 'running', ['host-b:supervisor-pool', 'host-b:supervisor-slow'], pid: 2000)
+        ->supervisor('host-b:supervisor-pool', HorizonState::options('host-b:supervisor-pool', queue: 'mail,sms,push', balance: false), ['redis:mail,sms,push' => 3], pid: 2001)
+        ->supervisor('host-b:supervisor-slow', HorizonState::options('host-b:supervisor-slow', queue: 'slow,reports'), ['redis:slow' => 1, 'redis:reports' => 2], pid: 2002);
+    $samples = new Samples($scenario->scrape());
+    $processes = $samples->series(Metric::SupervisorProcesses->value);
+    $perQueue = [];
+
+    foreach ($samples->labelSets(Metric::SupervisorQueues->value) as $labels) {
+        $key = $labels['supervisor'].' '.$labels['queue'];
+        $perQueue[$key] = ($perQueue[$key] ?? 0.0) + ($processes[Model::key(['supervisor' => $labels['supervisor'], 'queue' => $labels['pool']])] ?? 0.0);
+    }
+
+    ksort($perQueue);
+    $map = [
+        Model::key(['supervisor' => 'supervisor-pool', 'queue' => 'mail', 'pool' => 'mail,sms']) => 1.0,
+        Model::key(['supervisor' => 'supervisor-pool', 'queue' => 'mail', 'pool' => 'mail,sms,push']) => 1.0,
+        Model::key(['supervisor' => 'supervisor-pool', 'queue' => 'push', 'pool' => 'mail,sms,push']) => 1.0,
+        Model::key(['supervisor' => 'supervisor-pool', 'queue' => 'sms', 'pool' => 'mail,sms']) => 1.0,
+        Model::key(['supervisor' => 'supervisor-pool', 'queue' => 'sms', 'pool' => 'mail,sms,push']) => 1.0,
+        Model::key(['supervisor' => 'supervisor-slow', 'queue' => 'reports', 'pool' => 'reports']) => 1.0,
+        Model::key(['supervisor' => 'supervisor-slow', 'queue' => 'reports', 'pool' => 'slow,reports']) => 1.0,
+        Model::key(['supervisor' => 'supervisor-slow', 'queue' => 'slow', 'pool' => 'slow']) => 1.0,
+        Model::key(['supervisor' => 'supervisor-slow', 'queue' => 'slow', 'pool' => 'slow,reports']) => 1.0,
+    ];
+    ksort($map);
+
+    expect(horizonTruthScraped($samples))->toBe(horizonTruthExpected())
+        ->and($samples->series(Metric::SupervisorQueues->value))->toBe($map)
+        ->and($perQueue)->toBe([
+            'supervisor-pool mail' => 5.0,
+            'supervisor-pool push' => 3.0,
+            'supervisor-pool sms' => 5.0,
+            'supervisor-slow reports' => 6.0,
+            'supervisor-slow slow' => 5.0,
+        ]);
+});
+
 it('exports the status of the masters: running, paused, none', function (string $state, float $status): void {
     $scenario = Scenario::start($this);
 

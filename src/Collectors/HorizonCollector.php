@@ -33,7 +33,9 @@ use Throwable;
  *   itself for balance=auto and simple (a pool per queue), the comma-joined list for balance=false (one pool for all).
  *   PromQL cannot split a label value into several series, so without it a pooled queue had no supervisor, no
  *   processes and no row in the dashboard's queue table (T16, the pilot's #5 bug). The queues come from the
- *   supervisor's `queue` option, the pool labels from its process map (the joined option without one).
+ *   supervisor's `queue` option, the pool labels from its process map (the joined option without one), over every
+ *   master: when the masters disagree (a deploy that changes a balance=false queue list, or the balance), a queue has
+ *   a series per pool that works it, so the processes per queue count every master's.
  * - **Wait thresholds** follow Horizon's `LongWaitDetected`: the `horizon.waits` entry or 60 s; a queue whose entry
  *   is 0 has no series.
  * - **horizon_info** carries the Horizon URL, the job-list API path and the TTS URL (`''`, i.e. absent, for tone
@@ -135,13 +137,16 @@ final readonly class HorizonCollector implements Collector
             ];
         }
 
-        /** @var array<string, array<array-key, string>> $pools supervisor => queue => pool label */
+        /** @var array<string, array<array-key, array<array-key, true>>> $pools supervisor => queue => pool label => true */
         $pools = [];
 
         foreach ($snapshots as $snapshot) {
-            // `+`, not a spread: queue names like "1" are integer keys, which a spread would renumber. The first
-            // master by name wins, as for the settings.
-            $pools[$snapshot->name] = ($pools[$snapshot->name] ?? []) + $this->pools($snapshot);
+            // Every master's pools: while a deploy changes the queue option of a balance=false supervisor, the old
+            // and the new master's pools (e.g. "mail,sms" and "mail,sms,push") both work the common queues, and the
+            // processes per queue add up over both. Queue names and pool labels like "1" are integer keys.
+            foreach ($this->pools($snapshot) as $queue => $pool) {
+                $pools[$snapshot->name][$queue][$pool] = true;
+            }
         }
 
         $processFamily = MetricFamily::of(Metric::SupervisorProcesses);
@@ -161,8 +166,10 @@ final readonly class HorizonCollector implements Collector
             $maxFamily->set(['supervisor' => $name], $setting['max']);
             $infoFamily->set(['supervisor' => $name, 'balance' => $setting['balance'], 'connection' => $setting['connection']], 1);
 
-            foreach ($pools[$name] ?? [] as $queue => $pool) {
-                $queuesFamily->set(['supervisor' => $name, 'queue' => (string) $queue, 'pool' => $pool], 1);
+            foreach ($pools[$name] ?? [] as $queue => $labels) {
+                foreach (array_keys($labels) as $pool) {
+                    $queuesFamily->set(['supervisor' => $name, 'queue' => (string) $queue, 'pool' => (string) $pool], 1);
+                }
             }
         }
 

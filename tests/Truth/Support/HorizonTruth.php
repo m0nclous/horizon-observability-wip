@@ -12,8 +12,8 @@ use Laravel\Horizon\Contracts\SupervisorRepository;
  * The horizon families as Horizon's own repositories and the Horizon config define them, restated from the
  * documented rules (Arch Q4, C14) without the package's collector: the status of the masters, per supervisor (the
  * name after the last colon) the processes summed per pool label over every master, the largest minimum and
- * maximum, the settings of the first master, every queue of its `queue` option with the pool that works it, and the
- * wait thresholds of the configured queues (`horizon.waits`, default 60 s, 0 omitted).
+ * maximum, the settings of the first master, every queue of every master's `queue` option with the pool that works
+ * it, and the wait thresholds of the configured queues (`horizon.waits`, default 60 s, 0 omitted).
  */
 final readonly class HorizonTruth
 {
@@ -60,13 +60,14 @@ final readonly class HorizonTruth
             $families['horizon_supervisor_min_processes'][Model::key(['supervisor' => $name])] = max($families['horizon_supervisor_min_processes'][Model::key(['supervisor' => $name])] ?? $minimum, $minimum);
             $families['horizon_supervisor_max_processes'][Model::key(['supervisor' => $name])] = max($families['horizon_supervisor_max_processes'][Model::key(['supervisor' => $name])] ?? $maximum, $maximum);
 
-            if (isset($settings[$name])) {
-                continue;
+            $balance = in_array($options['balance'] ?? null, ['auto', 'simple'], true) ? (string) $options['balance'] : 'off';
+
+            if (! isset($settings[$name])) {
+                $settings[$name] = true;
+                $families['horizon_supervisor_info'][Model::key(['supervisor' => $name, 'balance' => $balance, 'connection' => $connection])] = 1.0;
             }
 
-            $settings[$name] = true;
-            $balance = in_array($options['balance'] ?? null, ['auto', 'simple'], true) ? (string) $options['balance'] : 'off';
-            $families['horizon_supervisor_info'][Model::key(['supervisor' => $name, 'balance' => $balance, 'connection' => $connection])] = 1.0;
+            // Every master's queues and pools: during a deploy that changes the options, both masters' pools work.
             $queueOption = (string) ($options['queue'] ?? '');
 
             foreach (array_filter(array_map(trim(...), explode(',', $queueOption)), static fn (string $queue): bool => $queue !== '') as $queue) {
