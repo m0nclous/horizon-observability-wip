@@ -17,8 +17,8 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
  * Equality with the legacy output: every panel expression of the committed render is evaluated twice by promtool on
  * the medium perf profile (one application, 20 minutes at 1 minute), with Batch "All" and with Batch = one kind:
  * - as Grafana sends it now: Job "All" is `.+`, the scope active;
- * - as the legacy render worked: the same expression with the scope's set replaced by an empty one and Job "All"
- *   the regex of the classes the job_class variable lists (asserted too).
+ * - as the legacy render worked: the same expression with the scope's sets switched off (empty) and Job "All" the
+ *   regex of the classes the job_class variable lists (asserted too).
  * Both must return the same series with the same values. The variables that the scope replaced
  * (`batch_filtered()` of Queue and Job) are checked against the classes and queues of the kind. The panels are those of
  * the --live=off render, whose Prometheus targets include every one of the live renders (LiveContractTest).
@@ -33,33 +33,32 @@ beforeEach(function (): void {
 });
 
 /**
- * The batch scope sets of the renders: the one evaluated at every step and those of the vectors at a fixed time
- * (`@`), which take the scope of that time.
- *
- * @return list<string>
+ * The Batch switch of the scope sets: with it at `!~".*"` (what Grafana sends for Batch "All") both sets of every scope
+ * are empty, whatever the selected kind.
  */
-function batchScopeSets(string $label = 'job_class'): array
-{
-    $promql = new Promql('ho_');
+const BATCH_SWITCH = '__batch_scope__!~"$batch_kind"';
 
-    return [
-        $promql->batchExcluded($label),
-        ...array_map(static fn (string $at): string => $promql->batchExcluded($label, $at), [Promql::FROM_SECONDS, Promql::TO_SECONDS, 'start()', 'end()']),
-    ];
+/**
+ * An expression with its batch scope switched off: both sets of every scope empty, as with Batch "All".
+ */
+function withoutBatchScope(string $expr): string
+{
+    return str_replace(BATCH_SWITCH, '__batch_scope__!~".*"', $expr);
 }
 
 it('puts every job-filtered selector of the committed renders in the batch scope', function (LiveMode $mode): void {
     $promql = new Promql('ho_');
-    $scope = ' unless on (job_class) '.$promql->batchExcluded().')';
+    // Every scope ends with the classes of the selected kinds in the period
+    $end = ' unless on (job_class) '.$promql->batchKindClasses().'))';
     $unscoped = [];
     $scoped = 0;
 
     foreach (Rendered::expressions(alerting: [], mode: $mode) as $where => $expr) {
         if (str_starts_with($where, 'panel ')) {
-            $count = array_sum(array_map(static fn (string $set): int => substr_count($expr, ' unless on (job_class) '.$set.')'), batchScopeSets()));
+            $count = substr_count($expr, $end);
             $scoped += $count;
 
-            if (substr_count($expr, 'job_class=~"$job_class"') !== $count) {
+            if (substr_count($expr, 'job_class=~"$job_class"') !== $count || substr_count($expr, BATCH_SWITCH) !== 2 * $count) {
                 $unscoped[] = $where;
             }
         }
@@ -71,9 +70,22 @@ it('puts every job-filtered selector of the committed renders in the batch scope
         ->and($scoped)->toBeGreaterThan(150)
         ->and($variables['job_class']['allValue'])->toBe('.+')
         ->and($variables['batch_kind']['allValue'])->toBe('.*')
-        ->and($variables['job_class']['query'])->toContain($scope)
+        ->and($variables['job_class']['query'])->toContain(' unless on (job_class) '.$promql->batchExcluded().')')
         ->and($variables['queue']['query'])->toContain(' unless on (queue) '.$promql->batchExcluded('queue').')');
 })->with(Rendered::modes());
+
+it('reads the classes of a scoped selector from its own family, window and time', function (): void {
+    $promql = new Promql('ho_');
+    $kinds = $promql->batchKindClasses();
+    $unit = 'max by (job, connection, queue, job_class, status) (min_over_time(ho_queue_jobs_total{job=~"$prometheus_job", status=~"failed"}[$__interval] offset -$__interval @ ${__to}e-3))';
+
+    expect($promql->filtered($unit, true))->toBe(
+        '(max by (job, connection, queue, job_class, status) (min_over_time(ho_queue_jobs_total{job=~"$prometheus_job", queue=~"$queue", job_class=~"$job_class", status=~"failed"}[$__interval] offset -$__interval @ ${__to}e-3))'
+        .' unless on (job_class) (group by (job_class) (last_over_time({__name__=~"ho_queue_jobs_total", job=~"$prometheus_job", status=~"failed", '.BATCH_SWITCH.'}[$__interval] offset -$__interval @ ${__to}e-3))'
+        .' unless on (job_class) '.$kinds.'))',
+    )
+        ->and($kinds)->toBe('group by (job_class) (last_over_time({__name__=~"ho_queue_batch_job_classes", job=~"$prometheus_job", batch=~"$batch_kind", '.BATCH_SWITCH.'}[$__range] @ ${__to}e-3))');
+});
 
 it('lists the classes and queues of the selected kind in the Job and Queue filters', function (?string $kind): void {
     $data = ProfileSeries::data();
@@ -127,7 +139,7 @@ it('gives every panel the legacy result with Batch All and with Batch = one kind
         }
 
         $now = ProfileSeries::interpolate($expr, $kind, '.+');
-        $legacy = ProfileSeries::interpolate(str_replace(batchScopeSets(), '(vector(1) unless on () vector(1))', $expr), $kind, $legacyAll);
+        $legacy = ProfileSeries::interpolate(withoutBatchScope($expr), $kind, $legacyAll);
 
         $tests[] = ['expr' => '# differs '.$where.'
 '.ProfileSeries::difference($now, $legacy), 'eval_time' => '19m', 'exp_samples' => []];

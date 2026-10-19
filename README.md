@@ -702,7 +702,7 @@ series. Measured with `--live=off` and every filter on All:
 | Refresh, 1-hour range | 1.0 s p50, 1.5 s p95 | 0.22 s / 0.20 s p50 |
 | Refresh, 6-hour range | 2.0 s p50 | 0.30 s / 0.28 s p50 |
 | Requests per refresh | 12 | 12 |
-| Interpolated PromQL per refresh | 100 KB | 71 KB |
+| Interpolated PromQL per refresh | 100 KB | 75 KB |
 
 Times depend on the hardware: an earlier render measured a 1-hour p50 of 0.72 s to 1.05 s on a shared 4-vCPU sandbox.
 [`docker/perf/README.md`](docker/perf/README.md) describes the profile and the tools. What keeps the dashboard fast:
@@ -754,6 +754,10 @@ By design:
   clients (`redis.worker_timeout`, `redis.scrape_timeout`) ([#30]).
 - With phpredis, an ACL refusal (or a `WRONGTYPE`) of the job-class index reads as an empty class list in the exporter,
   as phpredis answers it with false. `check` reports the refusal ([#30]).
+- **A double quote in a filter value** (a batch kind, or a value in a shared link) breaks the queries of that filter:
+  Grafana's Prometheus datasource does not escape double quotes in variable values unless its feature toggle
+  `prometheusSpecialCharsInLabelValues` is on. Backslashes are fine, also in a link to a job class that is no longer
+  exported.
 - **Batches.** The Batch filter and the batch families read at most the 10 000 most recently seen links between batch
   kinds and job classes, from the last 7 days. Beyond 100 batch kinds, the rest are folded into `(other)` in the
   per-kind families; `(other)` matches no job class, so it does not work as a filter.

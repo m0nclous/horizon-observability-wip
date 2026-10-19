@@ -158,4 +158,11 @@ The first public release: a rewrite of the internal pilot `sushi-market/horizon-
 - The first scrape after the first deploy wiped the attempt counters.
 - Job-class discovery scanned `app/` and loaded its files on every scrape.
 - The Completed and Failed tiles dropped the first value of a new counter series.
+- The Completed and Failed tiles and the per-job graph took the period edges rounded to whole seconds: they could
+  disagree with the tables, lose the last step in a browser time zone that is not a whole hour from UTC (UTC+5:45 at
+  a 2-minute step), and the graph could count attempts from before the period.
+- With a Batch filter, the tables counted the attempts of a class of another kind that stopped inside the period, and
+  Queue = All left out the queues of an application that stopped inside it.
+- A shared link with a job class or batch kind that holds a backslash and matches no option turned the panels with
+  the filter's All test into query errors.
 - The duration minimum and maximum could miss attempts with 60-second scrapes.

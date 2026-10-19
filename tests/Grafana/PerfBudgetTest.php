@@ -199,10 +199,10 @@ it('finds variables outside the refresh policy', function (): void {
 });
 
 it('finds an operand that the Batch switch evaluates twice (the legacy batch_filtered())', function (): void {
-    $all = '(label_replace(vector(1), "filter", "${batch_kind:text}", "", "") and on (filter) label_replace(vector(1), "filter", "All", "", ""))';
+    $all = '(label_replace(vector(1), "filter", `${batch_kind:text}`, "", "") and on (filter) label_replace(vector(1), "filter", "All", "", ""))';
     $rows = '(group by (queue) (ho_queue_pending_jobs))';
     $classes = 'group by (queue) (ho_queue_batch_job_classes{batch=~"$batch_kind"})';
-    $jobs = '(label_replace(vector(1), "filter", "${job_class:text}", "", "") and on (filter) label_replace(vector(1), "filter", "All", "", ""))';
+    $jobs = '(label_replace(vector(1), "filter", `${job_class:text}`, "", "") and on (filter) label_replace(vector(1), "filter", "All", "", ""))';
 
     $budget = new StaticBudget(budgetDashboard([
         budgetPanel(1, [$rows.' and on (queue) '.$classes.' or '.$rows.' and on () '.$all]),

@@ -25,9 +25,9 @@ final readonly class Variables
 
     /**
      * Grafana's variable refresh: on dashboard load, or on every time range change, which for a relative range means
-     * every auto-refresh. Only the variables that read `$__range` refresh with the range: the others are instant
-     * queries or day-long lookbacks, so their lists follow a time range change only after a reload; a reload or a
-     * change of a variable they depend on refreshes them.
+     * every auto-refresh. Only the batch variables refresh with the range: the others are instant queries, day-long
+     * lookbacks or (Queue, and the batch scope of Queue and Job) the range at load, so their lists follow a time range
+     * change only after a reload; a reload or a change of a variable they depend on refreshes them.
      */
     public const ON_LOAD = 1;
 
@@ -154,10 +154,16 @@ final readonly class Variables
     /**
      * Queues of the selected supervisors, and with Supervisor "All" also queues without a supervisor: nobody
      * works their pending jobs. With a batch selected only the queues of its jobs.
+     *
+     * The queues are those exported within the range (as the rows of the queue tables, Selection::queues()), not
+     * now: Queue's "All" is this list (not `.*`, so the Supervisor filter reaches every panel, and a `.*` would match
+     * the pool labels of balance=false supervisors, #32), so the queues of an application that stopped inside the
+     * period stay in the tiles and the tables. The variable refreshes on load, not with the range (another request
+     * per auto-refresh, and its dependants after it): the list is that of the range at load.
      */
     private function queueQuery(): string
     {
-        $queues = Promql::group($this->promql->selector(Metric::QueuePendingJobs), 'queue');
+        $queues = Promql::group($this->promql->over('last_over_time', Metric::QueuePendingJobs, Promql::RANGE), 'queue');
         // The queue names of horizon_supervisor_queues: the processes' queue label of a balance=false pool is its queue list
         $supervised = fn (string ...$matchers): string => Promql::group(
             $this->promql->over('last_over_time', Metric::SupervisorQueues, self::KNOWN_FOR, array_values($matchers)),

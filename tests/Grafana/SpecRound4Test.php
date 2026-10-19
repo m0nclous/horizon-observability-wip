@@ -21,12 +21,14 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
  *    an instant query (the tables) at the exact `to` in milliseconds, and align a range query (the tiles, #14) to
  *    floor((t + utcOffsetSec) / step) * step - utcOffsetSec (both checked through /api/ds/query with a `to` of x.700 s:
  *    the instant `time()` was x.7, the range points on the offset grid). The tiles' points must add up to the table
- *    count of the same request:
- *    - a scrape between the exact period start and its rounded second is counted by the table, not by the tiles
+ *    count of the same request. With the rounded edges (#31) they did not:
+ *    - a scrape between the exact period start and its rounded second was counted by the table, not by the tiles
  *      (any time zone; with samples on arbitrary milliseconds about 2.5 % of the refreshes per edge at 10 s scrapes);
  *    - where the UTC offset is not a multiple of the step and `to` lies less than 0.5 s before a Grafana point, no point
- *      passes the last-point test and the last step ends at the next subquery point instead of `to`
+ *      passed the last-point test and the last step ended at the next subquery point instead of `to`
  *      (AdversarialRound4TileTest covers it too).
+ *    The render now takes the exact edges (`${__from}e-3`, `${__to}e-3`), which Promtool::interpolate() fills in as
+ *    Grafana does, in milliseconds.
  */
 
 pest()->group('grafana');
@@ -88,8 +90,8 @@ it('adds the tile points up to the table count of the same request at the exact 
         '${__interval_ms}' => (string) ($step * 1000),
         '$__interval_ms' => (string) ($step * 1000),
         '$__interval' => $step.'s',
-    ]), '.+', (int) round($to), $range));
-    $table = Promtool::interpolate(Rendered::expressions()['panel '.PanelRegistry::QUEUE_SOURCE.' C'], '.+', (int) round($to), $range);
+    ]), '.+', $to, $range));
+    $table = Promtool::interpolate(Rendered::expressions()['panel '.PanelRegistry::QUEUE_SOURCE.' C'], '.+', $to, $range);
     $one = static fn (int $value): array => [['labels' => '{}', 'value' => $value]];
     $truth = $value($to) - $value($from);
     $tests = [
@@ -121,13 +123,13 @@ it('adds the tile points up to the table count of the same request at the exact 
         ->and($status)->toBe(0, round4SpecOutput($output));
 })->with([
     // UTC, the Failed tile's 15 s step at 1 hour: the scrape at 1210 s lies in (1209.7, 1210], the rounded start; the
-    // first point (1200, its step holds the start) must count it: 1, the render gives 0 (the table counts it)
+    // first point (1200, its step holds the start) counts it: 1 (the render with the rounded edges gave 0, the table 1)
     'UTC, 15 s steps, a scrape between the start and its rounded second' => [0, 15, 3600, 4809.7],
     // Asia/Kathmandu (utcOffsetSec 20700), the Failed tile's 2-minute step at 6 hours: Grafana's points on odd minutes,
-    // `to` 0.3 s before the point 22260, the last point 22140 must count (22080, 22259.7]: 17, the render gives 12; and
-    // its first point loses the scrape at 660 s as above
+    // `to` 0.3 s before the point 22260, the last point 22140 counts (22080, 22259.7]: 17 (the rounded edges gave 12,
+    // and the first point lost the scrape at 660 s as above)
     'Asia/Kathmandu, 2-minute steps, the end 0.3 s before a point' => [20700, 120, 21600, 22259.7],
-])->skip('Known issue #31: the tiles take the period edges rounded to whole seconds, the tables the exact edges');
+]);
 
 /**
  * promtool's output with every line cut to 100 characters (the expressions are long).

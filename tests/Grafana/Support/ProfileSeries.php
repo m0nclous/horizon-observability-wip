@@ -98,6 +98,8 @@ final class ProfileSeries
         $expr = strtr($expr, [
             '${__from:date:seconds}' => '240',
             '${__to:date:seconds}' => '1140',
+            '${__from}' => '240000',
+            '${__to}' => '1140000',
             '$__interval_ms' => '60000',
             '${__interval_ms}' => '60000',
             '$__interval' => '1m',

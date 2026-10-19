@@ -29,6 +29,8 @@ function withoutMacros(string $expr): string
     $expr = strtr($expr, [
         '${__from:date:seconds}' => '0',
         '${__to:date:seconds}' => '0',
+        '${__from}' => '0',
+        '${__to}' => '0',
         '$__interval_ms' => '60000',
         '${__interval_ms}' => '60000',
         '$__interval' => '1m',
