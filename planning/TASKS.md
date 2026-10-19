@@ -559,5 +559,6 @@ skip reason names the item, so a fix turns them into regression tests.
     "non-blocking until T15"; the compose `stream` service restart-loops until docker/grafana/live-token exists; the PR
     template says "Unreleased" while the CHANGELOG uses "[0.1.0] - Unreleased"; the links to the security advisories
     form and Discussions work only after the transfer to sushi-market and once both are enabled in the repository.
-12. Process: the frozen board tooling branch `wip/board-sync` (owner, 2026-10-19), only if the board is kept after the
+15. Process: the frozen board tooling branch `wip/board-sync` (owner, 2026-10-19), only if the board is kept after the
     repository transfer.
+
