@@ -205,3 +205,60 @@ it('names the queue connection and its prefix when an ACL refuses the queue keys
     expect($results['Queues / Redis ho-queue']->status->value)->toBe('ok')
         ->and($results['Collectors / queues']->status->value)->toBe('ok');
 })->with(['phpredis', 'predis']);
+
+it('reports an ACL refusal of the job-class index and of the last push as that refusal', function (string $client): void {
+    $redis = replyServer($this, $client);
+    config()->set('horizon-observability.live.stream.grafana_url', 'http://grafana:3000');
+    config()->set('horizon-observability.live.stream.token', 'glsa_redis-replies-token-0123456789');
+    // phpredis answers these refusals with false instead of throwing.
+    expect($redis->command('ACL', 'SETUSER', 'ho', '-zrange', '-hgetall'))->toBe('+OK');
+
+    $results = replyCheck();
+    $fix = static fn (string $command): string => sprintf(
+        'Allow %s for the Redis user ho of database.redis.ho-private: ACL SETUSER ho +%s (the package runs EVAL, TIME and INFO besides the hash, list, sorted set and string commands on its keys).',
+        strtoupper($command),
+        $command,
+    );
+
+    expect($results['Storage / Connection']->status->value)->toBe('ok')
+        ->and($results['Job classes / Cap']->status->value)->toBe('error')
+        ->and($results['Job classes / Cap']->message)->toContain('NOPERM')
+        ->and($results['Job classes / Cap']->fix)->toBe($fix('zrange'))
+        ->and($results['Live / Last push']->status->value)->toBe('error')
+        ->and($results['Live / Last push']->fix)->toBe($fix('hgetall'));
+
+    replyRunRule($redis, $results['Job classes / Cap']->fix);
+    replyRunRule($redis, $results['Live / Last push']->fix);
+    $results = replyCheck();
+
+    expect($results['Job classes / Cap']->status->value)->toBe('ok')
+        ->and($results['Live / Last push']->message)->toBe('never');
+})->with(['phpredis', 'predis']);
+
+it('tells a server at its maxclients to raise it, never that it is reachable', function (string $client): void {
+    $redis = replyServer($this, $client);
+    // The default user, so the client sends no AUTH: the first command gets the reply.
+    config()->set('database.redis.ho-private', ['host' => '127.0.0.1', 'port' => $redis->port, 'database' => 0]);
+    // One connection, held here: every other client is refused.
+    $held = fsockopen('127.0.0.1', $redis->port, $code, $error, 5.0);
+    assert($held !== false);
+    stream_set_timeout($held, 10);
+    fwrite($held, "*4\r\n$6\r\nCONFIG\r\n$3\r\nSET\r\n$10\r\nmaxclients\r\n$1\r\n1\r\n");
+    expect(rtrim((string) fgets($held)))->toBe('+OK');
+
+    try {
+        $storage = replyCheck()['Storage / Connection'];
+    } finally {
+        fwrite($held, "*4\r\n$6\r\nCONFIG\r\n$3\r\nSET\r\n$10\r\nmaxclients\r\n$5\r\n10000\r\n");
+        expect(rtrim((string) fgets($held)))->toBe('+OK');
+        fclose($held);
+    }
+
+    expect($storage->status->value)->toBe('error');
+
+    // predis reads only the closed connection (its handshake gets the reply).
+    if ($client === 'phpredis') {
+        expect($storage->message)->toContain('max number of clients reached')
+            ->and($storage->fix)->toBe('Raise maxclients on the Redis of database.redis.ho-private, or close idle clients (CLIENT LIST shows them): at its limit it refuses every new connection.');
+    }
+})->with(['phpredis', 'predis']);

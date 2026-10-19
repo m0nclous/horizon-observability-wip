@@ -285,3 +285,72 @@ it('uses the default disk for a storage store without one, and reports a disk th
         'Add filesystems.disks.gone to config/filesystems.php, or set the disk of cache.stores.storage (CACHE_STORAGE_DISK) to a configured disk.',
     ]);
 });
+
+it('keeps the read timeout it suggests for the Horizon connection above the block_for of its queue connections', function (mixed $blockFor, string $fix): void {
+    config()->set('horizon.use', 'default');
+    config()->set('queue.connections.redis', ['driver' => 'redis', 'connection' => 'default', 'queue' => 'default', 'retry_after' => 90, 'block_for' => $blockFor]);
+    // A queue connection on another Redis connection never counts.
+    config()->set('queue.connections.elsewhere', ['driver' => 'redis', 'connection' => 'cache', 'queue' => 'default', 'retry_after' => 90, 'block_for' => 30]);
+
+    expect(checkTimeout('Horizon connection'))->toBe(['warning', "horizon (a copy of default) has no timeout or read_timeout: a hung Redis holds every scrape until PHP's default_socket_timeout (".ini_get('default_socket_timeout').' s)', $fix]);
+})->with([
+    'null, as in a new app' => [null, "Add 'timeout' => 2.0 and 'read_timeout' => 2.0 to database.redis.default in config/database.php; Horizon copies it into its horizon connection."],
+    '5 s' => [5, "Add 'timeout' => 2.0 and 'read_timeout' => 7.0 to database.redis.default in config/database.php (the read_timeout stays above the block_for of 5 s of queue.connections.redis); Horizon copies it into its horizon connection."],
+    'a string, as env() returns it' => ['2.5', "Add 'timeout' => 2.0 and 'read_timeout' => 4.5 to database.redis.default in config/database.php (the read_timeout stays above the block_for of 2.5 s of queue.connections.redis); Horizon copies it into its horizon connection."],
+    '0, without a limit' => [0, "Give queue.connections.redis a block_for of a few seconds, e.g. 5, in config/queue.php (0 blocks without a limit, which any read timeout breaks), then add 'timeout' => 2.0 and 'read_timeout' => 7.0 to database.redis.default in config/database.php; Horizon copies it into its horizon connection."],
+]);
+
+it('warns about a read timeout at or below the block_for of a queue connection on the same Redis connection', function (int $blockFor, string $message, string $fix): void {
+    config()->set('horizon.use', 'default');
+    config()->set('database.redis.horizon.timeout', 1);
+    config()->set('database.redis.horizon.read_timeout', 2);
+    config()->set('queue.connections.redis', ['driver' => 'redis', 'connection' => 'default', 'queue' => 'default', 'retry_after' => 90, 'block_for' => $blockFor]);
+
+    expect(checkTimeout('Horizon connection'))->toBe(['warning', $message, $fix]);
+
+    // Also in the local environment: the workers fail there too.
+    config()->set('app.env', 'local');
+
+    expect(checkTimeout('Horizon connection')[0])->toBe('warning');
+})->with([
+    'above it' => [5, 'horizon (a copy of default) has a read_timeout of 2 s, not above the block_for of 5 s of the queue connection redis: every blocking pop of an idle worker fails after 2 s', 'Set read_timeout to 7.0 (block_for + 2 s) in database.redis.default in config/database.php; Horizon copies it into its horizon connection.'],
+    'equal' => [2, 'horizon (a copy of default) has a read_timeout of 2 s, not above the block_for of 2 s of the queue connection redis: every blocking pop of an idle worker fails after 2 s', 'Set read_timeout to 4.0 (block_for + 2 s) in database.redis.default in config/database.php; Horizon copies it into its horizon connection.'],
+    'without a limit' => [0, 'horizon (a copy of default) has a read_timeout of 2 s, but the queue connection redis blocks without a limit (block_for 0): every blocking pop of an idle worker fails after 2 s', 'Give queue.connections.redis a block_for of a few seconds, e.g. 5, in config/queue.php, then set read_timeout to 7.0 in database.redis.default in config/database.php; Horizon copies it into its horizon connection.'],
+]);
+
+it('accepts a read timeout above the block_for', function (): void {
+    config()->set('horizon.use', 'default');
+    config()->set('database.redis.horizon.timeout', 1);
+    config()->set('database.redis.horizon.read_timeout', 7);
+    config()->set('queue.connections.redis', ['driver' => 'redis', 'connection' => 'default', 'queue' => 'default', 'retry_after' => 90, 'block_for' => 5]);
+
+    expect(checkTimeout('Horizon connection'))->toBe(['ok', 'horizon has timeout 1 s, read_timeout 7 s', null]);
+});
+
+it('judges a redis store against the block_for of a queue connection on its Redis connection', function (): void {
+    config()->set('cache.default', 'redis');
+    config()->set('queue.connections.cache-queue', ['driver' => 'redis', 'connection' => 'cache', 'queue' => 'default', 'retry_after' => 90, 'block_for' => 10]);
+
+    expect(checkTimeout()[2])->toBe("Add 'timeout' => 2.0 and 'read_timeout' => 12.0 to database.redis.cache in config/database.php (the read_timeout stays above the block_for of 10 s of queue.connections.cache-queue).");
+});
+
+it('reports missing Redis timeouts as info in the local environment, as on a new app', function (): void {
+    config()->set('app.env', 'local');
+    config()->set('cache.default', 'redis');
+
+    expect(checkTimeout('Horizon connection')[0])->toBe('info')
+        ->and(checkTimeout('Horizon connection')[2])->toBe("Add 'timeout' => 2.0 and 'read_timeout' => 2.0 to database.redis.default in config/database.php; Horizon copies it into its horizon connection.")
+        ->and(checkTimeout())->toBe(['info', 'redis (redis cache) has no timeout or read_timeout: a hung store can cost a scrape its budget', "Add 'timeout' => 2.0 and 'read_timeout' => 2.0 to database.redis.cache in config/database.php."]);
+});
+
+it('names the url query for a timeout the url sets, which wins over the connection keys', function (string $client, string $url, string $fix): void {
+    config()->set('database.redis.client', $client);
+    config()->set('database.redis.cache', ['url' => $url, 'host' => '127.0.0.1', 'port' => 6379, 'database' => 1, 'timeout' => 2, 'read_timeout' => 2, 'read_write_timeout' => 2]);
+    config()->set('cache.default', 'redis');
+
+    expect(checkTimeout()[2])->toBe($fix);
+})->with([
+    'phpredis' => ['phpredis', 'redis://127.0.0.1:6379?timeout=0', 'Set timeout=2.0 in the url query of database.redis.cache in config/database.php.'],
+    'phpredis, both' => ['phpredis', 'redis://127.0.0.1:6379?timeout=0&read_timeout=0', 'Set timeout=2.0 and read_timeout=2.0 in the url query of database.redis.cache in config/database.php.'],
+    'predis' => ['predis', 'tcp://127.0.0.1:6379?read_write_timeout=0', 'Set read_write_timeout=2.0 in the url query of database.redis.cache in config/database.php.'],
+]);

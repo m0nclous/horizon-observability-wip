@@ -280,13 +280,32 @@ it('warns about stream settings while live is off', function (string $key, strin
 it('prints the time the poll endpoint shares its snapshot', function (mixed $ttl, string $shared): void {
     config()->set('horizon-observability.live.cache_ttl', $ttl);
 
-    expect(checkState('Live / Enabled'))->toBe(['ok', 'poll endpoint http://localhost/horizon/observability/live (shared for '.$shared.' s)', null]);
+    expect(checkState('Live / Enabled'))->toBe(['ok', 'poll endpoint http://localhost/horizon/observability/live ('.$shared.')', null]);
 })->with([
-    'the default' => [null, '1'],
-    'off' => [0, '0'],
-    'a fraction' => [2.5, '2.5'],
-    'a string, as env() returns it' => ['0.25', '0.25'],
+    'the default' => [null, 'shared for 1 s'],
+    'off' => [0, 'not cached: live.cache_ttl is 0, so every request builds its own snapshot'],
+    'a fraction' => [2.5, 'shared for 2.5 s'],
+    'a string, as env() returns it' => ['0.25', 'shared for 0.25 s'],
 ]);
+
+it('says that it did not run the push test when live is disabled', function (): void {
+    config()->set('horizon-observability.live.enabled', false);
+
+    app()->forgetInstance(Config::class);
+    $push = array_values(array_filter(app(Diagnostics::class)->check(livePushTest: true), static fn (CheckResult $result): bool => $result->section === 'Live' && $result->name === 'Push test'));
+
+    expect($push)->toHaveCount(1)
+        ->and([$push[0]->status->value, $push[0]->message, $push[0]->fix])->toBe(['error', 'not run: live is disabled', 'Set HORIZON_OBSERVABILITY_LIVE_ENABLED=true first.'])
+        // Without --live-push-test there is no such row.
+        ->and(checkStateKeys('Live'))->toBe(['Live / Enabled']);
+});
+
+it('shows the parameters of the package domain in the endpoint URLs instead of the host of APP_URL', function (): void {
+    config()->set('horizon-observability.domain', '{tenant}.metrics.internal');
+
+    expect(checkState('Routes / Endpoints')[1])->toBe('http://{tenant}.metrics.internal/horizon/observability/metrics, http://{tenant}.metrics.internal/horizon/observability/jobs/{list}, http://{tenant}.metrics.internal/horizon/observability/live')
+        ->and(app(Diagnostics::class)->about()['Endpoints'])->toBe('http://{tenant}.metrics.internal/horizon/observability');
+});
 
 it('prints the exact age of the last stream push', function (float $ago, string $status, string $message): void {
     config()->set('horizon-observability.live.stream.grafana_url', 'http://grafana:3000');
@@ -305,6 +324,28 @@ it('prints the exact age of the last stream push', function (float $ago, string 
     // A push stamped by a clock ahead of this one.
     'in the future' => [-5.0, 'ok', '0.0 s ago'],
 ]);
+
+it('reads the clock once for the age of the last push, so a second boundary between two readings never makes it 1 s low', function (): void {
+    config()->set('horizon-observability.live.stream.grafana_url', 'http://grafana:3000');
+    config()->set('horizon-observability.live.stream.token', 'glsa_check-states-token-0123456789');
+    $pushed = CarbonImmutable::parse('2026-10-18 11:59:55.999999', 'UTC');
+    RedisKeys::client()->hset(TestCase::redisPrefix().'horizon:'.(new Keys)->meta(), 'live_push_at', $pushed->format('U.u'));
+    // A clock that ticks on every reading the Last push row makes, across the second boundary at 12:00:00.
+    $readings = 0;
+    CarbonImmutable::setTestNow(static function () use (&$readings): CarbonImmutable {
+        $lastPush = in_array('lastPush', array_column(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS), 'function'), true);
+
+        return CarbonImmutable::parse('2026-10-18 11:59:59.999990', 'UTC')->addMicroseconds($lastPush ? 10 * $readings++ : 0);
+    });
+
+    try {
+        $age = checkState('Live / Last push');
+    } finally {
+        CarbonImmutable::setTestNow();
+    }
+
+    expect($age[1])->toBe('4.0 s ago');
+});
 
 it('counts the errors and warnings it reports, in JSON and in the text summary', function (): void {
     [, $healthy] = checkStatesReport();

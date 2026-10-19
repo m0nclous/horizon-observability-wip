@@ -34,12 +34,16 @@ use Illuminate\Contracts\Foundation\CachesRoutes;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Queue\Events\JobTimedOut;
+use Illuminate\Redis\Connections\Connection;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\RouteCollectionInterface;
 use Illuminate\Routing\Router;
 use LogicException;
 use PDO;
 use PDOException;
+use Redis;
+use RedisCluster;
+use RedisException;
 use Throwable;
 
 /**
@@ -450,7 +454,7 @@ final readonly class Diagnostics
 
         try {
             $started = hrtime(true);
-            $clients->reader($name)->exists($this->container->make(Keys::class)->meta());
+            $this->probe($clients->reader($name), $this->container->make(Keys::class)->meta());
             $results[] = CheckResult::ok($section, 'Connection', sprintf(
                 '%s reachable in %s ms (%s%s, prefix "%s")',
                 $name,
@@ -547,7 +551,7 @@ final readonly class Diagnostics
 
             try {
                 $started = hrtime(true);
-                $clients->reader($redis)->exists('horizon-observability:check');
+                $this->probe($clients->reader($redis), 'horizon-observability:check');
                 $results[] = CheckResult::ok($section, 'Redis '.$redis, sprintf('reachable in %s ms%s', $this->milliseconds($started), $clients->isCluster($redis) ? ' (cluster)' : ''));
             } catch (Throwable $e) {
                 $reply = RedisErrorReply::of($e);
@@ -582,7 +586,7 @@ final readonly class Diagnostics
             $results[] = $this->redisTimeout($section, 'Horizon connection', 'horizon', sprintf('horizon (a copy of %s)', $this->horizonUse()), $horizon, sprintf(
                 "a hung Redis holds every scrape until PHP's default_socket_timeout (%s s)",
                 $this->scalarText(ini_get('default_socket_timeout')),
-            ), '; Horizon copies it into its horizon connection.');
+            ), '; Horizon copies it into its horizon connection.', [$this->horizonUse(), 'horizon']);
         }
 
         $results[] = $this->cacheTimeout($section);
@@ -612,12 +616,38 @@ final readonly class Diagnostics
 
     /**
      * The timeouts of the client Laravel builds for a Redis connection ({@see RedisClientSettings}): ok with the
-     * timeouts it has, or a warning naming the place the client reads them from.
+     * timeouts it has, or a warning naming the place the client reads them from (info in the `local` environment,
+     * where no scrape budget is at stake, so a new app installs without it).
+     *
+     * The read timeout is judged against the largest `block_for` of the redis queue connections on the same Redis
+     * connection (`$redisNames`, {@see self::blockFor()}): a worker's blocking pop of an empty queue waits that long
+     * for a reply, so the suggested read timeout is `block_for` + 2 s, and a read timeout at or below it is a warning
+     * everywhere: every idle pop then fails.
+     *
+     * @param  list<string>  $redisNames  the names a queue connection gives this Redis connection
      */
-    private function redisTimeout(string $section, string $name, string $label, string $missingLabel, RedisClientSettings $settings, string $consequence, string $fixSuffix = '.'): CheckResult
+    private function redisTimeout(string $section, string $name, string $label, string $missingLabel, RedisClientSettings $settings, string $consequence, string $fixSuffix = '.', array $redisNames = []): CheckResult
     {
         if (! $settings->known()) {
             return CheckResult::info($section, $name, sprintf('%s uses the Redis client %s, whose timeouts this check does not know', $label, $settings->client), 'Give its client connect and read timeouts of about 2 s: a hung store can cost a scrape its budget.');
+        }
+
+        $block = $this->blockFor($redisNames);
+        $readKey = $settings->client === 'predis' ? 'read_write_timeout' : 'read_timeout';
+        $read = $settings->readTimeout();
+
+        if ($block !== null && $read !== null && ($block[0] === 0.0 || $read[0] <= $block[0])) {
+            return CheckResult::warning($section, $name, sprintf(
+                '%s has a %s of %s s, %s: every blocking pop of an idle worker fails after %3$s s',
+                $missingLabel,
+                $readKey,
+                TextFormat::number($read[0]),
+                $block[0] === 0.0
+                    ? sprintf('but the queue connection %s blocks without a limit (block_for 0)', $block[1])
+                    : sprintf('not above the block_for of %s s of the queue connection %s', TextFormat::number($block[0]), $block[1]),
+            ), $block[0] === 0.0
+                ? sprintf('Give queue.connections.%s a block_for of a few seconds, e.g. 5, in config/queue.php, then set %s to 7.0 in %s in config/database.php%s', $block[1], $readKey, $read[1], $fixSuffix)
+                : sprintf('Set %s to %s (block_for + 2 s) in %s in config/database.php%s', $readKey, RedisClientSettings::decimal($block[0] + 2.0), $read[1], $fixSuffix));
         }
 
         $missing = $settings->missingTimeouts();
@@ -627,14 +657,55 @@ final readonly class Diagnostics
         }
 
         $unread = $settings->unreadTimeouts($missing);
+        $fix = $settings->timeoutFix($missing, $block === null ? [] : [$readKey => ($block[0] === 0.0 ? 5.0 : $block[0]) + 2.0]).' in config/database.php';
 
-        return CheckResult::warning($section, $name, sprintf(
+        if ($block !== null && in_array($readKey, $missing, true)) {
+            $fix = $block[0] === 0.0
+                ? sprintf('Give queue.connections.%s a block_for of a few seconds, e.g. 5, in config/queue.php (0 blocks without a limit, which any read timeout breaks), then %s', $block[1], lcfirst($fix))
+                : sprintf('%s (the %s stays above the block_for of %s s of queue.connections.%s)', $fix, $readKey, TextFormat::number($block[0]), $block[1]);
+        }
+
+        return new CheckResult($section, $name, $this->local() ? CheckStatus::Info : CheckStatus::Warning, sprintf(
             '%s has no %s%s: %s',
             $missingLabel,
             implode(' or ', $missing),
             $unread === [] ? '' : sprintf(' (%s does not read %s from %s)', $settings->client, implode(' or ', $missing), implode(' or ', $unread)),
             $consequence,
-        ), $settings->timeoutFix($missing).' in config/database.php'.$fixSuffix);
+        ), $fix.$fixSuffix);
+    }
+
+    /**
+     * The largest `block_for` of the `redis` queue connections (config/queue.php) on one of the Redis connections, and
+     * that queue connection: a worker waits that long on a BLPOP of the queue's notify list. 0 blocks without a limit
+     * and wins; null when none blocks (`block_for` null, as in a new app).
+     *
+     * @param  list<string>  $redisNames
+     * @return array{0: float, 1: string}|null
+     */
+    private function blockFor(array $redisNames): ?array
+    {
+        $connections = $this->repository()->get('queue.connections');
+        $found = null;
+
+        foreach (is_array($connections) ? $connections : [] as $queueConnection => $settings) {
+            if (! is_array($settings) || ($settings['driver'] ?? null) !== 'redis' || ! is_numeric($settings['block_for'] ?? null) || (float) $settings['block_for'] < 0) {
+                continue;
+            }
+
+            $redis = is_string($settings['connection'] ?? null) && $settings['connection'] !== '' ? $settings['connection'] : 'default';
+            $seconds = (float) $settings['block_for'];
+
+            if (in_array($redis, $redisNames, true) && ($found === null || ($found[0] !== 0.0 && ($seconds === 0.0 || $seconds > $found[0])))) {
+                $found = [$seconds, (string) $queueConnection];
+            }
+        }
+
+        return $found;
+    }
+
+    private function local(): bool
+    {
+        return $this->repository()->get('app.env') === 'local';
     }
 
     /**
@@ -666,7 +737,7 @@ final readonly class Diagnostics
 
             $label = sprintf('%s (redis %s)', $store, $connection);
 
-            return $this->redisTimeout($section, $name, $label, $label, $redis, 'a hung store can cost a scrape its budget');
+            return $this->redisTimeout($section, $name, $label, $label, $redis, 'a hung store can cost a scrape its budget', '.', [$connection]);
         }
 
         if ($driver === 'database') {
@@ -994,7 +1065,7 @@ final readonly class Diagnostics
             : CheckResult::ok($section, 'Cache file', sprintf('written %s (%s)', gmdate('Y-m-d H:i:s', $generatedAt).' UTC', $this->relativePath($cache->path())))];
 
         try {
-            $used = count($this->container->make(AttemptStore::class)->jobClasses());
+            $used = count($this->storageRead(static fn (AttemptStore $store): array => $store->jobClasses()));
             $share = $used / $config->maxJobClasses;
             $text = sprintf('%d of %d attempt classes in use (max_job_classes)', $used, $config->maxJobClasses);
 
@@ -1002,7 +1073,7 @@ final readonly class Diagnostics
                 ? CheckResult::warning($section, 'Cap', $text.($used >= $config->maxJobClasses ? ': further classes are counted as (other)' : ': close to the cap'), 'Raise max_job_classes in config/horizon-observability.php (at most 10000); classes idle for 30 days are pruned.')
                 : CheckResult::ok($section, 'Cap', $text);
         } catch (Throwable $e) {
-            $results[] = CheckResult::error($section, 'Cap', 'the class index cannot be read: '.FailureReporter::describe($e), 'Fix the storage connection first (see Storage).');
+            $results[] = CheckResult::error($section, 'Cap', 'the class index cannot be read: '.FailureReporter::describe($e), $this->storageFix($e, $config));
         }
 
         return $results;
@@ -1140,6 +1211,75 @@ final readonly class Diagnostics
     }
 
     /**
+     * The fix of a failed read of the package storage: the fix of its error reply (an ACL refusal, ...), else the
+     * connectivity one of the Storage line.
+     */
+    private function storageFix(Throwable $e, Config $config): string
+    {
+        $reply = RedisErrorReply::of($e);
+
+        return $reply instanceof RedisErrorReply ? $this->replyFix($reply, $config->redisConnection) : 'Fix the storage connection first (see Storage).';
+    }
+
+    /**
+     * A read of the package storage. phpredis answers a refused ZRANGE or HGETALL (NOPERM, WRONGTYPE) with false,
+     * which AttemptStore reads as empty: the reply in `getLastError()` is thrown here, so the check reports it.
+     *
+     * @template T
+     *
+     * @param  Closure(AttemptStore): T  $read
+     * @return T
+     *
+     * @throws RedisException for an error reply phpredis did not throw
+     */
+    private function storageRead(Closure $read): mixed
+    {
+        /** @var AttemptStore $store */
+        $store = $this->container->make(AttemptStore::class);
+        $client = $store->reader()->client();
+        $phpredis = $client instanceof Redis || $client instanceof RedisCluster;
+
+        if ($phpredis) {
+            $client->clearLastError();
+        }
+
+        $result = $read($store);
+        $error = $phpredis ? $client->getLastError() : null;
+
+        if (is_string($error) && $error !== '') {
+            $client->clearLastError();
+
+            throw new RedisException($error);
+        }
+
+        return $result;
+    }
+
+    /**
+     * EXISTS on the connection, as the Storage and Queues lines probe it. phpredis answers an `ERR` reply (such as
+     * "ERR max number of clients reached") with false and keeps it in `getLastError()`: that reply is thrown here, as
+     * phpredis throws the other replies.
+     *
+     * @throws RedisException for an error reply phpredis did not throw
+     */
+    private function probe(Connection $connection, string $key): void
+    {
+        $client = $connection->client();
+        $phpredis = $client instanceof Redis || $client instanceof RedisCluster;
+
+        if ($phpredis) {
+            $client->clearLastError();
+        }
+
+        if ($connection->command('exists', [$key]) === false && $phpredis) {
+            $error = $client->getLastError();
+
+            // Without a reply: a connection problem, which gets the connectivity fix.
+            throw new RedisException(is_string($error) && $error !== '' ? $error : 'the server answered EXISTS with false');
+        }
+    }
+
+    /**
      * The Redis connection a collector failure comes from: Horizon's for the horizon collector, the queue's for a queue
      * of the queues collector (`queue:<connection>:<queue>`), else the package storage (attempts, batch links).
      */
@@ -1185,10 +1325,16 @@ final readonly class Diagnostics
                 ? CheckResult::warning($section, 'Enabled', 'no, but the stream settings are set: the stream command refuses to start', 'Set HORIZON_OBSERVABILITY_LIVE_ENABLED=true, or remove the HORIZON_OBSERVABILITY_LIVE_GRAFANA_* settings.')
                 : CheckResult::info($section, 'Enabled', 'no: the dashboard must be rendered with --live=off');
 
+            if ($pushTest) {
+                $results[] = CheckResult::error($section, 'Push test', 'not run: live is disabled', 'Set HORIZON_OBSERVABILITY_LIVE_ENABLED=true first.');
+            }
+
             return $results;
         }
 
-        $results[] = CheckResult::ok($section, 'Enabled', sprintf('poll endpoint %s (shared for %s s)', EndpointUrl::to($this->repository(), '/live'), TextFormat::number($config->liveCacheTtl)));
+        $results[] = CheckResult::ok($section, 'Enabled', sprintf('poll endpoint %s (%s)', EndpointUrl::to($this->repository(), '/live'), $config->liveCacheTtl > 0
+            ? sprintf('shared for %s s', TextFormat::number($config->liveCacheTtl))
+            : 'not cached: live.cache_ttl is 0, so every request builds its own snapshot'));
 
         if ($config->hasProblem('live.stream.id')) {
             $results[] = CheckResult::error($section, 'Stream id', sprintf('invalid: using "%s"', $config->liveStreamId), 'Set HORIZON_OBSERVABILITY_LIVE_STREAM_ID to 1-64 characters of A-Z, a-z, 0-9, _ and -, and render the dashboard with the same --live-stream-id.');
@@ -1214,7 +1360,7 @@ final readonly class Diagnostics
             ? CheckResult::ok($section, 'Stream token', 'set')
             : CheckResult::error($section, 'Stream token', 'missing', 'Set HORIZON_OBSERVABILITY_LIVE_GRAFANA_TOKEN to a Grafana service account token with role Editor (see php artisan horizon-observability:install).');
 
-        $results[] = $this->lastPush($section);
+        $results[] = $this->lastPush($section, $config);
 
         if ($pushTest) {
             array_push($results, ...$this->pushTest($section, $config));
@@ -1223,12 +1369,12 @@ final readonly class Diagnostics
         return $results;
     }
 
-    private function lastPush(string $section): CheckResult
+    private function lastPush(string $section, Config $config): CheckResult
     {
         try {
-            $meta = $this->container->make(AttemptStore::class)->meta();
+            $meta = $this->storageRead(static fn (AttemptStore $store): array => $store->meta());
         } catch (Throwable $e) {
-            return CheckResult::error($section, 'Last push', 'cannot be read: '.FailureReporter::describe($e), 'Fix the storage connection first (see Storage).');
+            return CheckResult::error($section, 'Last push', 'cannot be read: '.FailureReporter::describe($e), $this->storageFix($e, $config));
         }
 
         $failures = (int) ($meta['live_push_failures'] ?? 0);
@@ -1239,7 +1385,8 @@ final readonly class Diagnostics
             return CheckResult::warning($section, 'Last push', 'never'.$suffix, 'Run php artisan horizon-observability:stream under supervisord or systemd, then check its output.');
         }
 
-        $age = max(0.0, now()->getTimestamp() + (float) now()->format('u') / 1e6 - (float) $at);
+        // One reading of the clock: two calls can straddle a second boundary.
+        $age = max(0.0, (float) now()->format('U.u') - (float) $at);
 
         return $age > self::STALE_PUSH_SECONDS
             ? CheckResult::warning($section, 'Last push', sprintf('%d s ago%s: the live tiles are frozen', (int) $age, $suffix), 'Make sure php artisan horizon-observability:stream is running (and see its output), or run check --live-push-test.')

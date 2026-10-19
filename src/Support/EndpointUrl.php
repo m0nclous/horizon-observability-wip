@@ -14,7 +14,8 @@ use Illuminate\Contracts\Config\Repository;
  *
  * A domain URL takes the scheme and port of `app.url`, as Laravel's URL generator builds the URL of a domain route
  * (a scheme written in the domain is dropped, as `Route::getDomain()` drops it). A domain with route parameters
- * (`{tenant}.example.com`) names no single host and is ignored here.
+ * (`{tenant}.example.com`) names no single host: the URLs keep its parameters (`http://{tenant}.example.com/...`), so
+ * they say that the host depends on them, and {@see self::domain()} is null.
  *
  * @internal
  */
@@ -25,23 +26,46 @@ final class EndpointUrl
      */
     public static function domain(Repository $config): ?string
     {
+        $domain = self::bound($config);
+
+        return $domain === null || self::parameterised($config) ? null : $domain;
+    }
+
+    /**
+     * Whether the endpoints are bound to a domain with route parameters, such as `{tenant}.example.com`.
+     */
+    public static function parameterised(Repository $config): bool
+    {
+        return preg_match('/\{\w+\??\}/', self::bound($config) ?? '') === 1;
+    }
+
+    /**
+     * The domain the routes are bound to, route parameters included; null without one (or one that is no host).
+     */
+    private static function bound(Repository $config): ?string
+    {
         $domain = $config->get('horizon-observability.domain');
         $domain = is_string($domain) ? (string) preg_replace('#^https?://#i', '', trim($domain)) : '';
         $domain = rtrim($domain, '/');
 
-        return $domain === '' || preg_match('/[{}\s\/]/', $domain) === 1 ? null : $domain;
+        if ($domain === '' || preg_match('/[\s\/]/', $domain) === 1) {
+            return null;
+        }
+
+        // Braces only as route parameters, e.g. {tenant} or {tenant?}.
+        return preg_match('/[{}]/', (string) preg_replace('/\{\w+\??\}/', '', $domain)) === 1 ? null : $domain;
     }
 
     /**
      * The application root the endpoints answer on, without a trailing slash: `app.url` (http://localhost when it is
-     * not set), or `<scheme of app.url>://<domain>[:<port of app.url>]` with a domain.
+     * not set), or `<scheme of app.url>://<domain>[:<port of app.url>]` with a domain (its route parameters kept).
      */
     public static function root(Repository $config): string
     {
         $app = $config->get('app.url');
         $app = rtrim(is_string($app) ? trim($app) : '', '/');
         $app = $app === '' ? 'http://localhost' : $app;
-        $domain = self::domain($config);
+        $domain = self::bound($config);
 
         if ($domain === null) {
             return $app;

@@ -126,6 +126,56 @@ it('gives the other replies of a server that answered their fix', function (Thro
     'CROSSSLOT' => [new RedisClusterException("CROSSSLOT Keys in request don't hash to the same slot"), 'CROSSSLOT', 'Give the prefix of database.redis.default a hash tag with content, e.g. {app}: the keys of one command are in different slots of the cluster (see Storage, Prefix).'],
     'unknown command (Redis 7)' => [new RedisScriptFailed('reset_guard', "ERR unknown command 'EVAL', with args beginning with: "), 'UNKNOWN', 'The Redis of database.redis.default does not offer eval (a proxy or a managed Redis that disables it): point the connection at a Redis that runs EVAL, TIME and INFO, which the package needs.'],
     'unknown command (Redis 6.2)' => [new ServerException('ERR unknown command `TIME`, with args beginning with: '), 'UNKNOWN', 'The Redis of database.redis.default does not offer time (a proxy or a managed Redis that disables it): point the connection at a Redis that runs EVAL, TIME and INFO, which the package needs.'],
+    'max clients (phpredis)' => [new RedisException('ERR max number of clients reached'), 'MAXCLIENTS', 'Raise maxclients on the Redis of database.redis.default, or close idle clients (CLIENT LIST shows them): at its limit it refuses every new connection.'],
+    'max clients (a script, phpredis)' => [new RedisScriptFailed('reset_guard', 'ERR max number of clients reached'), 'MAXCLIENTS', 'Raise maxclients on the Redis of database.redis.default, or close idle clients (CLIENT LIST shows them): at its limit it refuses every new connection.'],
+    'CLUSTERDOWN' => [new RedisClusterException('CLUSTERDOWN The cluster is down'), 'CLUSTERDOWN', 'Wait until the Redis Cluster of database.redis.default is healthy again (CLUSTERDOWN: the cluster is down or a slot has no node), then run the check again; CLUSTER INFO shows its state.'],
+    'CLUSTERDOWN, no slot (predis)' => [new ServerException('CLUSTERDOWN Hash slot not served'), 'CLUSTERDOWN', 'Wait until the Redis Cluster of database.redis.default is healthy again (CLUSTERDOWN: the cluster is down or a slot has no node), then run the check again; CLUSTER INFO shows its state.'],
+    'TRYAGAIN' => [new RedisClusterException('TRYAGAIN Multiple keys request during rehashing of slot'), 'TRYAGAIN', 'Wait until the Redis Cluster of database.redis.default is healthy again (TRYAGAIN: a slot of the keys is being moved), then run the check again; CLUSTER INFO shows its state.'],
+]);
+
+it('gives a write refused for missing replicas the fix of the replicas', function (Throwable $e): void {
+    $reply = RedisErrorReply::of($e);
+
+    expect($reply?->code)->toBe('NOREPLICAS')
+        ->and($reply?->fix(REPLY_PLACE, null, ''))->toBe('Point database.redis.default at a primary with enough connected replicas, or lower its min-replicas-to-write: it refuses every write while fewer replicas acknowledge them (NOREPLICAS).');
+})->with([
+    ...replyRaised('NOREPLICAS Not enough good replicas to write.'),
+    // As Redis 7+ and Valkey answer a write inside a script.
+    'a write in a script (Redis 7, phpredis)' => [new RedisException('NOREPLICAS Not enough good replicas to write. script: 57493e521a7b48ef81d2616a5f384d79160bfcaf, on @user_script:39.')],
+    'a write in a script (Redis 6.2)' => [new RedisScriptFailed('reset_guard', 'ERR Error running script (call to f_57493e521a7b48ef81d2616a5f384d79160bfcaf): @user_script:39: @user_script: 39: -NOREPLICAS Not enough good replicas to write.')],
+]);
+
+it('names the command a script calls that the server does not offer', function (Throwable $e, ?string $command): void {
+    $reply = RedisErrorReply::of($e);
+
+    expect($reply?->code)->toBe('UNKNOWN')
+        ->and($reply?->command())->toBe($command)
+        ->and($reply?->fix(REPLY_PLACE, null, ''))->toBe(sprintf(
+            'The Redis of database.redis.default does not offer %s (a proxy or a managed Redis that disables it): point the connection at a Redis that runs EVAL, TIME and INFO, which the package needs.',
+            $command ?? 'that command',
+        ));
+})->with([
+    // The redis.pcall('TIME') of new_series.lua, as each server words it.
+    'Redis 7+ and Valkey 7.2' => [new RedisScriptFailed('new_series', 'ERR TIME failed: ERR Unknown Redis command called from script'), 'time'],
+    'Valkey 8' => [new RedisScriptFailed('new_series', 'ERR TIME failed: ERR Unknown command called from script'), 'time'],
+    'Redis 6.2, by line' => [new RedisScriptFailed('new_series', sprintf('ERR TIME failed: @user_script: %d: Unknown Redis command called from Lua script', replyLine('new_series', "redis.pcall('TIME')"))), 'time'],
+    // A redis.call() names the line on Redis 7+.
+    'Redis 7, redis.call() by line' => [new RedisScriptFailed('reset_guard', sprintf('ERR Unknown Redis command called from script script: 57493e521a7b48ef81d2616a5f384d79160bfcaf, on @user_script:%d.', replyLine('reset_guard', "redis.call('HSET', KEYS[1], 'run_id'"))), 'hset'],
+    'predis, the server error' => [new ServerException('ERR Unknown Redis command called from script script: 57493e521a7b48ef81d2616a5f384d79160bfcaf, on @user_script:3.'), null],
+]);
+
+it('gives any other reply of a server that answered a fix that never sends the user to the connection settings', function (Throwable $e, string $message): void {
+    $reply = RedisErrorReply::of($e);
+
+    expect($reply?->code)->toBe('ERROR')
+        ->and($reply?->message)->toBe($message)
+        ->and($reply?->fix(REPLY_PLACE, null, ''))->toBe('The Redis of database.redis.default answers with the error reply above, so the connection works: fix what the reply names on that server (see its log), then run the check again.');
+})->with([
+    'a word that only looks like a code' => [new ServerException('ERR BROOM is not a command; NOPERMISSION'), 'ERR BROOM is not a command; NOPERMISSION'],
+    'an ERR reply of phpredis' => [new RedisException('ERR Something the class does not know'), 'ERR Something the class does not know'],
+    'a code it does not know' => [new RedisClusterException('NEWCODE Something new'), 'NEWCODE Something new'],
+    'the reason of a script' => [new RedisScriptFailed('reset_guard', 'ERR Something the class does not know'), 'ERR Something the class does not know'],
+    'a reply in a cause' => [new RuntimeException('the batch links failed', previous: new ServerException('ERR Something the class does not know')), 'ERR Something the class does not know'],
 ]);
 
 it('finds no reply in a connection failure or outside Redis', function (Throwable $e): void {
@@ -137,7 +187,9 @@ it('finds no reply in a connection failure or outside Redis', function (Throwabl
     'a timeout of the script' => [new RedisScriptFailed('reset_guard', 'read error on connection')],
     'not from Redis' => [new RuntimeException('READONLY You can\'t write against a read only replica.')],
     'predis, refused' => [new ConnectionException(new StreamConnection(new Parameters), 'Connection refused [tcp://127.0.0.1:1]')],
-    'a word that only looks like one' => [new ServerException('ERR BROOM is not a command; NOPERMISSION')],
+    'predis, closed' => [new ConnectionException(new StreamConnection(new Parameters), 'Stream is already at the end [tcp://127.0.0.1:6379]')],
+    'lost' => [new RedisException('Connection lost')],
+    'a missing script file' => [new RedisScriptFailed('reset_guard', 'the file /app/resources/lua/reset_guard.lua is missing.')],
 ]);
 
 it('reads the reply of the cause', function (): void {

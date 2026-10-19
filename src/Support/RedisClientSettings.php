@@ -33,8 +33,9 @@ use Throwable;
  *   (the skeleton's), predis connects to the nodes of the cluster's slot map, and a node it does not find among the
  *   listed ones gets those `parameters` only.
  *
- * A connection's `url` is parsed first, as RedisManager does. Another client (`Redis::extend()`) is not modelled
- * ({@see self::known()}).
+ * A connection's `url` is parsed first, as RedisManager does: the options in its query win over the connection's keys
+ * (`ConfigurationUrlParser`), so a key in the query is read from "the url query of" the connection, and a fix line for
+ * it names the query. Another client (`Redis::extend()`) is not modelled ({@see self::known()}).
  *
  * @internal
  */
@@ -89,7 +90,7 @@ final readonly class RedisClientSettings
         $clusters = is_array($redis['clusters'] ?? null) ? $redis['clusters'] : [];
 
         if (! in_array($name, self::RESERVED, true) && is_array($redis[$name] ?? null)) {
-            return self::single($client, $name, self::parse($redis[$name]), $global, $base ?? 'database.redis.'.$name);
+            return self::single($client, $name, self::parse($redis[$name]), $global, $base ?? 'database.redis.'.$name, self::query($redis[$name]));
         }
 
         if ($name !== 'options' && is_array($clusters[$name] ?? null)) {
@@ -216,13 +217,16 @@ final readonly class RedisClientSettings
      * - phpredis, cluster: the cluster's own `options`;
      * - predis, one server: the connection;
      * - predis, cluster: the `parameters` (every node, also those learned from the slot map), and each listed node
-     *   that has the key without a positive value (a node's own value wins).
+     *   that has the key without a positive value (a node's own value wins);
+     * - a key in the query of the connection's `url` (one server): the url query, which wins over the connection's keys.
      *
      * @param  list<string>  $missing
+     * @param  array<string, float>  $values  the value to suggest per key (default 2.0)
      */
-    public function timeoutFix(array $missing): string
+    public function timeoutFix(array $missing, array $values = []): string
     {
-        $entries = implode(' and ', array_map(static fn (string $key): string => "'".$key."' => 2.0", $missing));
+        $value = static fn (string $key): string => self::decimal($values[$key] ?? 2.0);
+        $entries = implode(' and ', array_map(static fn (string $key): string => "'".$key."' => ".$value($key), $missing));
 
         if ($this->client === 'predis' && $this->cluster && $this->parameters !== null) {
             [$place, $exists] = $this->parameters;
@@ -238,13 +242,15 @@ final readonly class RedisClientSettings
 
             $fix = $exists
                 ? sprintf('Add %s to %s', $entries, $place)
-                : sprintf("Add 'parameters' => [%s] to %s", implode(', ', array_map(static fn (string $key): string => "'".$key."' => 2.0", $missing)), $place);
+                : sprintf("Add 'parameters' => [%s] to %s", implode(', ', array_map(static fn (string $key): string => "'".$key."' => ".$value($key), $missing)), $place);
 
             return $overriding === [] ? $fix : sprintf('%s, and %s to %s', $fix, $entries, implode(' and ', $overriding));
         }
 
+        $query = sprintf('Set %s in the url query of %s', implode(' and ', array_map(static fn (string $key): string => $key.'='.$value($key), $missing)), $this->base);
+
         if ($this->client === 'predis') {
-            return sprintf('Add %s to %s', $entries, $this->base);
+            return $this->inUrlQuery($missing) ? $query : sprintf('Add %s to %s', $entries, $this->base);
         }
 
         if ($this->cluster) {
@@ -253,21 +259,68 @@ final readonly class RedisClientSettings
 
         $options = [];
 
-        foreach ($this->connections[0] ?? [] as [$place, $values]) {
-            if ($place !== $this->base) {
-                $options[] = $values;
+        foreach ($this->connections[0] ?? [] as [$place, $settings]) {
+            if ($place !== $this->base && $place !== $this->urlPlace()) {
+                $options[] = $settings;
             }
         }
 
-        foreach ($options as $values) {
+        foreach ($options as $settings) {
             foreach ($missing as $key) {
-                if (array_key_exists($key, $values)) {
+                if (array_key_exists($key, $settings)) {
                     return sprintf('Add %s to the options of %s', $entries, $this->base);
                 }
             }
         }
 
-        return sprintf('Add %s to %s', $entries, $this->base);
+        return $this->inUrlQuery($missing) ? $query : sprintf('Add %s to %s', $entries, $this->base);
+    }
+
+    /**
+     * The read timeout of the client (phpredis `read_timeout`, predis `read_write_timeout`) and the place it comes
+     * from: the smallest positive one of its connections; null when one of them has none.
+     *
+     * @return array{0: float, 1: string}|null
+     */
+    public function readTimeout(): ?array
+    {
+        $key = $this->client === 'predis' ? 'read_write_timeout' : 'read_timeout';
+        $lowest = null;
+
+        foreach ($this->connections as $sources) {
+            [$value, $place] = $this->value($sources, $key);
+
+            if (! is_numeric($value) || (float) $value <= 0 || $place === null) {
+                return null;
+            }
+
+            if ($lowest === null || (float) $value < $lowest[0]) {
+                $lowest = [(float) $value, $place];
+            }
+        }
+
+        return $lowest;
+    }
+
+    /**
+     * Whether one of the keys comes from the query of the connection's `url` (one server).
+     *
+     * @param  list<string>  $keys
+     */
+    private function inUrlQuery(array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if ($this->value($this->connections[0] ?? [], $key)[1] === $this->urlPlace()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function urlPlace(): string
+    {
+        return 'the url query of '.$this->base;
     }
 
     /**
@@ -317,17 +370,19 @@ final readonly class RedisClientSettings
     /**
      * @param  array<array-key, mixed>  $connection  parsed, with its own `options`
      * @param  array<array-key, mixed>  $global
+     * @param  array<array-key, mixed>  $query  the options of the query of its `url`, which won over its keys
      */
-    private static function single(string $client, string $name, array $connection, array $global, string $base): self
+    private static function single(string $client, string $name, array $connection, array $global, string $base, array $query = []): self
     {
         $own = is_array($connection['options'] ?? null) ? $connection['options'] : [];
-        unset($connection['options']);
+        unset($connection['options'], $query['options']);
         $ownPlace = 'the options of '.$base;
+        $url = ['the url query of '.$base, $query];
         // Both connectors put a set connection `prefix` over the options.
         $prefix = $connection['prefix'] ?? self::first([[$ownPlace, $own], [self::GLOBAL_OPTIONS, $global]], 'prefix');
 
         if ($client !== 'predis') {
-            return new self($client, false, $base, [[[$ownPlace, $own], [self::GLOBAL_OPTIONS, $global], [$base, $connection]]], [], [], null, self::text($prefix));
+            return new self($client, false, $base, [[[$ownPlace, $own], [self::GLOBAL_OPTIONS, $global], $url, [$base, $connection]]], [], [], null, self::text($prefix));
         }
 
         if (array_key_exists('parameters', $own)) {
@@ -344,7 +399,7 @@ final readonly class RedisClientSettings
             $client,
             false,
             $base,
-            [[[$base, $connection], [$parameters[0], $defaults]]],
+            [[$url, [$base, $connection], [$parameters[0], $defaults]]],
             [[self::GLOBAL_OPTIONS, $global], [$ownPlace, $own]],
             [],
             null,
@@ -420,6 +475,35 @@ final readonly class RedisClientSettings
     }
 
     /**
+     * The options in the query of the connection's `url`, as ConfigurationUrlParser merges them over its keys (strings
+     * that are JSON become their value).
+     *
+     * @param  array<array-key, mixed>  $connection
+     * @return array<array-key, mixed>
+     */
+    private static function query(array $connection): array
+    {
+        $url = $connection['url'] ?? null;
+        $query = is_string($url) ? parse_url($url, PHP_URL_QUERY) : null;
+
+        if (! is_string($query) || $query === '') {
+            return [];
+        }
+
+        parse_str($query, $options);
+
+        return array_map(static function (mixed $value): mixed {
+            if (! is_string($value)) {
+                return $value;
+            }
+
+            $decoded = json_decode($value, true);
+
+            return json_last_error() === JSON_ERROR_NONE ? $decoded : $value;
+        }, $options);
+    }
+
+    /**
      * @param  list<array{0: string, 1: array<array-key, mixed>}>  $sources
      */
     private static function first(array $sources, string $key): mixed
@@ -436,6 +520,16 @@ final readonly class RedisClientSettings
     private static function text(mixed $value): string
     {
         return is_string($value) || is_int($value) ? (string) $value : '';
+    }
+
+    /**
+     * Seconds as a PHP float literal for a fix line: `2.0`, `7.5`.
+     */
+    public static function decimal(float $seconds): string
+    {
+        $text = rtrim(rtrim(number_format($seconds, 3, '.', ''), '0'), '.');
+
+        return str_contains($text, '.') ? $text : $text.'.0';
     }
 
     private static function positive(mixed $value): bool
