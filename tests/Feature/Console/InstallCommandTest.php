@@ -212,9 +212,10 @@ it('writes the token in place of a value Laravel reads as no value, and changes 
 })->with(installNoValueLines());
 
 it('gives the Docker stack the token it writes in place of null', function (): void {
-    file_put_contents($this->base.'/.env', "APP_NAME=\"My Shop\"\nAPP_ENV=local\nHORIZON_OBSERVABILITY_TOKEN=null\n");
+    // An API token Laravel reads as no value: the job lists take the token, and so must the stack.
+    file_put_contents($this->base.'/.env', "APP_NAME=\"My Shop\"\nAPP_ENV=local\nHORIZON_OBSERVABILITY_TOKEN=null\nHORIZON_OBSERVABILITY_API_TOKEN=(NULL)\n");
 
-    [$code] = install(['--docker' => true]);
+    [$code, $output] = install(['--docker' => true]);
     $token = installToken($this->base);
     $config = new Process(['docker', 'compose', '-f', DockerStack::COMPOSE_FILE, 'config', '--format', 'json'], $this->base);
     $config->run();
@@ -223,6 +224,8 @@ it('gives the Docker stack the token it writes in place of null', function (): v
     // docker compose reads .env itself, without Laravel's literals: "null" would have become Bearer null.
     expect($code)->toBe(0)
         ->and($token)->toMatch('/^[A-Za-z0-9]{40}$/')
+        ->and(file_get_contents($this->base.'/.env'))->toEndWith("\nHORIZON_OBSERVABILITY_API_TOKEN=\n")
+        ->and($output)->toContain('(emptied in .env: docker compose would send "(NULL)", Laravel reads both as no value)')
         ->and($config->getExitCode())->toBe(0, $config->getErrorOutput())
         ->and($resolved['services']['prometheus']['environment']['HORIZON_OBSERVABILITY_TOKEN'])->toBe($token)
         ->and($resolved['services']['grafana']['environment']['HORIZON_OBSERVABILITY_API_TOKEN'])->toBe($token);
@@ -232,6 +235,14 @@ it('gives the Docker stack the token it writes in place of null', function (): v
 
     expect($again)->toBe(0)
         ->and(installFiles($this->base))->toBe($files);
+
+    // A real API token is never changed, and the stack sends it.
+    file_put_contents($this->base.'/.env', "APP_ENV=local\nHORIZON_OBSERVABILITY_TOKEN={$token}\nHORIZON_OBSERVABILITY_API_TOKEN=api-token-0123456789abcdef\n");
+    install(['--docker' => true]);
+    $config->run();
+
+    expect(file_get_contents($this->base.'/.env'))->toEndWith("\nHORIZON_OBSERVABILITY_API_TOKEN=api-token-0123456789abcdef\n")
+        ->and(json_decode($config->getOutput(), true)['services']['grafana']['environment']['HORIZON_OBSERVABILITY_API_TOKEN'])->toBe('api-token-0123456789abcdef');
 })->skip(function (): bool {
     $probe = new Process(['docker', 'compose', 'version']);
     $probe->run();

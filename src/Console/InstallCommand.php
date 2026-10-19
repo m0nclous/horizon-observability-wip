@@ -55,6 +55,8 @@ final class InstallCommand extends Command
 {
     public const TOKEN_ENV = 'HORIZON_OBSERVABILITY_TOKEN';
 
+    public const API_TOKEN_ENV = 'HORIZON_OBSERVABILITY_API_TOKEN';
+
     public const TOKEN_LENGTH = 40;
 
     public const DEFAULT_GRAFANA_URL = 'http://localhost:3000';
@@ -314,6 +316,7 @@ final class InstallCommand extends Command
     {
         $this->newLine();
         $this->line(sprintf('  <options=bold>Docker stack</> (Prometheus and %s, the app at %s):', $stack->grafanaImage(), OutputFormatter::escape($stack->app->toString())));
+        $this->composeApiToken();
 
         foreach ($stack->files() as $relative => $contents) {
             $this->components->twoColumnDetail($relative, $this->writeFile($files, $relative, $contents));
@@ -323,6 +326,38 @@ final class InstallCommand extends Command
 
         if ($token === null) {
             $this->components->warn('No token is set: docker compose needs '.self::TOKEN_ENV.' in .env.');
+        }
+    }
+
+    /**
+     * docker compose reads `.env` itself, without Laravel's literals: `HORIZON_OBSERVABILITY_API_TOKEN=null` is no
+     * value for the app (the job lists take the token) but the bearer "null" for Infinity. Such a line becomes empty,
+     * which both read as no value (compose then falls back to the token); a value is never changed.
+     */
+    private function composeApiToken(): void
+    {
+        $env = $this->laravel->environmentFilePath();
+        $contents = is_file($env) ? (string) file_get_contents($env) : '';
+        $literal = EnvFile::value($contents, self::API_TOKEN_ENV);
+
+        if ($literal === null || $literal === '' || ! EnvFile::hasNoValue($contents, self::API_TOKEN_ENV)) {
+            return;
+        }
+
+        $line = sprintf('%s=%s', self::API_TOKEN_ENV, OutputFormatter::escape($literal));
+
+        if ($this->option('no-env') === true) {
+            $this->components->warn(sprintf('docker compose reads %s in .env as the token "%s": leave the value empty, which Laravel reads as no value too.', $line, OutputFormatter::escape($literal)));
+
+            return;
+        }
+
+        try {
+            EnvFile::write($env, self::API_TOKEN_ENV, '');
+            $this->components->twoColumnDetail(self::API_TOKEN_ENV, sprintf('<fg=green>(emptied in .env: docker compose would send "%s", Laravel reads both as no value)</>', OutputFormatter::escape($literal)));
+        } catch (Throwable $e) {
+            $this->failed = true;
+            $this->components->error(FailureReporter::describe($e).sprintf(' Leave the value of %s empty in .env: docker compose reads it as a token.', $line));
         }
     }
 
