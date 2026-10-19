@@ -107,25 +107,26 @@ None.
 
 ## Stage timings
 
-Seconds per stage of the slice (S01 and S02 on both versions; `timings.json` of the run). The CI column is the first
-green run of the `dashboard-truth` job on the draft PR (run 39257113648, ubuntu-24.04, 2 vCPU, cold caches), which
-feeds the 15-minute bound of the PR set (design section 12).
+Seconds per stage of the slice (S01 and S02 on both versions; `timings.json` of the run). The CI column is the range
+of the first two green runs of the `dashboard-truth` job on the draft PR (runs 39257113648 and 39258521067,
+ubuntu-24.04, 2 vCPU), which feeds the 15-minute bound of the PR set (design section 12).
 
 | Stage | Local (24 threads, slot 30) | CI runner (ubuntu-24.04, 2 vCPU) |
 |---|---|---|
 | setup (job start to the suite: Redis service, checkout, PHP, Composer, Playwright with its system packages, plugins) | - | 65 |
-| record (one dataset, 1 h 40 min, 600 scrapes) | 6.0 | 4.4 |
-| ingest (55,869 samples; includes waiting for Prometheus) | 1.2 | 1.8 |
-| stack (Grafanas healthy, router, imports, plan) | 1.7-3.0 | 1.7 |
-| capture (2 cases x 2 versions, two browsers in parallel) | 8.9-9.4 | 11.0 |
-| assert (3 frame comparisons per range target incl. the replays, DOM, checks, gate) | 0.6 | 0.6 |
-| slice total (`bin/run`) | 19-20 | 20 |
-| mutant `completed-retried` (stack, capture, assert of S01) | 5.6 | 7.1 |
-| whole job (queue excluded) | - | 101 |
+| record (one dataset, 1 h 40 min, 600 scrapes) | 5.8-6.3 | 4.4-7.4 |
+| ingest (55,869 samples; includes waiting for Prometheus) | 1.2-1.5 | 1.8-2.0 |
+| stack (Grafanas healthy, router, imports, plan) | 1.2-3.0 | 1.7-2.2 |
+| capture (2 cases x 2 versions, two browsers in parallel) | 8.7-9.4 | 11.0-15.3 |
+| assert (3 frame comparisons per range target incl. the replays, DOM, checks, gate) | 0.6 | 0.6-0.9 |
+| slice total (`bin/run`) | 18-20 | 20-28 |
+| mutant `completed-retried` (stack, capture, assert of S01) | 5.6 | 7.1-9.7 |
+| whole job (queue excluded) | - | 97-101 |
 
-Capture dominates: 4.4 to 5.6 s per page load on the runner (one Chromium per version, in parallel), so the 31 page
-loads per version of the PR set need about 2.5 to 3 minutes. Recording grows with the scrapes: about 7 ms per
-in-process scrape with workers on the runner, so the 9,000 scrapes of the six datasets need about 1 to 1.5 minutes.
+Capture dominates: 4.4 to 8.1 s per page load on the runner (one Chromium per version, in parallel), so the 31 page
+loads per version of the PR set need about 2.5 to 4.5 minutes. Recording grows with the scrapes: 7 to 12 ms per
+in-process scrape with workers on the runner, so the 9,000 scrapes of the six datasets need about 1 to 2 minutes.
+With setup, ingest and assert the PR set stays near 10 minutes, inside the 15-minute bound.
 
 ## Known limits (WP1)
 
