@@ -546,5 +546,18 @@ skip reason names the item, so a fix turns them into regression tests.
     chunk; Arch Q7 tree and ADDENDUM C2.4 lack new_series.lua, Redis/ServerClock and the new @internal methods.
 11. T15 deferrals: the blocking weekly e2e with the perf report and the poll/stream live screenshots, the Appendix H mapping
     audit.
+13. Dashboard (T13 final verification): the batch-kind exclusion in every attempts query is built from instant
+    selectors, so with a Batch filter a class that is no longer exported at the period end (failed scrape at the end, an
+    app stopped inside the period) slips past it and the tables overcount (936 vs 351); take the exclusion's class sets
+    over the period, like Selection::queues($__range). The `queue` variable comes from the instant pending gauge
+    (allValue null), so after a reload the queues of an app decommissioned inside the period are filtered out of tiles
+    and tables alike.
+14. Installer and docs (T15 cold read and writers): with --docker, install prints http://localhost:3000 whatever
+    GRAFANA_PORT is (InstallCommand::DEFAULT_GRAFANA_URL), and its stream-mode curl lines too; DockerStack's compose
+    header hard-codes port 8000; a fresh skeleton's install prints the read_timeout fix of item 2 to every new user; the
+    CI dist job does not require resources/ or UPGRADE.md in the archive; the tests.yml header still says the e2e job is
+    "non-blocking until T15"; the compose `stream` service restart-loops until docker/grafana/live-token exists; the PR
+    template says "Unreleased" while the CHANGELOG uses "[0.1.0] - Unreleased"; the links to the security advisories
+    form and Discussions work only after the transfer to sushi-market and once both are enabled in the repository.
 12. Process: the frozen board tooling branch `wip/board-sync` (owner, 2026-10-19), only if the board is kept after the
     repository transfer.
