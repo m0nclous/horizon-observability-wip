@@ -9,10 +9,10 @@ use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * ADDENDUM R2.4 O2 (Q9' WP8C acceptance): Job's "All" is `.+`, and the Batch filter reaches the panels as the batch
- * scope `(<selector> unless on (job_class) <classes outside the selected kinds>)` of every job-filtered selector.
- * The legacy mechanism put the classes of the selected kinds into Job's "All" (`job_class=~"(A|B|...)"`), which
- * Grafana inlined into every one of those selectors (2 MB of PromQL per refresh on the reference profile).
+ * Job's "All" is `.+`, and the Batch filter reaches the panels as the batch scope
+ * `(<selector> unless on (job_class) <classes outside the selected kinds>)` of every job-filtered selector. The legacy
+ * mechanism put the classes of the selected kinds into Job's "All" (`job_class=~"(A|B|...)"`), which Grafana inlined
+ * into every one of those selectors (2 MB of PromQL per refresh on the reference profile).
  *
  * Equality with the legacy output: every panel expression of the committed render is evaluated twice by promtool on
  * the medium perf profile (one application, 20 minutes at 1 minute), with Batch "All" and with Batch = one kind:

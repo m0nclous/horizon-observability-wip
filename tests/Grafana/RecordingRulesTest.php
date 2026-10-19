@@ -10,9 +10,9 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 use Symfony\Component\Yaml\Yaml;
 
 /*
- * ADDENDUM R2.4 O9: the opt-in recording rules (`--recording-rules`) sum the attempt counter and the duration
- * histogram per queue, the replicas deduplicated, scoped to the rendered job, in a rule file of its own. The default
- * render has no rule file, and the dashboard never reads a recorded series.
+ * The opt-in recording rules (`--recording-rules`) sum the attempt counter and the duration histogram per queue, the
+ * replicas deduplicated, scoped to the rendered job, in a rule file of its own. The default render has no rule file,
+ * and the dashboard never reads a recorded series.
  */
 
 pest()->group('grafana');

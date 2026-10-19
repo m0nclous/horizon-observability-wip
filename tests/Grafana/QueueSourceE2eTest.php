@@ -8,11 +8,10 @@ use Illuminate\Support\Facades\Http;
 use Symfony\Component\Process\Process;
 
 /*
- * ADDENDUM R2.4 O5, Q9' WP8C acceptance (e2e): the queue tables (#5, one copy per supervisor) read the hidden
- * queue source #24 through the -- Dashboard -- datasource. In a real Grafana with data, every copy shows rows, while
- * #23's script hides itself and #24 in the top grid row, and a queue of two supervisors has its full row in both
- * copies. Runs against the stack of the CI e2e job (GRAFANA_URL, DASHBOARD_UID; the workbench supervisors) with
- * Playwright; skipped without them.
+ * End to end: the queue tables (#5, one copy per supervisor) read the hidden queue source #24 through the
+ * -- Dashboard -- datasource. In a real Grafana with data, every copy shows rows, while #23's script hides itself and
+ * #24 in the top grid row, and a queue of two supervisors has its full row in both copies. Runs against the stack of
+ * the CI e2e job (GRAFANA_URL, DASHBOARD_UID; the workbench supervisors) with Playwright; skipped without them.
  */
 
 pest()->group('e2e');
@@ -61,7 +60,7 @@ it('fills every copy of the queue table from the hidden source', function (): vo
         ->and($result['errors'])->toBe([]);
 });
 
-it('shows the full row of a queue of two supervisors in both copies (T13 QA round 2)', function (): void {
+it('shows the full row of a queue of two supervisors in both copies', function (): void {
     // The workbench has no queue of two supervisors: the copy gives supervisor-slow the queues of supervisor-default
     // in the rows of the source (query M of #24); every value of a row is per queue
     $dashboard = Rendered::dashboard();

@@ -7,9 +7,9 @@ use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * T13 QA round 4 (adversarial), owner decision 13 and ADDENDUM R2.4 O4: "the last point (`end()`, the one whose step
- * reaches `${__to}`) ends at their values at `${__to}`", so the points add up to the period count. The last point is
- * chosen with `vector(time()) + STEP > ${__to:date:seconds}`, and Grafana's frontend formats `${__to:date:seconds}` as
+ * The last point of the Completed and Failed tiles (`end()`, the one whose step reaches `${__to}`) ends at the series'
+ * values at `${__to}`, so the points add up to the period count. The last point is chosen with
+ * `vector(time()) + STEP > ${__to:date:seconds}`, and Grafana's frontend formats `${__to:date:seconds}` as
  * Math.round(to / 1000) (12.4.13 and 13.2.4 alike), while the range query ends at the step-aligned point at or before
  * the exact `to` in milliseconds. When `to` lies less than half a second before one of Grafana's points, the rounded
  * end is that point: no point satisfies the test, the last point counts its inner step (PREV, PREV + step], and where
@@ -77,4 +77,4 @@ it('counts the last step up to the period end when the end rounds up onto a poin
         static fn (string $line): string => preg_match('/^\s*expr: /', $line) === 1 ? substr($line, 0, 70).'...' : $line,
         explode("\n", $output),
     )));
-})->skip('T19 patch backlog item 5: the last tile step stops short of the period end under a UTC offset that is not a multiple of the step');
+})->skip('Known issue #31: the last tile step stops short of the period end under a UTC offset that is not a multiple of the step');

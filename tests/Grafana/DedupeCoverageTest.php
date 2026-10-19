@@ -11,13 +11,13 @@ use DF\HorizonObservability\Metrics\Metric;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * C7 (Arch Appendix H; Arch Q1.5 and Q5.6 step 10): two replicas of the application export the same storage under
- * different `instance` labels, so every package selector, or the range function around it, sits in
+ * Two replicas of the application export the same storage under different `instance` labels, so a plain sum would count
+ * every value once per replica: every package selector, or the range function around it, sits in
  * `max by (job, <the family's catalog labels>[, le]) (...)`. This test tokenises every expression of the committed
  * dashboards and alert rules (off, poll, stream) and checks each package selector's wrapper and its label list. The
  * stall rule <uid>-live of the stream mode is `max by (job) (timestamp(x) - x)` on the raw series, deduplicated by the
- * outer max (Arch Q5.7 item 2, ADDENDUM R4.11). The e2e half of C7 compares a two-replica scrape with a single one
- * (bin/perf.mjs compare, CI e2e job).
+ * outer max. The e2e half of this check compares a two-replica scrape with a single one (bin/perf.mjs compare, CI e2e
+ * job).
  */
 
 pest()->group('grafana');
@@ -176,7 +176,7 @@ it('wraps every package selector of the committed renders in the dedupe of its c
             continue;
         }
 
-        // The age of the last live push at scrape time needs the raw series (ADDENDUM R4.11)
+        // The age of the last live push at scrape time needs the raw series
         if ($where === 'rule horizon-observability-live A') {
             expect(isLiveStallRule($expr))->toBeTrue($expr);
 
@@ -225,7 +225,7 @@ it('wraps the selectors of every alert rule and of a pinned job', function (Live
     $problems = [];
 
     foreach (Rendered::expressions((new DashboardBuilder($options))->build(), (new AlertRulesBuilder($options))->build()) as $where => $expr) {
-        // The health rules look at each replica on purpose (Arch Q1.5, Q5.3): the duplicates rule counts them, the
+        // The health rules look at each replica on purpose: the duplicates rule counts them, the
         // collector rule finds a collector that fails on one of them; the stall rule dedupes outside timestamp()
         if ($where === 'rule queues-live A') {
             expect(isLiveStallRule($expr))->toBeTrue($expr);

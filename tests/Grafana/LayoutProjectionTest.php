@@ -10,11 +10,11 @@ use DF\HorizonObservability\Tests\Grafana\Support\LayoutProjection;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * The layout projection (Arch Q5.6, Q5.7) must not change while WP8B rewrites the queries: panel ids, types,
- * titles, grid positions, repeat options and row membership, and the look of every panel. The reference is the
- * projection of the pilot's dashboard, frozen in tests/Fixtures/grafana/default/layout-projection.json. The
- * --live=off render keeps it exactly; the poll and stream renders deviate only as ADDENDUM R4.1 lists (owner
- * decision 9): the row title "Live Overview" and the look of the live tiles R4.8 gives.
+ * The layout projection must not change while the queries change: panel ids, types, titles, grid positions, repeat
+ * options and row membership, and the look of every panel. The reference is the projection of the pilot's dashboard,
+ * frozen in tests/Fixtures/grafana/default/layout-projection.json. The --live=off render keeps it exactly; the poll and
+ * stream renders deviate only by the accepted look deviations of the live modes (README, "Live Overview modes"): the
+ * row title "Live Overview" and the look of the live tiles that LiveShapes gives.
  */
 
 pest()->group('grafana');
@@ -66,8 +66,8 @@ it('pins the layout', function (LiveMode $mode): void {
 })->with(Rendered::modes());
 
 it('keeps the layout and the look of the legacy dashboard', function (DashboardOptions $options): void {
-    // The frozen projection of the pilot's dashboard (Arch Q5.6) with the documented WP8C changes: no option may
-    // change the look
+    // The frozen projection of the pilot's dashboard with the documented changes of the dashboard optimisations: no
+    // option may change the look
     $dashboard = renderedDashboard($options);
 
     expect(LayoutProjection::full($dashboard))->toBe(LayoutProjection::optimised(LayoutProjection::frozen(), $dashboard));
@@ -83,7 +83,7 @@ it('keeps the look of the committed off render', function (): void {
     expect(LayoutProjection::full($off))->toBe(LayoutProjection::optimised(LayoutProjection::frozen(), $off));
 });
 
-it('changes the look of the live renders only as ADDENDUM R4.1 lists', function (LiveMode $mode, DashboardOptions $options, DashboardOptions $off): void {
+it('changes the look of the live renders only by the accepted live-mode deviations', function (LiveMode $mode, DashboardOptions $options, DashboardOptions $off): void {
     $live = renderedDashboard($options);
     $offDashboard = renderedDashboard($off);
     $expected = LayoutProjection::live($mode, LayoutProjection::optimised(LayoutProjection::frozen(), $offDashboard), $offDashboard);
@@ -105,7 +105,7 @@ it('changes the look of the live renders only as ADDENDUM R4.1 lists', function 
     ],
 ]);
 
-it('keeps the look of the committed live renders but for ADDENDUM R4.1', function (LiveMode $mode): void {
+it('keeps the look of the committed live renders but for the accepted live-mode deviations', function (LiveMode $mode): void {
     $off = Rendered::dashboard(LiveMode::Off);
 
     expect(LayoutProjection::full(Rendered::dashboard($mode)))

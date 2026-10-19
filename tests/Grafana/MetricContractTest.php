@@ -8,9 +8,9 @@ use DF\HorizonObservability\Metrics\Metric;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * Arch Q5.7 item 2, the families: every <ns>_<name> in the committed dashboards and alert rules (off, poll, stream) is
- * a family of the catalog (Metrics\Metric), after stripping the histogram suffixes _bucket, _sum and _count. The only
- * label outside the catalog is the batch-scope sentinel __batch_scope__ (ADDENDUM R2.4 O2).
+ * The metric contract: every <ns>_<name> in the committed dashboards and alert rules (off, poll, stream) is a family of
+ * the catalog (Metrics\Metric), after stripping the histogram suffixes _bucket, _sum and _count. The only label outside
+ * the catalog is the batch-scope sentinel __batch_scope__.
  */
 
 pest()->group('grafana');
@@ -92,7 +92,7 @@ it('matches the selectors by name only on labels of their families, job and the 
                     $wrong[] = $where.': {__name__=~"'.$names.'"} has no label '.$label;
                 }
 
-                // The sentinel no stored series carries (ADDENDUM R2.4 O2): only as the Batch switch
+                // The sentinel no stored series carries: only as the Batch switch
                 if ($label === Promql::BATCH_SCOPE) {
                     $sentinels++;
 

@@ -7,17 +7,16 @@ use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * T13 QA round 4 (adversarial), owner decision 13: a series that stops inside the range. Since the round 4 fix
- * (5075855) Attempts::delta() counts each series (job, connection, queue, job_class, status) from its own start to its
- * own end, then sums by (queue, job_class, status). The start has a lookback and a fallback (the first value in the
- * range); the end is the instant value at the period end (5-minute lookback, and none after a staleness marker), with
- * no fallback. So a series without a value at the period end loses every attempt it made inside the range: the queue
- * tables (#5 read #24 C), the Jobs table #6 B, the Success caption and threshold base of the Failed tile (#4 B/C) and
- * the Batches columns (#17) leave it out, while the tiles (#8 A, #4 A, Attempts::perStepTotal()) and the per-step
- * graph #14 count it step by step.
+ * A series that stops inside the range. Since the per-series start (5075855), Attempts::delta() counts each series
+ * (job, connection, queue, job_class, status) from its own start to its own end, then sums by (queue, job_class,
+ * status). The start has a lookback and a fallback (the first value in the range); the end is the instant value at the
+ * period end (5-minute lookback, and none after a staleness marker), with no fallback. So a series without a value at
+ * the period end loses every attempt it made inside the range: the queue tables (#5 read #24 C), the Jobs table #6 B,
+ * the Success caption and threshold base of the Failed tile (#4 B/C) and the Batches columns (#17) leave it out, while
+ * the tiles (#8 A, #4 A, Attempts::perStepTotal()) and the per-step graph #14 count it step by step.
  *
- * A series stops when its scrape job is removed or renamed, when the application moves to the dedicated scrape job
- * that ADDENDUM R3.2 recommends, when a Redis connection is renamed and when an application is decommissioned: after a
+ * A series stops when its scrape job is removed or renamed, when the application moves to the scrape job of its own
+ * that the README recommends, when a Redis connection is renamed and when an application is decommissioned: after a
  * configuration reload Prometheus writes no staleness markers for a removed job, so its series fall out of the instant
  * vector's 5-minute lookback 5 minutes after their last sample. A target that service discovery removes, and every
  * failed scrape of a single-replica application (a deploy, a timeout), writes staleness markers at once (the replica
@@ -27,14 +26,13 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
  * old job alone: 0 in the tables, 2,205 on the tile and in the samples); with the application paused until a scrape
  * failed, the tables showed 0 and the tiles 2,043, the raw-sample count.
  *
- * In the "moved" case the round 3 form (the sum by (queue, job_class, status) before the difference) was exact: the
- * new job's series continue the old job's values in the same sum, so the sum's start and end match (300: the
- * storage's 150 and c's 150). The per-series start of round 4 drops the old job's part of the range: 230 where the tiles
- * count 290.
+ * In the "moved" case the earlier form (the sum by (queue, job_class, status) before the difference) was exact: the new
+ * job's series continue the old job's values in the same sum, so the sum's start and end match (300: the storage's 150
+ * and c's 150). The per-series start drops the old job's part of the range: 230 where the tiles count 290.
  *
  * Every panel as rendered (the package render), evaluated with the variables as Grafana sends them (Promtool), at
  * 20m for the range (5m, 20m], samples every minute. Application c runs throughout and completes 10 jobs a minute
- * (150 in the range). The expected values are the per-series attempts in the range (T16: a series that appears
+ * (150 in the range). The expected values are the per-series attempts in the range (a series that appears
  * counts from its first value), which the tiles already show: what a table must show to agree with the tiles.
  */
 
@@ -124,9 +122,9 @@ it('counts the attempts of a series that stops inside the range in every table, 
 
     expect($status)->toBe(0, round4StopOutput($output));
 })->with([
-    // The application moves from scrape job a to the dedicated job b at 12m (R3.2): a's last sample is at 11m, b
-    // exports the same counter from 12m. a: 150 -> 210 (60), b: 220 -> 300 (80), c: 150. The committed render's
-    // tables count 230; the round 3 render counted 300.
+    // The application moves from scrape job a to the dedicated job b at 12m: a's last sample is at 11m, b exports the
+    // same counter from 12m. a: 150 -> 210 (60), b: 220 -> 300 (80), c: 150. The committed render's tables count 230;
+    // the render before per-series starts counted 300.
     'the scrape job replaced by another one (moved, renamed)' => [[
         ['a', 'redis', '100+10x11'],
         ['b', 'redis', '_x12 220+10x8'],

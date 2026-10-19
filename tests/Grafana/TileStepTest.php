@@ -7,21 +7,20 @@ use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * Owner decision 13, T13 QA round 3 finding 2: the Completed (#8 A) and Failed (#4 A) tiles add up to the table count
- * (#24 C, Attempts::delta()) and to the truth at the graph steps Grafana really sends, also when a series appears
- * between two step boundaries. At 1920 px and 10-second scrapes the Completed tile gets 10 s steps for a 1-hour range
- * and 1 minute for 6 hours, the Failed tile 15 s and 2 minutes; the graph #14 (full width) 10 s and 15 s. The round 2
- * form counted a series from the first subquery point after its first sample, so it lost the attempts of its first
- * partial step whenever the step was longer than the scrape interval (and T16's 90-second hold at 0 does not always
- * contain a 2-minute boundary).
+ * The Completed (#8 A) and Failed (#4 A) tiles add up to the table count (#24 C, Attempts::delta()) and to the truth at
+ * the graph steps Grafana really sends, also when a series appears between two step boundaries. At 1920 px and
+ * 10-second scrapes the Completed tile gets 10 s steps for a 1-hour range and 1 minute for 6 hours, the Failed tile
+ * 15 s and 2 minutes; the graph #14 (full width) 10 s and 15 s. An earlier form counted a series from the first
+ * subquery point after its first sample, so it lost the attempts of its first partial step whenever the step was longer
+ * than the scrape interval (and the exporter's 90-second hold at 0 does not always contain a 2-minute boundary).
  *
  * The scenario, at 10-second scrapes: an old class; classes that appear with a history (1000) at every 10-second phase
  * of a 2-minute step, near the period start, in the middle and near the period end; classes created inside the range
- * and held at 0 for 90 s by the exporter (T16) at every phase; one created before the start whose hold ends inside the
+ * and held at 0 for 90 s by the exporter at every phase; one created before the start whose hold ends inside the
  * range; one still held at the end; and a class with a 4-minute scrape gap (shorter than the tiles' 10-minute lookback
  * and than Prometheus' 5 minutes, which the step edges of #14 use: no attempt is lost). The truth is computed from the
  * samples: per series the last value at the end minus the last value at the start, or minus its first value when it
- * appears inside the range (owner decision 13, T16: a first value is never counted). The period ends now (no samples
+ * appears inside the range (a first value is never counted). The period ends now (no samples
  * after it) or in the past (samples go on: a series that appears after the end is not counted).
  *
  * Grafana's range query (points from the start rounded down to the step up to the end, reduced with sum) evaluates
@@ -126,7 +125,7 @@ function tileStepFirstIn(array $samples, int $after, int $until): ?int
 }
 
 /**
- * The attempts of a series in ($after, $until] (T16 rule): its last value at the end minus its last value at the start,
+ * The attempts of a series in ($after, $until]: its last value at the end minus its last value at the start,
  * or minus its first value when it appears inside.
  *
  * @param  list<int|null>  $samples

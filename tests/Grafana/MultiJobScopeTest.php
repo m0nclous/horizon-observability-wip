@@ -10,12 +10,12 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 use Workbench\App\Perf\SyntheticModel;
 
 /*
- * T13 QA round 1 (adversarial): the default render scopes every package selector to the hidden prometheus_job
- * variable with All (`.+`) selected (Arch Q5.2), so one render serves every application a Prometheus scrapes. Two
- * applications (two scrape jobs, e.g. staging and production of one code base) share supervisor, queue and batch
- * names. Every expression of the dashboard must still evaluate with All selected: an evaluation error empties the
- * variable or the panel (here: `found duplicate series for the match group` on the right-hand side of a one-to-one or
- * group_left match that keeps `job`).
+ * The default render scopes every package selector to the hidden prometheus_job variable with All (`.+`) selected, so
+ * one render serves every application a Prometheus scrapes. Two applications (two scrape jobs, e.g. staging and
+ * production of one code base) share supervisor, queue and batch names. Every expression of the dashboard must still
+ * evaluate with All selected: an evaluation error empties the variable or the panel (here:
+ * `found duplicate series for the match group` on the right-hand side of a one-to-one or group_left match that keeps
+ * `job`).
  *
  * The input is the perf profile (Workbench\App\Perf\SyntheticModel, medium) for two jobs, 20 minutes at 1 minute.
  * Each expression is wrapped as `count(<expr>) * 0 or vector(0)`, which is `{} 0` unless the evaluation fails.
@@ -92,7 +92,7 @@ it('evaluates every expression with All jobs when two applications share supervi
     // The panels and variables that fail, by the comment line each test expression starts with
     preg_match_all('/# ((?:panel|variable|rule) [^\\\\"]+?)\\\\n/', $output, $failing);
 
-    // 69 since WP8C O6 merged the attempts columns of the queue and job tables into one query each
+    // 69 since the attempts columns of the queue and job tables come from one query each
     expect(count($tests))->toBeGreaterThan(60)
         ->and($failing[1])->toBe([])
         ->and($status)->toBe(0, substr($output, 0, 4000));

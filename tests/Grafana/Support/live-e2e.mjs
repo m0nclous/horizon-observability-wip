@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// End-to-end check of the rendered live tiles (ADDENDUM R4.8, Q9' WP8D), run by tests/Grafana/LiveE2eTest.php.
+// End-to-end check of the rendered live tiles, run by tests/Grafana/LiveE2eTest.php.
 //
 //   node tests/Grafana/Support/live-e2e.mjs --grafana http://localhost:3000 --uid <dashboard uid> --mode poll|stream
 //        [--app http://localhost:8000] [--token workbench-token-0123456789abcdef] [--seconds 20]

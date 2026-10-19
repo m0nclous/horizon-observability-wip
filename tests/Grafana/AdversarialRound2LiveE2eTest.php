@@ -11,14 +11,14 @@ use Illuminate\Support\Facades\Http;
 use Symfony\Component\Process\Process;
 
 /*
- * T13 QA round 2 (adversarial), e2e on the stack of the CI e2e job (GRAFANA_URL with admin access, APP_URL, Horizon
- * and load running, a Prometheus datasource with uid "prometheus"); skipped without it. Run on Grafana 12.4.13 and
- * 13.2.4 in the QA round 2 stack, both fail:
+ * End to end on the stack of the CI e2e job (GRAFANA_URL with admin access, APP_URL, Horizon and load running, a
+ * Prometheus datasource with uid "prometheus"); skipped without it. Both checks failed on Grafana 12.4.13 and 13.2.4
+ * before the fix:
  *
  * - With a Job filter the poll render's Completed caption reads "RPM: —" where the --live=off render shows the RPM of
  *   the selected class ("RPM: 40", "RPM: 49"): the snapshot has no throughput with a Job or Batch filter, and unlike
- *   Pending and Delayed (merge falls back to the Prometheus value) the caption has no fallback. ADDENDUM R4.1 does not
- *   list this deviation (owner decision 9 accepted only the listed ones).
+ *   Pending and Delayed (merge falls back to the Prometheus value) the caption has no fallback. It is not one of the
+ *   accepted look deviations of the live modes (README, "Live Overview modes").
  * - When the snapshot call fails, the Pending and Completed tiles show their PromQL expression as the caption.
  */
 

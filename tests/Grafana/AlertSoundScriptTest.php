@@ -6,7 +6,7 @@ use DF\HorizonObservability\Grafana\Resources;
 use Symfony\Component\Process\Process;
 
 /*
- * Arch Q5.4: the alert sound script of panel #23 (resources/grafana/js/alert-sound.js), run in Node with a fake
+ * The alert sound script of panel #23 (resources/grafana/js/alert-sound.js), run in Node with a fake
  * Grafana context and fake browser APIs: the tone always, then the firing rule titles spoken by the browser
  * (tts_url "browser", en-US) or by a Piper server (an http(s) URL), or not at all without tts_url.
  */

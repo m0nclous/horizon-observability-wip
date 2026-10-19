@@ -10,10 +10,10 @@ use DF\HorizonObservability\Grafana\Render;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * Arch Q5.3 and Q5.7 item 4: the committed alert rules (JSON provisioning file) are the four core rules, with the
- * stall rule <uid>-live as a fifth one in stream mode (ADDENDUM R4.11); their uids start with the dashboard uid and fit
- * Grafana's 40 characters, they link to existing panels, the Alerts tile and the alert sound watch exactly them,
- * nothing Grafana would interpolate contains "$", and the datasource is the environment placeholder.
+ * The committed alert rules (JSON provisioning file) are the four core rules, with the stall rule <uid>-live as a fifth
+ * one in stream mode; their uids start with the dashboard uid and fit Grafana's 40 characters, they link to existing
+ * panels, the Alerts tile and the alert sound watch exactly them, nothing Grafana would interpolate contains "$", and
+ * the datasource is the environment placeholder.
  */
 
 pest()->group('grafana');
@@ -70,7 +70,7 @@ it('keeps the deleteRules of the committed renders to the rules they leave out',
         ->and(array_unique(array_column(Rendered::alerting($mode)['deleteRules'], 'orgId')))->toBe([1]);
 })->with(Rendered::modes());
 
-it('renders the stall rule of ADDENDUM R4.11 in stream mode: the push age at scrape time', function (): void {
+it('renders the stall rule in stream mode: the push age at scrape time', function (): void {
     $rules = array_column(committedRules(LiveMode::Stream), null, 'uid');
     $rule = $rules['horizon-observability-live'];
 
@@ -100,10 +100,10 @@ it('scopes the stall rule to the pinned job and leaves it out of the other modes
         ->and($rules(LiveMode::Off))->not->toHaveKey('queues-live');
 });
 
-it('renders the rule expressions of Arch Q5.3 per job', function (): void {
+it('renders the core rule expressions per job', function (): void {
     $expressions = array_column(array_map(static fn (array $rule): array => ['uid' => $rule['uid'], 'expr' => $rule['data'][0]['model']['expr']], committedRules()), 'expr', 'uid');
 
-    // Arch Q5.3 with the replica dedupe of step 10 around every selector
+    // The replica dedupe, max by (job, <the family's labels>), around every selector
     expect($expressions)->toBe([
         'horizon-observability-no-metrics' => 'count(max by (job) (ho_horizon_status{job=~".+"}))',
         'horizon-observability-down' => 'min by (job) (max by (job) (ho_horizon_status{job=~".+"}))',

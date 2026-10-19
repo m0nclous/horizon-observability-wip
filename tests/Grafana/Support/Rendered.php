@@ -11,8 +11,8 @@ use RuntimeException;
 
 /**
  * The committed renders as decoded JSON, and the PromQL in them: the package render in resources/grafana (the
- * `--defaults` render, `--live=poll`, Arch Q5.1, owner decision 9) and the `--defaults --live=off` and
- * `--defaults --live=stream` renders in tests/Fixtures/grafana/{off,stream} (ADDENDUM Q9' WP8D).
+ * `--defaults` render, `--live=poll`) and the `--defaults --live=off` and `--defaults --live=stream` renders in
+ * tests/Fixtures/grafana/{off,stream}.
  */
 final class Rendered
 {

@@ -12,12 +12,11 @@ use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 use Illuminate\Http\Request;
 
 /*
- * Arch Q5.7 item 3, in every committed render (off, poll, stream): every Infinity URL is ${api_path}/jobs/<list> and
- * resolves to the horizon-observability.jobs route, or ${api_path}/live (ADDENDUM R4.8) and resolves to the
+ * The Infinity contract, in every committed render (off, poll, stream): every Infinity URL is ${api_path}/jobs/<list>
+ * and resolves to the horizon-observability.jobs route, or ${api_path}/live and resolves to the
  * horizon-observability.live route; its query parameters are the job list filters (JobListQuery::VARIABLES), and the
  * columns a job list target reads are fields of that list (JobRows::fields()). The path is the hidden api_path
- * variable, exported as horizon_info{api_path} (Arch Q5.2, Q5.6 step 5). LiveContractTest holds the live columns to
- * the snapshot schema.
+ * variable, exported as horizon_info{api_path}. LiveContractTest holds the live columns to the snapshot schema.
  */
 
 pest()->group('grafana');

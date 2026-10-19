@@ -8,9 +8,9 @@ use DF\HorizonObservability\Grafana\Render;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * Arch Q5.7 item 7: the rendered assets are ASCII except the dashboard's glyphs (the middle dot and the dash of
- * titles and captions, and the job list icons); src/ writes them as \u{...} escapes (SourceTest). In every committed
- * render: off, poll (resources/grafana) and stream.
+ * The rendered assets are ASCII except the dashboard's glyphs (the middle dot and the dash of titles and captions, and
+ * the job list icons); src/ writes them as \u{...} escapes (SourceTest). In every committed render: off, poll
+ * (resources/grafana) and stream.
  */
 
 pest()->group('grafana');

@@ -7,7 +7,7 @@ use DF\HorizonObservability\Grafana\Thresholds;
 use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 
 /*
- * The wait level of the Pending tile, Oldest wait and Wait p95 (T13 QA round 2): Waits::levels() evaluates its ratio
+ * The wait level of the Pending tile, Oldest wait and Wait p95: Waits::levels() evaluates its ratio
  * once as clamp(ceil(ratio) - 1, 0, 2), the level of the comparisons with the warning (1) and critical (2) factors,
  * (ratio > bool 1) + (ratio > bool 2), which evaluated it twice. Held to the comparisons at and around the factors.
  */

@@ -8,11 +8,11 @@ use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * Owner decision 13, T13 QA round 3 finding 1: every table, caption and per-step graph chooses the start of the period
- * per series (the labels of the replica dedupe: job, connection, queue, job_class, status), then sums by (queue,
- * job_class, status). The start of a sum by (queue, job_class, status) existed as soon as one of its series had one,
- * so a series that appears inside the range next to another job's series of the same queue, class and status added its
- * whole first value (its history), and a counter reset of one series counted every series' whole value.
+ * Every table, caption and per-step graph chooses the start of the period per series (the labels of the replica dedupe:
+ * job, connection, queue, job_class, status), then sums by (queue, job_class, status). The start of a sum by (queue,
+ * job_class, status) existed as soon as one of its series had one, so a series that appears inside the range next to
+ * another job's series of the same queue, class and status added its whole first value (its history), and a counter
+ * reset of one series counted every series' whole value.
  *
  * Every affected panel is evaluated exactly as rendered, with the variables as Grafana sends them (Promtool), on two
  * applications a and b with the class App\Jobs\Import on the queue default; b's scrape job is added at 10m with its
@@ -34,7 +34,7 @@ beforeEach(function (): void {
 
 /**
  * The input series of the two applications, every series of job $job also exported by $replicas instances (replicas
- * behind one scrape job count once, Arch Q1.5); $lateReplica adds a second instance of a from 10m (a replica added
+ * behind one scrape job count once); $lateReplica adds a second instance of a from 10m (a replica added
  * inside the range). $class is b's class, $connection b's connection.
  *
  * @return list<array{series: string, values: string}>
@@ -158,7 +158,7 @@ function perSeriesPanels(array $classes): array
         // The per-step graph #14 (completed per minute at 1-minute steps), per class and the Total line
         perSeriesPoints(perSeriesExpr(PanelRegistry::COMPLETED_BY_JOB, 'A')) => $one(250),
         perSeriesPoints(perSeriesExpr(PanelRegistry::COMPLETED_BY_JOB, 'B')) => $one(250),
-        // The tiles, already per series since QA round 2: the same numbers
+        // The tiles, per series already before the fix: the same numbers
         perSeriesPoints(perSeriesExpr(PanelRegistry::COMPLETED, 'A')) => $one(250),
         perSeriesPoints(perSeriesExpr(PanelRegistry::FAILED, 'A')) => $one(20),
     ];
@@ -181,10 +181,10 @@ it('counts a series that appears inside the range from its first value in every 
 ]);
 
 it('counts only the reset series\' value after a counter reset of one application', function (): void {
-    // The verifier's case: a and b on one class, scraped every minute; a's Redis is flushed at 10m (100..109, then
-    // 1..11), b counts 5000 + 1 a minute. (5m, 20m]: the tables count a's value after the reset, 11 (the reset rule
-    // of AttemptsDeltaTest for one series), and b's 15 attempts: 26 (before the fix the sum of both, 5031). The tiles
-    // and the per-step graph count every step but the one of the reset (a: 4 + 10), as TileSparklineTest: 29.
+    // Applications a and b on one class, scraped every minute; a's Redis is flushed at 10m (100..109, then 1..11), b
+    // counts 5000 + 1 a minute. (5m, 20m]: the tables count a's value after the reset, 11 (the reset rule of
+    // AttemptsDeltaTest for one series), and b's 15 attempts: 26 (before the fix the sum of both, 5031). The tiles and
+    // the per-step graph count every step but the one of the reset (a: 4 + 10), as TileSparklineTest: 29.
     $series = static fn (string $job): string => sprintf(
         'ho_queue_jobs_total{job="%s", instance="%s:8080", connection="redis", queue="default", job_class="App\\\\Jobs\\\\Import", status="completed"}',
         $job,

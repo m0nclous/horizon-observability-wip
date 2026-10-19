@@ -12,13 +12,13 @@ use DF\HorizonObservability\Tests\Grafana\Support\LiveShapes;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * ADDENDUM R4.1 and R4.8 (Q9' WP8D): the live tiles of the poll and stream renders are their --live=off panels with
- * exactly the R4.8 changes (tests/Grafana/Support/LiveShapes, written from the addendum, not from the renderer):
- * poll #3 reads the snapshot's tile rows (TILE_ROWS, the null sentinel, no sparkline), poll #2 and #9 merge the live
- * value into the Prometheus sparkline, #2 also takes the live caption and colour, #8 takes the live "RPM: n" caption in
- * both modes, stream #3 and #2 read the Grafana Live tiles channel with a 500 ms buffer and #9 the 15-minute delayed
- * window. Everything else (the other panels, the variables, links, annotations, __requires) is the off render's; the
- * Overview row is "Live Overview" in the live modes; the refresh is the poll interval in poll mode and S otherwise.
+ * The live tiles of the poll and stream renders are their --live=off panels with exactly the live changes
+ * (tests/Grafana/Support/LiveShapes, written out by hand, not from the renderer): poll #3 reads the snapshot's tile
+ * rows (TILE_ROWS, the null sentinel, no sparkline), poll #2 and #9 merge the live value into the Prometheus sparkline,
+ * #2 also takes the live caption and colour, #8 takes the live "RPM: n" caption in both modes, stream #3 and #2 read
+ * the Grafana Live tiles channel with a 500 ms buffer and #9 the 15-minute delayed window. Everything else (the other
+ * panels, the variables, links, annotations, __requires) is the off render's; the Overview row is "Live Overview" in
+ * the live modes; the refresh is the poll interval in poll mode and S otherwise.
  */
 
 pest()->group('grafana');
@@ -38,7 +38,7 @@ function livePanelsById(array $dashboard): array
     return $panels;
 }
 
-it('renders the live tiles exactly as ADDENDUM R4.8', function (LiveMode $mode): void {
+it('renders the live tiles exactly as LiveShapes writes them out', function (LiveMode $mode): void {
     $off = livePanelsById(Rendered::dashboard(LiveMode::Off));
     $live = livePanelsById(Rendered::dashboard($mode));
 
@@ -50,7 +50,7 @@ it('renders the live tiles exactly as ADDENDUM R4.8', function (LiveMode $mode):
     }
 })->with([LiveMode::Poll, LiveMode::Stream]);
 
-it('renders the R4.8 tiles for any identity, prefix, job, scrape interval and stream id', function (LiveMode $mode, array $options, string $streamId): void {
+it('renders the same live tiles for any identity, prefix, job, scrape interval and stream id', function (LiveMode $mode, array $options, string $streamId): void {
     $off = livePanelsById(LayoutProjection::decoded((new DashboardBuilder(new DashboardOptions(...$options, live: LiveMode::Off)))->build()));
     $live = livePanelsById(LayoutProjection::decoded((new DashboardBuilder(new DashboardOptions(...$options, live: $mode, liveStreamId: $streamId)))->build()));
 
@@ -80,7 +80,7 @@ it('keeps every other panel and the dashboard settings of the off render', funct
             $panel['title'] = 'Live Overview';
         }
 
-        // The Alerts tile and the alert sound also watch the stall rule in stream mode (ADDENDUM R4.11)
+        // The Alerts tile and the alert sound also watch the stall rule in stream mode
         if ($mode === LiveMode::Stream && in_array($panel['id'], [PanelRegistry::ALERTS, PanelRegistry::ALERT_SOUND], true)) {
             $json = json_encode($panel, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             $panel = json_decode(str_replace('-(no-metrics|down|long-wait|failures)', '-(no-metrics|down|long-wait|failures|live)', $json), true, flags: JSON_THROW_ON_ERROR);

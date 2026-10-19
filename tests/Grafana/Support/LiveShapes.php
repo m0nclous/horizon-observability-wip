@@ -8,11 +8,11 @@ use DF\HorizonObservability\Grafana\Live\LiveMode;
 use RuntimeException;
 
 /**
- * The live panel shapes of ADDENDUM R4.8 (as amended in T13 QA round 2: the caption fallbacks, the Prometheus RPM
- * of #8 under a Job or Batch filter, and `interval` only on tiles with a Prometheus query, R2.5), written out by hand
- * from the addendum (verified there on Grafana 12.4.13 and 13.2.4), independent of the renderer: what a poll or stream
- * tile must be, given its `--live=off` panel. Only the properties R4.8 lists change; {@see expected()} applies them to
- * the off panel. JSON is compared without key order ({@see canonical()}).
+ * The live panel shapes (with the caption fallbacks, the Prometheus RPM of #8 under a Job or Batch filter, and
+ * `interval` only on tiles with a Prometheus query), written out by hand and independent of the renderer (the shapes
+ * were verified on Grafana 12.4.13 and 13.2.4): what a poll or stream tile must be, given its `--live=off` panel. Only
+ * the properties in CHANGES change; {@see expected()} applies them to the off panel. JSON is compared without key order
+ * ({@see canonical()}).
  */
 final class LiveShapes
 {
@@ -21,7 +21,7 @@ final class LiveShapes
     public const STREAM_ID = 'horizon_observability';
 
     /**
-     * `TILE_ROWS(t)`, verbatim from R4.8.
+     * `TILE_ROWS(t)`, the transformation list shared by the poll and stream tiles (`<t>` is the tile name).
      */
     private const TILE_ROWS = <<<'JSON'
         [ { "id": "filterByValue", "options": { "type": "include", "match": "any", "filters": [
@@ -41,12 +41,12 @@ final class LiveShapes
         JSON;
 
     /**
-     * `SENTINEL`, verbatim from R4.8.
+     * `SENTINEL`, the value mapping that shows the null sentinel -1 as a dash.
      */
     private const SENTINEL = '{"type": "value", "options": {"-1": {"text": "—", "color": "text", "index": 0}}}';
 
     /**
-     * An Infinity query of `${api_path}/live?FILTERS` (R4.8), with its root selector and columns.
+     * An Infinity query of `${api_path}/live?FILTERS`, with its root selector and columns.
      */
     private const SNAPSHOT_TARGET = <<<'JSON'
         { "refId": "<ref>", "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "${app_api}" },
@@ -56,7 +56,7 @@ final class LiveShapes
         JSON;
 
     /**
-     * The changed properties of each live tile, by mode and panel id, from R4.8 (`<A>` is the off-mode target A,
+     * The changed properties of each live tile, by mode and panel id (`<A>` is the off-mode target A,
      * unchanged; `<B scoped>` the off-mode target B for a Job or Batch filter only; `"<off>"` in a list the off-mode
      * transformations). `"$unset"` lists the properties the live panel no longer has.
      */
@@ -180,14 +180,14 @@ final class LiveShapes
     }
 
     /**
-     * The R4.8 panel of a live tile: its decoded `--live=off` panel with the R4.8 changes.
+     * The expected panel of a live tile: its decoded `--live=off` panel with its CHANGES applied.
      *
      * @param  array<string, mixed>  $off
      * @return array<string, mixed>
      */
     public static function expected(LiveMode $mode, array $off, string $streamId = self::STREAM_ID): array
     {
-        $changes = self::CHANGES[$mode->value][$off['id']] ?? throw new RuntimeException('No R4.8 shape for panel '.$off['id']);
+        $changes = self::CHANGES[$mode->value][$off['id']] ?? throw new RuntimeException('No live shape for panel '.$off['id']);
         $changes = $changes === 'poll' ? self::CHANGES['poll'][$off['id']] : $changes;
         /** @var array<string, mixed> $changes */
         $changes = self::decode(str_replace('<id>', $streamId, $changes));
@@ -270,7 +270,7 @@ final class LiveShapes
     }
 
     /**
-     * The off field config with the R4.8 mappings: `SENTINEL` merged into the existing mappings.
+     * The off field config with the live mappings: `SENTINEL` merged into the existing mappings.
      *
      * @param  array<string, mixed>  $fieldConfig
      * @param  array<string, mixed>  $changes

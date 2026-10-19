@@ -9,12 +9,11 @@ use DF\HorizonObservability\Tests\Grafana\Support\ProfileSeries;
 use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 
 /*
- * The batches of the period (BatchState::inRange(), the Batch filter, the Batches table #17 and the batch tables
- * #16) read two range series instead of the legacy three (T13 QA round 2, ADDENDUM R2.3): a batch with a creation
- * time in the period, unless it closed before the period. The legacy set is "closed within the period, or created
- * and not closed"; both are the same because the collector exports the creation time of every batch it exports. Held
- * to the legacy set on the medium perf profile (a new batch every 10 minutes per kind) and on hand-made batches,
- * with Batch "All" and with one kind.
+ * The batches of the period (BatchState::inRange(), the Batch filter, the Batches table #17 and the batch tables #16)
+ * read two range series instead of the legacy three: a batch with a creation time in the period, unless it closed
+ * before the period. The legacy set is "closed within the period, or created and not closed"; both are the same because
+ * the collector exports the creation time of every batch it exports. Held to the legacy set on the medium perf profile
+ * (a new batch every 10 minutes per kind) and on hand-made batches, with Batch "All" and with one kind.
  */
 
 pest()->group('grafana');

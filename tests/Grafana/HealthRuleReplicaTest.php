@@ -7,11 +7,10 @@ use DF\HorizonObservability\Grafana\DashboardOptions;
 use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 
 /*
- * T13 QA round 1 (adversarial): the alert rules evaluated by Prometheus on known series of two scraped replicas of
- * one application (Arch Q1.5). Business series are read from shared storage, so the dedupe must make two replicas
- * count once; the self-metrics are per replica (each replica runs its own collectors), so the opt-in collector rule
- * must see a collector that fails on one replica only: Arch Q5.3 writes it as
- * `min by (job, collector) (<ns>_exporter_collector_success{job=~"J"})`, without the dedupe.
+ * The alert rules evaluated by Prometheus on known series of two scraped replicas of one application. Business series
+ * are read from shared storage, so the dedupe must make two replicas count once; the self-metrics are per replica (each
+ * replica runs its own collectors), so the opt-in collector rule must see a collector that fails on one replica only:
+ * it is `min by (job, collector) (<ns>_exporter_collector_success{job=~"J"})`, without the dedupe.
  *
  * Each Grafana rule becomes a Prometheus alerting rule `(<query A>) <op> <threshold>` with the same `for`, evaluated
  * every minute (the Grafana rule group interval).
@@ -70,7 +69,7 @@ beforeEach(function (): void {
     }
 });
 
-it('fires the collector rule for a collector that fails on one of two replicas (Arch Q5.3)', function (): void {
+it('fires the collector rule for a collector that fails on one of two replicas', function (): void {
     [$status, $output] = Promtool::testRules(replicaRuleGroups(new DashboardOptions(healthRules: true)), [[
         'interval' => '1m',
         'input_series' => replicaSeries([

@@ -11,10 +11,9 @@ use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
- * Owner decision 13, ADDENDUM R4.2 step 5: the live tiles take their captions and levels from Live\Captions (via the
- * snapshot), the --live=off tiles from PromQL. Switching the mode must not change what a tile says, so the off-mode
- * expressions, evaluated by promtool on the exported series, give what Captions gives for the shared cases of
- * tests/Fixtures/live/captions.php:
+ * The live tiles take their captions and levels from Live\Captions (via the snapshot), the --live=off tiles from
+ * PromQL. Switching the mode must not change what a tile says, so the off-mode expressions, evaluated by promtool on
+ * the exported series, give what Captions gives for the shared cases of tests/Fixtures/live/captions.php:
  * - Pending (#2): the caption "Oldest: N s \u{00B7} Q" / "Oldest: N min \u{00B7} Q" / "Oldest: \u{2014}" (query B and its
  *   renameByRegex) equals Captions::oldestExact() for the exact age, and the level (query C) Captions::waitLevel();
  * - Supervisor Processes (#3): the caption "name \u{00B7} max N" (query A, legend) equals Captions::supervisor() of
