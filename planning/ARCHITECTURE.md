@@ -232,7 +232,7 @@ Total scrape time is Prometheus' own `scrape_duration_seconds`.
 
 Every business series is global: it is read from shared Redis or the DB, so every replica returns identical values.
 
-1. **The contract: one logical scrape target per application environment.** That is a static target on the Service DNS name, the load balancer or the host. Whichever replica answers, the series is continuous, because the `instance` label is the target address and every replica reads the same counters. The package endpoint is separate from per-pod app metrics (spatie and others keep their own `/metrics`), so this costs nothing. `install` prints this scrape config, and the README explains why.
+1. **The contract: one logical scrape target per application environment.** That is a static target on the Service DNS name, the load balancer or the host. Whichever replica answers, the series is continuous, because the `instance` label is the target address and every replica reads the same counters; the new-series hold of the counters (Q4) is decided on the storage Redis' clock, not the replica's, so the replicas agree on it too (T16 QA round 2). The package endpoint is separate from per-pod app metrics (spatie and others keep their own `/metrics`), so this costs nothing. `install` prints this scrape config, and the README explains why.
 2. **Defence in depth in every rendered query.** The PHP PromQL builder (Q5) wraps every package selector as `max by (job, <family labels>) (…)` before any outer aggregation. Range functions are wrapped from outside:
 
    ```
@@ -642,7 +642,7 @@ These are used only in Grafana provisioning, never by PHP: `HORIZON_OBSERVABILIT
 | `horizon_supervisor_min_processes` | same | gauge | `supervisor` | – |
 | `horizon_supervisor_max_processes` | same | gauge | `supervisor` | – |
 | `horizon_supervisor_info` | same | gauge (1) | `supervisor`, `balance`, `connection` | – |
-| – | `horizon_supervisor_queues` | gauge (1) | `supervisor`, `queue`, `pool` | **New** (T16): one series per queue a supervisor works, `pool` = the `queue` label of its processes in `horizon_supervisor_processes` (the queue itself, or Horizon's comma-joined option for balance=false, as written, e.g. `mail,sms,mail`). PromQL cannot split a pooled label, so the queue table, the processes per queue and the busy workers join through it. |
+| – | `horizon_supervisor_queues` | gauge (1) | `supervisor`, `queue`, `pool` | **New** (T16): one series per queue a supervisor works, `pool` = the `queue` label of its processes in `horizon_supervisor_processes` (the queue itself, or Horizon's comma-joined option for balance=false, as written, e.g. `mail,sms,mail`). PromQL cannot split a pooled label, so the queue table, the processes per queue and the busy workers join through it. Over every master: while their options differ (a deploy that changes a balance=false queue list or the balance), a queue has one series per pool that works it (T16 QA round 2). |
 | `horizon_wait_threshold_seconds` | same | gauge | `connection`, `queue` | – (default 60 s; 0 is not emitted, as today) |
 | `horizon_info{url,tts_url}` | `horizon_info` | gauge (1) | `url`, `api_path`, `tts_url` | **+`api_path`**, the job-list base path. The dashboard reads it with a 7-day lookback. |
 | `queue_pending_jobs` | same | gauge | `connection`, `queue` | – (includes due delayed jobs) |
@@ -652,9 +652,9 @@ These are used only in Grafana provisioning, never by PHP: `HORIZON_OBSERVABILIT
 | `queue_jobs_pending` | same | gauge | `connection`, `queue`, `job_class` | English sentinels; top-100 per queue plus `(other)` |
 | `queue_jobs_reserved` | same | gauge | `connection`, `queue`, `job_class` | same as above |
 | `queue_job_classes` | same | gauge (1) | `job_class` | – (cached discovery) |
-| `queue_jobs_total` | same | counter | `connection`, `queue`, `job_class`, `status` | Zero-filled for all 5 statuses of every known tuple, as today. **New series start at 0** (T16, owner decision 13): a tuple whose first attempt was recorded less than 90 s ago (`AttemptsCollector::NEW_SERIES_HOLD_SECONDS`, hash `created`) reads 0 for every status, then every attempt since its creation, so Prometheus sees each series start at 0 and `increase()` and the dashboard count its first attempts. The first attempts of a new tuple therefore appear up to 90 s late and are counted at the end of the hold: a range that starts inside a hold also counts that tuple's attempts from before the range, one that ends inside it misses them. Sized for scrape intervals ≤ 60 s, scrapes ≤ 7.5 s off their slots and worker clocks ≤ 15 s off the exporter's. Tuples without a creation time (data from before it, a scrape job or replica added later) are exported as they are. |
+| `queue_jobs_total` | same | counter | `connection`, `queue`, `job_class`, `status` | Zero-filled for all 5 statuses of every known tuple, as today. **New series start at 0** (T16, owner decision 13): a tuple whose first attempt was recorded less than 90 s ago (`AttemptsCollector::NEW_SERIES_HOLD_SECONDS`, hash `created`) reads 0 for every status, then every attempt since its creation, so Prometheus sees each series start at 0 and `increase()` and the dashboard count its first attempts. The first attempts of a new tuple therefore appear up to 90 s late and are counted at the end of the hold: a range that starts inside a hold also counts that tuple's attempts from before the range, one that ends inside it misses them. **One clock** (T16 QA round 2): the creation time and the age are the storage Redis' `TIME` (`Redis\ServerClock`; `record_attempt.lua` and `new_series.lua`), so no worker, replica or scraper clock enters and every replica behind the one target (Q1.5) decides alike; a released tuple loses its creation time and is never held again, so an exported counter never drops back to 0. Sized for one scraper's successful scrapes reading the counters less than 90 s apart: scrape intervals ≤ 60 s with 30 s to spare (scrapes < 15 s off their slots, or failed scrapes). Tuples without a creation time (data from before it, a scrape job or replica added later, released tuples) are exported as they are. |
 | `queue_job_duration_seconds_{bucket,sum,count}` (3 fake counter families) | `queue_job_duration_seconds` | **histogram** | `connection`, `queue`, `job_class` (+`le`) | Correct `TYPE`. Every tuple of `queue_jobs_total` has a series, zero-filled (every bucket, sum and count 0) until its first duration (T16), and it is held with its tuple. |
-| `queue_job_wait_seconds_*` | `queue_job_wait_seconds` | **histogram** | `connection`, `queue` (+`le`) | Correct `TYPE`. Every queue of `queue_jobs_total` has a series, zero-filled until its first wait (T16); a new queue's is held for 90 s like a new tuple. A known queue's is not held, so for up to 90 s it counts the first waits of a new class whose attempts still read 0 (more waits than attempts while that class is held). |
+| `queue_job_wait_seconds_*` | `queue_job_wait_seconds` | **histogram** | `connection`, `queue` (+`le`) | Correct `TYPE`. Every queue of `queue_jobs_total` has a series, zero-filled until its first wait (T16); a new queue's is held for 90 s like a new tuple, on the same clock. A known queue's is not held, so for up to 90 s it counts the first waits of a new class whose attempts still read 0 (more waits than attempts while that class is held). |
 | `queue_job_duration_min_seconds` | same | gauge | `connection`, `queue`, `job_class` | – |
 | `queue_job_duration_max_seconds` | same | gauge | `connection`, `queue`, `job_class` | – |
 | `queue_batches_running` | same | gauge | `batch` | caps |
@@ -747,7 +747,7 @@ No label value is empty, because Prometheus treats an empty value as an absent l
 | Apps with more than 500 live job names see `(other)` | Config key, a throttled overflow warning, and the cap usage shown in `check`. |
 | Office's ad-hoc queries on `office_horizon_current_processes` or `office_queue_oldest_pending_job_age` | Listed in UPGRADE with replacements. |
 | Batch names may contain PII | Documented in SECURITY.md; the kind resolver hook can hash or strip them. |
-| The new-series hold (T16) delays the first attempts of a new tuple by up to 90 s and moves them to the end of the hold; outside its budget (interval > 60 s, scrapes > 7.5 s off their slots, clocks > 15 s apart, every scrape of the hold failing) a new series can again start without its 0 sample | Bounded by the hold; stated in the README (T15) for users with their own alerts and dashboards; proven by `tests/Truth/FirstValueTruthTest` at the worst alignment and skew. |
+| The new-series hold (T16) delays the first attempts of a new tuple by up to 90 s and moves them to the end of the hold; outside its budget (a scraper's successful scrapes 90 s or more apart: an interval > 60 s, scrapes 15 s or more off their slots at 60 s, a run of failed scrapes; a step of the storage Redis' clock) a new series can again start without its 0 sample (an undercount, never a decrease) | Bounded by the hold; one clock (the storage Redis' `TIME`), so worker and replica clocks do not count against the budget (T16 QA round 2); stated in the README (T15) for users with their own alerts and dashboards; proven by `tests/Truth/FirstValueTruthTest` at the worst alignment with any worker and replica clocks. |
 
 ---
 
@@ -1147,11 +1147,11 @@ There is no toggle: a reset to 0 is always handled correctly by `rate()` and `in
 | Path | Worst-case work |
 |---|---|
 | Job start | 0 Redis calls |
-| Job end | 1 `EVAL` (about 11–15 commands inside, plus 2 for the live ring buffer when `live.enabled`, Addendum R4.5), O(1). T16 adds 1 `HEXISTS wait:sum` per first attempt with a wait; the first attempt of a new status of a tuple adds up to 4 `HEXISTS` (the other statuses) and, for a new tuple, 1 `HSET created`; a new queue adds 1 `HSET created` |
+| Job end | 1 `EVAL` (about 11–15 commands inside, plus 2 for the live ring buffer when `live.enabled`, Addendum R4.5), O(1). T16 adds 1 `HEXISTS wait:sum` per first attempt with a wait; the first attempt of a new status of a tuple adds up to 4 `HEXISTS` (the other statuses) and, for a new tuple, 1 `HSET created`; a new queue adds 1 `HSET created`; either reads `TIME` once (the creation time is the server's clock, T16 QA round 2) |
 | Dispatch | Modern stack: at most 1 `ZADD` per (kind, connection, queue, class) per hour per process, for batched jobs only, plus 1 `ZREMRANGEBYSCORE` prune on the first link write of each hour per process (phase B). Legacy stack: +1 `SET` per delayed dispatch. Both through the breaker. |
 | Scrape `horizon` | the Horizon master and supervisor repository reads |
 | Scrape `queues` | 1 `EVAL` per queue: `LLEN`, `LRANGE` ≤ `queue_scan_limit` (and ≤ 16 MB), `ZRANGE` reserved ≤ 1000 and ≤ 16 MB (`ZCARD` beyond; the byte cap since the T05 review), `ZCARD`/`ZCOUNT` delayed, `ZRANGEBYSCORE … LIMIT 0 1` |
-| Scrape `attempts` | 1 guard `EVAL` + 5 `HGETALL` (counters, histograms) + 1 `extremes_read` `EVAL` (20 `HGETALL` inside, Addendum R3.4) + 1 `HGETALL created` (T16) + 1 `HGETALL meta` + 1 `ZRANGE job_classes`, i.e. 10 commands, + lazy `HDEL`s of at most 1000 fields of classes no longer in the class set, bounded by `max_job_classes` × queues (measured in T04; the scrape never prunes the class set, only `record_attempt` does when it is full) |
+| Scrape `attempts` | 1 guard `EVAL` + 5 `HGETALL` (counters, histograms) + 1 `new_series` `EVAL` (T16: `TIME`, `HGETALL created`, which holds only the series younger than 90 s, and `HDEL`s of the released ones in chunks of 500) + 1 `extremes_read` `EVAL` (20 `HGETALL` inside, Addendum R3.4) + 1 `HGETALL meta` + 1 `ZRANGE job_classes`, i.e. 10 commands, + lazy `HDEL`s of at most 1000 fields of classes no longer in the class set, bounded by `max_job_classes` × queues (measured in T04; the scrape never prunes the class set, only `record_attempt` does when it is full) |
 | Scrape `job_classes` | a cache file read |
 | Scrape `batches` | 2 SQL queries with `LIMIT 5000` (plus 1 table check per 10 minutes in auto mode), 1 `ZRANGE` of at most the 10 000 most recently seen links and 1 `ZREMRANGEBYSCORE` prune |
 | Job-list request | Horizon lists: ≤ 20 `ZRANGEBYSCORE` calls (10 000 ids / 500; only the first read is cut to the page, later reads take whole chunks), pipelined light `HMGET`s, ≤ 10 `job_details` `EVAL`s (100 hashes each, final page only). Delayed list: ≤ 20 `delayed_jobs` `EVAL`s per queue, each ≤ 500 entries and ≤ 8 MB of payload (T06 review). An empty filter: 0 commands (C13). |
@@ -2443,19 +2443,25 @@ Each Lua file starts with a header documenting its `KEYS` and `ARGV` (Appendix D
 
 ## Appendix D. Lua script contracts
 
-All keys are passed in `KEYS[]`; scripts never build key names. Time is passed in `ARGV` as Unix seconds (float).
+All keys are passed in `KEYS[]`; scripts never build key names. Time is passed in `ARGV` as Unix seconds (float), except the clock of the new-series hold (T16 QA round 2): `record_attempt.lua` and `new_series.lua` read the server's `TIME` (an `ARGV` stands in for it only when a test pins `Redis\ServerClock`). Scripts that run a non-deterministic command (`TIME`, `INFO`, `HGETALL`) before a write call `redis.replicate_commands()` first: effects replication is the default since Redis 5 and the only mode since Redis 7 and in Valkey (a no-op there), and it is required on Redis 6.2 with `lua-replicate-commands no`.
 
 **`record_attempt.lua`** (WP2)
 - **KEYS:** `attempts`, `duration:buckets`, `duration:sum`, `wait:buckets`, `wait:sum`, `extremes:<unix div 15>:min`, `extremes:<unix div 15>:max`, `job_classes`, `meta`, `live:ring:<unix div 5>` (always passed; Addendum D′), `created` (T16), optional `ready_at:<uuid>`. PHP derives both bucket keys from the same `now` it passes in `ARGV`.
-- **ARGV:** connection, queue, job_class, status, duration or `''`, duration bucket `le` or `''`, startedAt or `''`, readyAt or `''`, wait bounds (comma-separated, formatted by PHP), extremes TTL (300), max_job_classes, class idle TTL (2592000), ring_ttl (180, or 0 = disabled; Addendum D′), now, dropped count, `(other)`, the attempt statuses (comma-separated; T16).
-- **Steps:**
+- **ARGV:** connection, queue, job_class, status, duration or `''`, duration bucket `le` or `''`, startedAt or `''`, readyAt or `''`, wait bounds (comma-separated, formatted by PHP), extremes TTL (300), max_job_classes, class idle TTL (2592000), ring_ttl (180, or 0 = disabled; Addendum D′), now (the worker's clock), dropped count, `(other)`, the attempt statuses (comma-separated; T16), `''` or the pinned server time (ARGV[18], T16 QA round 2: tests only).
+- **Steps:** (first `redis.replicate_commands()`)
   1. Class admission: refresh `ZSCORE`; otherwise `ZCARD` < max → `ZADD`; otherwise prune `ZREMRANGEBYSCORE -inf (now-ttl` and retry; otherwise use the overflow label.
-  2. `HINCRBY attempts <c␟q␟j␟status> 1`; when that created the field and no other status of `c␟q␟j` exists, `HSET created <c␟q␟j> now` (T16).
+  2. `HINCRBY attempts <c␟q␟j␟status> 1`; when that created the field and no other status of `c␟q␟j` exists, `HSET created <c␟q␟j> <TIME>` (T16; the server's `TIME` as `seconds.microseconds`, read at most once per call, or ARGV[18]).
   3. If there is a duration: `HINCRBY` its bucket, `HINCRBYFLOAT` the sum, compare-and-set min/max, `EXPIRE` both extremes keys.
-  4. If `startedAt` is present: `ready = max(readyAt, GET ready_at)` then `DEL ready_at`; `wait = max(0, startedAt - ready)`; bucket via the bounds; `HINCRBY`/`HINCRBYFLOAT`; when `wait:sum` has no `c␟q` field yet, `HSET created <c␟q> now` first (T16). A passed `ready_at` key is deleted even without `startedAt` (phase B).
+  4. If `startedAt` is present: `ready = max(readyAt, GET ready_at)` then `DEL ready_at`; `wait = max(0, startedAt - ready)`; bucket via the bounds; `HINCRBY`/`HINCRBYFLOAT`; when `wait:sum` has no `c␟q` field yet, `HSET created <c␟q> <TIME>` first (T16). A passed `ready_at` key is deleted even without `startedAt` (phase B).
   5. If dropped > 0: `HINCRBY meta dropped N`.
   6. If `ring_ttl > 0` (Addendum R4.5): `HINCRBY ring <c␟q␟status> 1` and `EXPIRE ring ring_ttl`.
 - **Returns:** the effective job_class.
+
+**`new_series.lua`** (T16 QA round 2)
+- **KEYS:** `created`.
+- **ARGV:** the hold in seconds (90), `''` or the pinned server time (tests only).
+- **Behaviour:** `redis.replicate_commands()`, then `now` = the server's `TIME` (or the pinned time); every field of `created` whose creation time is less than the hold from `now` in either direction is held; every other field (older, the hold or more ahead after the server clock stepped back, not a number) is released: `HDEL` in chunks of 500, so a released series is never held again.
+- **Returns:** the held fields. The attempts collector runs it right after the counter hashes and exports the held series as 0.
 
 **`extremes_read.lua`** (WP2, Addendum D′)
 - **KEYS:** the 10 min keys (current 15-second bucket and the 9 previous ones), then the 10 max keys.
@@ -2464,7 +2470,7 @@ All keys are passed in `KEYS[]`; scripts never build key names. Time is passed i
 **`reset_guard.lua`** (WP2)
 - **KEYS:** `meta`, then the counter keys (`attempts`, the duration and wait hashes, `created`).
 - **ARGV:** now.
-- **Behaviour:** reads `run_id` from `redis.call('INFO','server')`.
+- **Behaviour:** `redis.replicate_commands()` (T16), then reads `run_id` from `redis.call('INFO','server')`.
   - missing meta → `HSET meta run_id`, return 0;
   - equal → return 0;
   - different → `DEL` the counter keys, `HDEL meta dropped live_push_failures` (the counter fields of meta, so a restore does not double-count them; phase B), `HSET meta run_id reset_at`, return 1;
@@ -2511,7 +2517,7 @@ All keys sit under `{horizon-observability}:v1:` on the storage connection, whic
 | `duration:sum` | hash | `conn␟queue␟class` → float | – |
 | `wait:buckets` | hash | `conn␟queue␟le` → count | – |
 | `wait:sum` | hash | `conn␟queue` → float | – |
-| `created` | hash | `conn␟queue␟class` (attempt series) and `conn␟queue` (wait histogram) → creation time, Unix seconds (T16: a series created less than 90 s ago is exported as 0, so Prometheus sees it start at 0) | – (deleted with the counters; class fields pruned with their class) |
+| `created` | hash | `conn␟queue␟class` (attempt series) and `conn␟queue` (wait histogram) → creation time, Unix seconds of the server's `TIME` (T16: a series created less than 90 s ago is exported as 0, so Prometheus sees it start at 0) | – (a field is deleted when `new_series.lua` releases its series, so only series younger than the hold stay; deleted with the counters) |
 | `extremes:<unix div 15>:min`, `…:max` | hash | `conn␟queue␟class` → seconds (15-second buckets, Addendum R3.4) | 300 s |
 | `job_classes` | zset | class → last seen | idle members pruned after 30 d |
 | `meta` | hash | `run_id`, `reset_at`, `dropped`, `live_push_at` (Unix float), `live_push_failures` | – |
