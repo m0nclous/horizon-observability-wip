@@ -102,6 +102,12 @@ that the next task points to. Everything here is export-ignored and will be dele
       asks the owner.
     - The integrator merges a task branch only when the task is `done`.
 
+15. **Prod-first** (owner, 2026-10-19): the goal is a fast production launch in office. Everything that is not critical
+    goes to the patch backlog (TASKS T19) and is fixed in batches after the launch; critical means it blocks the office
+    launch, loses or corrupts data, breaks workers or the app, is a security hole, or makes common-setup numbers lie badly.
+    A QA round that rejects only for minor findings ends with the task accepted and the findings in T19 (T14 was accepted
+    this way after round 4). T17 stops after its WP1 slice; T15 runs in a lean scope (its section in TASKS.md).
+
 ## Git and environment
 
 - Work on branch `master`. Remote `origin` = `https://github.com/m0nclous/horizon-observability-wip`
@@ -135,21 +141,20 @@ that the next task points to. Everything here is export-ignored and will be dele
 - Grafana screenshots with Playwright need `locale: 'en-US'` and `timezoneId: 'UTC'` (see `planning/reference/screenshot-playwright.mjs`).
 - After `composer dump-autoload`, re-run `composer build` (testbench's purge-skeleton deletes the workbench SQLite DB).
 
-## Current state (2026-10-19)
+## Current state (2026-10-19, prod-first)
 
 Work moved from the cloud sandbox to the owner's machine (WSL2, see "Git and environment"); the integration branch is
-`master`. Done and merged: T00-T12, T16 (merged 2026-10-19, `41d971b`), T18. Open threads:
-- **T13** (Grafana, `wip/T13-grafana`, draft PR #22) and **T14** (operations commands, `wip/T14-ops`, draft PR #23):
-  `in progress`. QA round 3 rejected both (T13: 2 findings confirmed by an independent verifier, 1 refuted; T14: 3
-  confirmed), the integrator escalated (decision 14) and the **owner granted a QA round 4 for both on 2026-10-19**: the
-  implementers fix the confirmed findings, then the spec and adversarial testers run round 4. The integrator merges
-  T13 first, then T14 (two known conflicts: the provider's command list and its test).
-- **T17** may start its harness early on top of `wip/T13-grafana` (T13 acceptance addition); it is blocked from `done`
-  until T13 is merged.
-- **T15** last.
-- **Board tooling** (`wip/board-sync`): **frozen by the owner on 2026-10-19** after 4 rejected QA rounds. It stays on
-  origin as an archive and is not merged; `tools/board/set-status.sh` on `master` (no gates) is the process tool until
-  the end of the rewrite.
+`master`. Done and merged: T00-T12, T14 (accepted by the owner after QA round 4, minor findings in T19), T16, T18.
+Open threads (decision 15, prod-first):
+- **T13** (Grafana, `wip/T13-grafana`, draft PR #22): QA round 4. Its one major finding (delta() drops a series without a
+  value at the period end, e.g. after one failed scrape) is fixed before the merge; the minor one goes to T19.
+- **T15** (lean scope, see its TASKS section) runs in parallel; owner stops: office dry run, tag `v0.1.0`, Packagist,
+  repository transfer.
+- **T17**: the design is `planning/T17-DESIGN.md` (owner answers in TASKS T17); it stops after the WP1 slice on
+  `wip/T17-dashboard-truth` (draft PR), the rest is T19.
+- **T19**: the patch backlog, fixed in batches after the launch; moves to GitHub issues before `planning/` is deleted.
+- **Board tooling** (`wip/board-sync`): frozen by the owner on 2026-10-19 after 4 rejected QA rounds; not merged.
+  `tools/board/set-status.sh` on `master` (no gates) is the process tool until the end of the rewrite.
 - QA rounds on this machine: one worktree per agent (`../ho-s<N>-<task>-<role>`), each with its own compose project and
   port block (`COMPOSE_PROJECT_NAME=ho-s<N>`, Grafana 13000+N, Prometheus 19000+N, compose Redis 16400+N, app 18000+N)
   and the containerised dev stack (`PROMETHEUS_CONFIG=prometheus.app.yml --profile app`). Host-wide resources are
