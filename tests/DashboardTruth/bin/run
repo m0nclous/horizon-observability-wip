@@ -1,0 +1,819 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/*
+| The dashboard truth suite (T17): the stage orchestrator (design sections 3 and 12), also `composer
+| test:dashboard-truth`.
+|
+|   tests/DashboardTruth/bin/run [--from=record|ingest|stack|capture|assert] [--keep] [--set=pr|full]
+|        [--cases=S01,...] [--grafana=12|13|both] [--ci] [--run=<id>] [--slot=<N>] [--mutant=<name> [--expect-red]]
+|   tests/DashboardTruth/bin/run replay --run-dir=<dir> --case=<id> --grafana=<12|13> --panel=<id> --ref=<refId> [--step=<15s>]
+|   tests/DashboardTruth/bin/run compare <run dir A> <run dir B>
+|   tests/DashboardTruth/bin/run cleanup --run=<id> [--slot=<N>]
+|
+| Stages, each writing under build/dashboard-truth/<run>/ and resumable from its predecessors' artifacts:
+|   record   Pest (RecordTest, DASHBOARD_TRUTH_RECORD=1): datasets/<name>/{recording.ndjson,manifest.json,<name>.sqlite}
+|            and the kept Redis world ho_t17_<run>_<name>:
+|   ingest   the stack starts in the background; ScrapeEmulation -> RemoteWrite into its Prometheus, epoch order
+|   stack    the Grafanas healthy, the router (php -S, Server/router.php) on the active world, the renders imported
+|            by API (renders/, plan.json)
+|   capture  browser/observe.mjs, one Chromium per Grafana version in parallel: observations/<grafana>/<case>.json
+|   assert   Pest (DashboardTruthTest, DASHBOARD_TRUTH_STACK=1): report.{md,json}, then the runtime gate
+| `--from=capture` and `--from=assert` need the stack and worlds of a run kept with `--keep`.
+|
+| The slot environment (design section 12) sets the ports: PROMETHEUS_PORT (19000 + N), PARITY_PROMETHEUS_PORT
+| (+500), GRAFANA_PORT (13000 + N, Grafana 13.2.4), GRAFANA12_PORT (+500), APP_PORT (18000 + N), REPLAY_PORT (+500),
+| COMPOSE_PROJECT_NAME (ho-s<N>); N from --slot or DASHBOARD_TRUTH_SLOT (default 0). Redis is REDIS_HOST:REDIS_PORT
+| (127.0.0.1:6379). Without --keep the run stops its stack and router and deletes its worlds at the end, on failure
+| and on SIGINT/SIGTERM; only its own compose project and prefixes are touched.
+*/
+
+use DF\HorizonObservability\Tests\DashboardTruth\Cases\Cases;
+use DF\HorizonObservability\Tests\DashboardTruth\Cases\Plan;
+use DF\HorizonObservability\Tests\DashboardTruth\Cases\Renders;
+use DF\HorizonObservability\Tests\DashboardTruth\Compare\Observation as Frames;
+use DF\HorizonObservability\Tests\DashboardTruth\Compare\Replays;
+use DF\HorizonObservability\Tests\DashboardTruth\Compare\Report;
+use DF\HorizonObservability\Tests\DashboardTruth\Contracts\Durations;
+use DF\HorizonObservability\Tests\DashboardTruth\Contracts\Manifest;
+use DF\HorizonObservability\Tests\DashboardTruth\Contracts\Mode;
+use DF\HorizonObservability\Tests\DashboardTruth\Contracts\Observation;
+use DF\HorizonObservability\Tests\DashboardTruth\Contracts\Recording;
+use DF\HorizonObservability\Tests\DashboardTruth\Datasets\Datasets;
+use DF\HorizonObservability\Tests\DashboardTruth\Ingest\RemoteWrite;
+use DF\HorizonObservability\Tests\DashboardTruth\Ingest\ScrapeEmulation;
+use DF\HorizonObservability\Tests\DashboardTruth\Mutants\Synthetic;
+use DF\HorizonObservability\Tests\DashboardTruth\Record\WorldKeeper;
+use DF\HorizonObservability\Tests\DashboardTruth\Server\PinnedApp;
+
+$root = dirname(__DIR__, 3);
+require $root.'/vendor/autoload.php';
+
+final class Runner
+{
+    private const STAGES = ['record', 'ingest', 'stack', 'capture', 'assert'];
+
+    private const GRAFANA_VERSIONS = ['12' => '12.4.13', '13' => '13.2.4'];
+
+    /** @var array<string, string|bool> */
+    private array $options;
+
+    private string $run;
+
+    private string $runDir;
+
+    /**
+     * Where the plan, the observations and the report of this invocation go: the run directory, or
+     * `<run dir>/mutants/<name>` for a mutant, so a mutant run never overwrites the run's own results.
+     */
+    private string $outDir;
+
+    private int $slot;
+
+    /** @var array<string, string> */
+    private array $env;
+
+    /** @var array<string, float> stage => seconds */
+    private array $timings = [];
+
+    /** @var resource|null */
+    private $stack = null;
+
+    /** @var resource|null */
+    private $router = null;
+
+    private bool $cleaned = false;
+
+    /**
+     * @param  list<string>  $argv
+     */
+    public function __construct(private readonly string $root, array $argv)
+    {
+        $this->options = self::parse($argv);
+        $this->slot = (int) ($this->options['slot'] ?? (getenv('DASHBOARD_TRUTH_SLOT') ?: 0));
+        $this->env = $this->slotEnvironment();
+    }
+
+    public function main(): int
+    {
+        $command = $this->options['_'] ?? 'run';
+
+        return match ($command) {
+            'run' => $this->runStages(),
+            'replay' => $this->replay(),
+            'compare' => $this->compare(),
+            'cleanup' => $this->cleanupCommand(),
+            default => $this->usage('Unknown command '.$command),
+        };
+    }
+
+    private function runStages(): int
+    {
+        $from = (string) ($this->options['from'] ?? 'record');
+
+        if (! in_array($from, self::STAGES, true)) {
+            return $this->usage('--from must be one of '.implode(', ', self::STAGES));
+        }
+
+        $this->run = (string) ($this->options['run'] ?? ($from === 'record' ? self::newRun() : ''));
+
+        if ($this->run === '') {
+            return $this->usage('--from='.$from.' needs --run=<id> of an earlier run');
+        }
+
+        $this->runDir = $this->root.'/build/dashboard-truth/'.$this->run;
+        $mutant = isset($this->options['mutant']) ? (string) $this->options['mutant'] : null;
+        $this->outDir = $mutant === null ? $this->runDir : $this->runDir.'/mutants/'.$mutant;
+
+        if (! is_dir($this->outDir)) {
+            mkdir($this->outDir, 0777, true);
+        }
+
+        $cases = Cases::select((string) ($this->options['set'] ?? 'pr'), $this->listOption('cases'));
+        $datasets = array_values(array_unique(array_map(static fn ($case): string => $case->dataset, $cases)));
+        $versions = $this->versions();
+
+        if ($mutant !== null && ! isset(Synthetic::MUTANTS[$mutant])) {
+            return $this->usage('Unknown mutant '.$mutant.'; known: '.implode(', ', array_keys(Synthetic::MUTANTS)));
+        }
+
+        $this->info(sprintf('run %s in %s, slot %d (Prometheus %s, Grafana 13 %s, Grafana 12 %s, app %s), cases %s, Grafana %s%s',
+            $this->run, $this->runDir, $this->slot, $this->env['PROMETHEUS_PORT'], $this->env['GRAFANA_PORT'], $this->env['GRAFANA12_PORT'],
+            $this->env['APP_PORT'], implode(',', array_keys($cases)), implode(',', $versions), $mutant === null ? '' : ', mutant '.$mutant));
+
+        $this->traps();
+        $start = array_search($from, self::STAGES, true);
+        $status = 0;
+
+        try {
+            foreach (array_slice(self::STAGES, (int) $start) as $stage) {
+                $began = hrtime(true);
+                $this->group($stage);
+                $status = match ($stage) {
+                    'record' => $this->record($datasets),
+                    'ingest' => $this->ingest($datasets, $versions),
+                    'stack' => $this->stackStage($cases, $datasets, $versions, $mutant),
+                    'capture' => $this->capture($cases, $versions),
+                    'assert' => $this->assertStage(),
+                };
+                $this->timings[$stage] = round((hrtime(true) - $began) / 1e9, 2);
+                $this->endGroup();
+                $this->info(sprintf('%s: %s s%s', $stage, $this->timings[$stage], $status === 0 ? '' : ', exit '.$status));
+
+                if ($status !== 0 && $stage !== 'capture') {
+                    break;
+                }
+            }
+        } finally {
+            $this->writeTimings();
+        }
+
+        if ($mutant !== null && ($this->options['expect-red'] ?? false) === true) {
+            return $this->expectRed($mutant, $status);
+        }
+
+        return $status;
+    }
+
+    /**
+     * @param  list<string>  $datasets
+     */
+    private function record(array $datasets): int
+    {
+        foreach ($datasets as $dataset) {
+            WorldKeeper::delete(WorldKeeper::prefix($this->run, $dataset), WorldKeeper::sqlite($this->runDir, $dataset));
+        }
+
+        return $this->exec([PHP_BINARY, 'vendor/bin/pest', 'tests/DashboardTruth/RecordTest.php', '--group=dashboard-truth-record', ...($this->ci() ? ['--ci'] : [])], [
+            'DASHBOARD_TRUTH_RECORD' => '1',
+            'DASHBOARD_TRUTH_RUN' => $this->run,
+            'DASHBOARD_TRUTH_RUN_DIR' => $this->runDir,
+            'DASHBOARD_TRUTH_DATASETS' => implode(',', $datasets),
+        ]);
+    }
+
+    /**
+     * Start the stack in the background, then remote-write every dataset in epoch order as soon as Prometheus is
+     * ready (the Grafanas start meanwhile).
+     *
+     * @param  list<string>  $datasets
+     * @param  list<string>  $versions
+     */
+    private function ingest(array $datasets, array $versions): int
+    {
+        $this->startStack($versions);
+        $this->waitFor('Prometheus', 'http://127.0.0.1:'.$this->env['PROMETHEUS_PORT'].'/-/ready', 120);
+        $manifests = [];
+
+        foreach ($datasets as $dataset) {
+            $manifests[$dataset] = Manifest::read(WorldKeeper::directory($this->runDir, $dataset).'/manifest.json');
+        }
+
+        uasort($manifests, static fn (Manifest $a, Manifest $b): int => $a->epoch <=> $b->epoch);
+        $writer = new RemoteWrite('http://127.0.0.1:'.$this->env['PROMETHEUS_PORT'].'/api/v1/write');
+
+        foreach ($manifests as $dataset => $manifest) {
+            $began = hrtime(true);
+            $store = ScrapeEmulation::store($manifest, Recording::open(WorldKeeper::directory($this->runDir, $dataset).'/recording.ndjson'));
+            $samples = $writer->write($store);
+            $this->info(sprintf('ingested %s: %d series, %d samples in %.2f s', $dataset, count($store->all()), $samples, (hrtime(true) - $began) / 1e9));
+        }
+
+        return 0;
+    }
+
+    /**
+     * @param  array<string, \DF\HorizonObservability\Tests\DashboardTruth\Contracts\CaseDef>  $cases
+     * @param  list<string>  $datasets
+     * @param  list<string>  $versions
+     */
+    private function stackStage(array $cases, array $datasets, array $versions, ?string $mutant): int
+    {
+        if ($this->stack === null && ! $this->stackRunning()) {
+            $this->startStack($versions);
+        }
+
+        $status = $this->waitStack();
+
+        if ($status !== 0) {
+            return $status;
+        }
+
+        $manifests = [];
+
+        foreach ($datasets as $dataset) {
+            $manifests[$dataset] = Manifest::read(WorldKeeper::directory($this->runDir, $dataset).'/manifest.json');
+        }
+
+        $this->activate($manifests[$datasets[0]]);
+
+        if (! $this->routerAnswers()) {
+            $this->startRouter();
+        }
+
+        // The renders as imported: the committed render of each mode (a mutant applied), only uid and id changed
+        $renders = [];
+        $grafanas = [];
+
+        foreach ($versions as $version) {
+            $grafanas[$version] = ['url' => $this->grafanaUrl($version), 'version' => self::GRAFANA_VERSIONS[$version]];
+        }
+
+        foreach (array_unique(array_map(static fn ($case): string => $case->mode->value, $cases)) as $mode) {
+            $file = $this->outDir.'/renders/'.$mode.'.json';
+
+            if (! is_dir(dirname($file))) {
+                mkdir(dirname($file), 0777, true);
+            }
+
+            $dashboard = json_decode((string) file_get_contents(Renders::committed(Mode::from($mode))), true, flags: JSON_THROW_ON_ERROR);
+
+            if ($mutant !== null) {
+                $dashboard = Synthetic::apply($mutant, $dashboard);
+            }
+
+            file_put_contents($file, json_encode($dashboard, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            $renders[$mode] = $file;
+
+            foreach ($versions as $version) {
+                $status = $this->exec([PHP_BINARY, 'tests/DashboardTruth/stack/import.php', $this->grafanaUrl($version), $file, Plan::uid(Mode::from($mode), $mutant)]);
+
+                if ($status !== 0) {
+                    return $status;
+                }
+            }
+        }
+
+        Plan::build($this->run, $this->runDir, $cases, $grafanas, $renders, $manifests, $mutant)->write($this->outDir.'/plan.json');
+
+        return 0;
+    }
+
+    /**
+     * @param  array<string, \DF\HorizonObservability\Tests\DashboardTruth\Contracts\CaseDef>  $cases
+     * @param  list<string>  $versions
+     */
+    private function capture(array $cases, array $versions): int
+    {
+        $plan = Plan::read($this->outDir.'/plan.json');
+
+        if ($this->router === null && ! $this->routerAnswers()) {
+            $this->startRouter();
+        }
+
+        $byDataset = [];
+
+        foreach ($cases as $case) {
+            $byDataset[$case->dataset][] = $case->id;
+        }
+
+        $status = 0;
+
+        foreach ($byDataset as $dataset => $ids) {
+            $this->activate(Manifest::read(WorldKeeper::directory($this->runDir, $dataset).'/manifest.json'));
+            $processes = [];
+
+            foreach ($versions as $version) {
+                $out = $this->outDir.'/observations/'.$version;
+                $command = ['node', 'tests/DashboardTruth/browser/observe.mjs', '--plan', $this->outDir.'/plan.json', '--grafana', $version, '--out', $out, '--cases', implode(',', $ids)];
+                $processes[$version] = proc_open($command, [1 => STDOUT, 2 => STDERR], $pipes, $this->root, $this->processEnv());
+            }
+
+            foreach ($processes as $version => $process) {
+                $code = is_resource($process) ? proc_close($process) : 1;
+
+                if ($code !== 0) {
+                    $this->info(sprintf('the observer of Grafana %s exited %d (incomplete cases fail the assert stage as infrastructure)', $version, $code));
+                    $status = $code;
+                }
+            }
+        }
+
+        unset($plan);
+
+        return $status;
+    }
+
+    private function assertStage(): int
+    {
+        Report::open($this->outDir, fresh: true);
+
+        $status = $this->exec([PHP_BINARY, 'vendor/bin/pest', 'tests/DashboardTruth/DashboardTruthTest.php', '--group=dashboard-truth', ...($this->ci() ? ['--ci'] : [])], [
+            'DASHBOARD_TRUTH_STACK' => '1',
+            'DASHBOARD_TRUTH_RUN_DIR' => $this->outDir,
+        ]);
+        $this->info('report: '.$this->outDir.'/'.Report::MARKDOWN);
+
+        return $status;
+    }
+
+    /**
+     * A mutant must turn its cases red with a dashboard defect: exit 0 when it did, 1 when the suite stayed green.
+     */
+    private function expectRed(string $mutant, int $status): int
+    {
+        $report = Report::open($this->outDir);
+        $defects = array_filter($report->failures(), static fn ($failure): bool => $failure->category?->value === 'dashboard defect');
+        $red = array_values(array_unique(array_map(static fn ($failure): string => $failure->case, $defects)));
+        $wanted = Synthetic::MUTANTS[$mutant][4];
+        $missed = array_diff($wanted, $red);
+
+        if ($status === 0 || $missed !== []) {
+            $this->info(sprintf('MUTANT SURVIVED: %s left %s green', $mutant, implode(', ', $missed ?: $wanted)));
+
+            return 1;
+        }
+
+        $this->info(sprintf('mutant %s killed: %d dashboard defects in %s (report %s)', $mutant, count($defects), implode(', ', $red), $this->outDir.'/'.Report::MARKDOWN));
+
+        return 0;
+    }
+
+    private function replay(): int
+    {
+        foreach (['run-dir', 'case', 'grafana', 'panel', 'ref'] as $required) {
+            if (! isset($this->options[$required])) {
+                return $this->usage('replay needs --'.$required);
+            }
+        }
+
+        $runDir = (string) $this->options['run-dir'];
+        $plan = Plan::read($runDir.'/plan.json');
+        $observation = Observation::read($runDir.'/observations/'.$this->options['grafana'].'/'.$this->options['case'].'.json');
+        $request = $observation->request((string) $this->options['panel'], (string) $this->options['ref']);
+
+        if ($request === null || ! is_array($request['body'])) {
+            return $this->usage('The observation has no request of that panel and refId.');
+        }
+
+        $replays = new Replays($plan->grafanaUrl((string) $this->options['grafana']));
+        $frames = Frames::frames(is_array($request['response']) ? $request['response'] : null, (string) $this->options['ref']);
+        $step = isset($this->options['step']) ? Durations::parse((string) $this->options['step']) : Frames::step($frames);
+        $response = $step === null ? $request['response'] : $replays->post((string) $request['url'], $request['body'], $step);
+        $frames = Frames::frames(is_array($response) ? $response : null, (string) $this->options['ref']);
+        fwrite(STDOUT, (Frames::executed($frames) ?? 'no executed query string')."\n\n");
+
+        foreach (Frames::series($frames) as $series) {
+            fwrite(STDOUT, '{'.implode(', ', array_map(static fn (string $k, string $v): string => $k.'="'.$v.'"', array_keys($series['labels']), $series['labels'])).'}'."\n");
+
+            foreach ($series['points'] as $time => $value) {
+                fwrite(STDOUT, sprintf("  %s  %s\n", gmdate('Y-m-d\TH:i:s\Z', intdiv($time, 1000)), var_export($value, true)));
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * The determinism check of two runs: their observations must be identical (frames order-insensitive, DOM and
+     * scene variables), apart from the measured durations (design section 4); prints every difference.
+     */
+    private function compare(): int
+    {
+        $dirs = $this->options['args'] ?? [];
+
+        if (! is_array($dirs) || count($dirs) !== 2) {
+            return $this->usage('compare needs two run directories');
+        }
+
+        $differences = 0;
+        $compared = 0;
+
+        foreach (glob($dirs[0].'/observations/*/*.json') ?: [] as $first) {
+            $relative = substr($first, strlen($dirs[0]));
+            $second = $dirs[1].$relative;
+            $compared++;
+
+            if (! is_file($second)) {
+                fwrite(STDOUT, $relative.": missing in the second run\n");
+                $differences++;
+
+                continue;
+            }
+
+            $a = self::canonical(Observation::read($first));
+            $b = self::canonical(Observation::read($second));
+
+            foreach (array_unique([...array_keys($a), ...array_keys($b)]) as $key) {
+                if (($a[$key] ?? null) !== ($b[$key] ?? null)) {
+                    fwrite(STDOUT, sprintf("%s %s differs\n", $relative, $key));
+                    $differences++;
+                }
+            }
+        }
+
+        fwrite(STDOUT, sprintf("%d observations compared, %d differences\n", $compared, $differences));
+
+        return $compared > 0 && $differences === 0 ? 0 : 1;
+    }
+
+    /**
+     * An observation in a run-independent form: per panel title and refId the frames (series sorted by labels),
+     * per panel key the DOM lines, and the scene variables.
+     *
+     * @return array<string, string>
+     */
+    private static function canonical(Observation $observation): array
+    {
+        $canonical = [];
+
+        foreach ($observation->requests() as $request) {
+            $body = is_array($request['body']) ? $request['body'] : [];
+
+            foreach (is_array($body['queries'] ?? null) ? $body['queries'] : [] as $query) {
+                $refId = (string) ($query['refId'] ?? '');
+                $last = $observation->request((string) $request['panelId'], $refId);
+                $series = Frames::series(Frames::frames(is_array($last['response'] ?? null) ? $last['response'] : null, $refId));
+                $text = array_map(static fn (array $one): string => json_encode($one['labels']).json_encode($one['points']), $series);
+                sort($text);
+                $canonical[sprintf('frame %s/%s %s', $request['panelTitle'] ?? '?', $request['panelId'] ?? '?', $refId)] = implode("\n", $text);
+            }
+        }
+
+        foreach ($observation->data['dom'] as $key => $dom) {
+            $canonical['dom '.$key] = implode(' | ', $dom['lines']);
+        }
+
+        foreach ($observation->variables() as $name => $variable) {
+            $canonical['variable '.$name] = json_encode([$variable['value'], $variable['text'], $variable['options']]) ?: '';
+        }
+
+        ksort($canonical);
+
+        return $canonical;
+    }
+
+    private function cleanupCommand(): int
+    {
+        $this->run = (string) ($this->options['run'] ?? '');
+
+        if ($this->run === '') {
+            return $this->usage('cleanup needs --run=<id>');
+        }
+
+        $this->runDir = $this->root.'/build/dashboard-truth/'.$this->run;
+        $this->outDir = $this->runDir;
+        $this->cleanup(force: true);
+
+        return 0;
+    }
+
+    /**
+     * Stop the router and the stack, delete the worlds: at the end, on failure and on SIGINT/SIGTERM, unless --keep.
+     */
+    public function cleanup(bool $force = false): void
+    {
+        if ($this->cleaned || (! $force && ($this->options['keep'] ?? false) === true)) {
+            if (! $this->cleaned && isset($this->run)) {
+                $this->info(sprintf('kept: the stack (%s), the router on %s and the worlds ho_t17_%s_*; tests/DashboardTruth/bin/run cleanup --run=%s --slot=%d', $this->env['COMPOSE_PROJECT_NAME'], $this->env['APP_PORT'], $this->run, $this->run, $this->slot));
+            }
+
+            $this->cleaned = true;
+
+            return;
+        }
+
+        $this->cleaned = true;
+
+        if (is_resource($this->router)) {
+            proc_terminate($this->router);
+            proc_close($this->router);
+        }
+
+        $pidFile = $this->runDir.'/router.pid';
+
+        if (is_file($pidFile)) {
+            $pid = (int) file_get_contents($pidFile);
+
+            if ($pid > 0 && function_exists('posix_kill')) {
+                @posix_kill($pid, SIGTERM);
+            }
+
+            unlink($pidFile);
+        }
+
+        if (is_resource($this->stack)) {
+            proc_terminate($this->stack);
+            proc_close($this->stack);
+        }
+
+        $this->exec(['bash', 'tests/DashboardTruth/stack/down.sh'], quiet: true);
+        $deleted = WorldKeeper::deleteRun($this->run);
+
+        foreach (glob($this->runDir.'/datasets/*/*.sqlite') ?: [] as $sqlite) {
+            unlink($sqlite);
+        }
+
+        $this->info(sprintf('cleaned up: stack %s down, %d keys of ho_t17_%s_* deleted', $this->env['COMPOSE_PROJECT_NAME'], $deleted, $this->run));
+    }
+
+    /**
+     * @param  list<string>  $versions
+     */
+    private function startStack(array $versions): void
+    {
+        if ($this->stack !== null) {
+            return;
+        }
+
+        $log = fopen($this->runDir.'/stack.log', 'ab');
+        $this->stack = proc_open(['bash', 'tests/DashboardTruth/stack/up.sh'], [1 => $log, 2 => $log], $pipes, $this->root, $this->processEnv(['DASHBOARD_TRUTH_GRAFANA' => implode(' ', $versions)])) ?: null;
+    }
+
+    private function waitStack(): int
+    {
+        if (! is_resource($this->stack)) {
+            return 0;
+        }
+
+        $code = proc_close($this->stack);
+        $this->stack = null;
+
+        if ($code !== 0) {
+            $this->info('the stack did not start (exit '.$code.'): '.$this->runDir.'/stack.log');
+            fwrite(STDERR, (string) file_get_contents($this->runDir.'/stack.log'));
+        }
+
+        return $code;
+    }
+
+    private function stackRunning(): bool
+    {
+        return @file_get_contents('http://127.0.0.1:'.$this->env['PROMETHEUS_PORT'].'/-/ready') !== false;
+    }
+
+    private function activate(Manifest $manifest): void
+    {
+        file_put_contents($this->runDir.'/'.PinnedApp::ACTIVE, json_encode([
+            'dataset' => $manifest->dataset,
+            'manifest' => WorldKeeper::directory($this->runDir, $manifest->dataset).'/manifest.json',
+        ], JSON_UNESCAPED_SLASHES));
+    }
+
+    private function startRouter(): void
+    {
+        if ($this->router !== null) {
+            return;
+        }
+
+        $log = fopen($this->runDir.'/router.out', 'ab');
+        $this->router = proc_open(
+            [PHP_BINARY, '-S', '127.0.0.1:'.$this->env['APP_PORT'], 'tests/DashboardTruth/Server/router.php'],
+            [1 => $log, 2 => $log],
+            $pipes,
+            $this->root,
+            $this->processEnv(['DASHBOARD_TRUTH_RUN_DIR' => $this->runDir, 'PHP_CLI_SERVER_WORKERS' => '4']),
+        ) ?: null;
+
+        if (is_resource($this->router)) {
+            $status = proc_get_status($this->router);
+            file_put_contents($this->runDir.'/router.pid', (string) $status['pid']);
+        }
+
+        $deadline = microtime(true) + 30;
+
+        while (! $this->routerAnswers()) {
+            if (microtime(true) > $deadline) {
+                throw new RuntimeException('The router does not answer on port '.$this->env['APP_PORT'].': '.$this->runDir.'/router.out');
+            }
+
+            usleep(200_000);
+        }
+    }
+
+    private function routerAnswers(): bool
+    {
+        $socket = @fsockopen('127.0.0.1', (int) $this->env['APP_PORT'], $errno, $error, 0.5);
+
+        if ($socket === false) {
+            return false;
+        }
+
+        fclose($socket);
+
+        return true;
+    }
+
+    private function waitFor(string $what, string $url, int $seconds): void
+    {
+        $deadline = microtime(true) + $seconds;
+
+        while (@file_get_contents($url) === false) {
+            if (microtime(true) > $deadline) {
+                throw new RuntimeException($what.' is not ready at '.$url);
+            }
+
+            usleep(250_000);
+        }
+    }
+
+    private function grafanaUrl(string $version): string
+    {
+        return 'http://127.0.0.1:'.($version === '12' ? $this->env['GRAFANA12_PORT'] : $this->env['GRAFANA_PORT']);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function versions(): array
+    {
+        $grafana = (string) ($this->options['grafana'] ?? 'both');
+
+        return match ($grafana) {
+            'both' => ['12', '13'],
+            '12', '13' => [$grafana],
+            default => throw new InvalidArgumentException('--grafana must be 12, 13 or both'),
+        };
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function slotEnvironment(): array
+    {
+        $n = $this->slot;
+        $env = static fn (string $name, string $default): string => is_string(getenv($name)) && getenv($name) !== '' ? (string) getenv($name) : $default;
+        $prometheus = $env('PROMETHEUS_PORT', (string) (19000 + $n));
+        $grafana = $env('GRAFANA_PORT', (string) (13000 + $n));
+        $app = $env('APP_PORT', (string) (18000 + $n));
+
+        return [
+            'COMPOSE_PROJECT_NAME' => $env('COMPOSE_PROJECT_NAME', 'ho-s'.$n),
+            'PROMETHEUS_PORT' => $prometheus,
+            'PARITY_PROMETHEUS_PORT' => $env('PARITY_PROMETHEUS_PORT', (string) ((int) $prometheus + 500)),
+            'GRAFANA_PORT' => $grafana,
+            'GRAFANA12_PORT' => $env('GRAFANA12_PORT', (string) ((int) $grafana + 500)),
+            'APP_PORT' => $app,
+            'REPLAY_PORT' => $env('REPLAY_PORT', (string) ((int) $app + 500)),
+            'DASHBOARD_TRUTH_TOKEN' => 'truth-scenario-token-0123456789abcdef',
+            'DASHBOARD_TRUTH_PLUGINS' => $env('DASHBOARD_TRUTH_PLUGINS', (getenv('HOME') ?: '/tmp').'/.cache/horizon-observability/t17-grafana-plugins'),
+            'DASHBOARD_TRUTH_SCRAPE_INTERVAL' => '10s',
+        ];
+    }
+
+    /**
+     * @param  array<string, string>  $extra
+     * @return array<string, string>
+     */
+    private function processEnv(array $extra = []): array
+    {
+        $env = [];
+
+        foreach (getenv() as $name => $value) {
+            $env[(string) $name] = (string) $value;
+        }
+
+        return [...$env, ...$this->env, ...$extra];
+    }
+
+    /**
+     * @param  list<string>  $command
+     * @param  array<string, string>  $extra
+     */
+    private function exec(array $command, array $extra = [], bool $quiet = false): int
+    {
+        $descriptors = $quiet ? [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']] : [1 => STDOUT, 2 => STDERR];
+        $process = proc_open($command, $descriptors, $pipes, $this->root, $this->processEnv($extra));
+
+        return is_resource($process) ? proc_close($process) : 1;
+    }
+
+    private function traps(): void
+    {
+        register_shutdown_function(fn () => $this->cleanup());
+
+        if (function_exists('pcntl_async_signals')) {
+            pcntl_async_signals(true);
+
+            foreach ([SIGINT, SIGTERM] as $signal) {
+                pcntl_signal($signal, function () use ($signal): void {
+                    $this->cleanup();
+                    exit(128 + $signal);
+                });
+            }
+        }
+    }
+
+    private function writeTimings(): void
+    {
+        $file = $this->outDir.'/timings.json';
+        $previous = is_file($file) ? (json_decode((string) file_get_contents($file), true) ?: []) : [];
+        file_put_contents($file, json_encode([...$previous, ...$this->timings], JSON_PRETTY_PRINT)."\n");
+        $this->info('timings (s): '.json_encode($this->timings));
+    }
+
+    private function ci(): bool
+    {
+        return ($this->options['ci'] ?? false) === true;
+    }
+
+    private function group(string $name): void
+    {
+        if ($this->ci()) {
+            fwrite(STDOUT, '::group::'.$name."\n");
+        }
+    }
+
+    private function endGroup(): void
+    {
+        if ($this->ci()) {
+            fwrite(STDOUT, "::endgroup::\n");
+        }
+    }
+
+    private function info(string $message): void
+    {
+        fwrite(STDOUT, '[dashboard-truth] '.$message."\n");
+    }
+
+    private function usage(string $error): int
+    {
+        fwrite(STDERR, $error."\nusage: see the header of tests/DashboardTruth/bin/run\n");
+
+        return 2;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function listOption(string $name): array
+    {
+        $value = $this->options[$name] ?? '';
+
+        return is_string($value) && $value !== '' ? array_values(array_filter(explode(',', $value))) : [];
+    }
+
+    private static function newRun(): string
+    {
+        return strtolower(base_convert((string) time(), 10, 36).bin2hex(random_bytes(2)));
+    }
+
+    /**
+     * @param  list<string>  $argv
+     * @return array<string, mixed>
+     */
+    private static function parse(array $argv): array
+    {
+        $options = [];
+        $args = [];
+
+        foreach (array_slice($argv, 1) as $arg) {
+            if (str_starts_with($arg, '--')) {
+                [$key, $value] = explode('=', substr($arg, 2), 2) + [1 => true];
+                $options[$key] = $value;
+            } elseif (! isset($options['_'])) {
+                $options['_'] = $arg;
+            } else {
+                $args[] = $arg;
+            }
+        }
+
+        $options['args'] = $args;
+
+        return $options;
+    }
+}
+
+exit((new Runner($root, $argv))->main());
