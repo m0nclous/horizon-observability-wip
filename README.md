@@ -664,7 +664,7 @@ series. Measured with `--live=off` and every filter on All:
 | Refresh, 1-hour range | 1.0 s p50, 1.5 s p95 | 0.22 s / 0.20 s p50 |
 | Refresh, 6-hour range | 2.0 s p50 | 0.30 s / 0.28 s p50 |
 | Requests per refresh | 12 | 12 |
-| Interpolated PromQL per refresh | 100 KB | 71 KB |
+| Interpolated PromQL per refresh | 100 KB | 75 KB |
 
 Times depend on the hardware: an earlier render measured a 1-hour p50 of 0.72 s to 1.05 s on a shared 4-vCPU sandbox.
 [`docker/perf/README.md`](docker/perf/README.md) describes the profile and the tools. What keeps the dashboard fast:
