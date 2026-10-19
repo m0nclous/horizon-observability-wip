@@ -54,10 +54,10 @@ function firstValueCounts(Scenario $scenario, string $class = 'Truth\\Invoice', 
     ];
 }
 
-it('restates the collector hold in the model and in the HELP text of queue_jobs_total', function (): void {
+it('restates the collector hold in the model and in the HELP texts of the held families', function (Metric $metric): void {
     expect(Model::HOLD_SECONDS)->toBe(AttemptsCollector::NEW_SERIES_HOLD_SECONDS)
-        ->and(Metric::JobsTotal->help())->toContain('a new series reads 0 for its first '.AttemptsCollector::NEW_SERIES_HOLD_SECONDS.' seconds');
-});
+        ->and($metric->help())->toContain('a new series reads 0 for its first '.AttemptsCollector::NEW_SERIES_HOLD_SECONDS.' seconds');
+})->with([Metric::JobsTotal, Metric::JobDuration, Metric::JobWait]);
 
 it('exports a new series as 0 for the hold, then with every attempt it was created with', function (): void {
     $scenario = Scenario::start($this);
@@ -330,7 +330,8 @@ it('measures the age on the server clock, never the exporter\'s (TIME, not pinne
     expect($scrape(3600))->toBe(0)
         ->and($scrape(-3600))->toBe(0);
 
-    Storage::store()->reader()->hset($created, $field, (string) (firstValueServerTime() - AttemptsCollector::NEW_SERIES_HOLD_SECONDS + 1));
+    // 30 s inside the hold: the two scrapes on a slow runner cannot reach its end.
+    Storage::store()->reader()->hset($created, $field, (string) (firstValueServerTime() - AttemptsCollector::NEW_SERIES_HOLD_SECONDS + 30));
 
     expect($scrape(3600))->toBe(0)
         ->and($scrape(-3600))->toBe(0);

@@ -51,3 +51,46 @@ it('defaults to the package resources/lua directory', function (): void {
 
     expect(fn (): string => (new Lua)->source('answer_'.getmypid()))->toThrow(RedisScriptFailed::class, $path);
 });
+
+it('sends a script without its comments and the blanks around its lines, keeping every line', function (string $source, string $expected): void {
+    expect(Lua::compact($source))->toBe($expected)
+        ->and(substr_count(Lua::compact($source), "\n"))->toBe(substr_count($source, "\n"))
+        ->and(Lua::compact(Lua::compact($source)))->toBe(Lua::compact($source));
+})->with([
+    'line comments' => ["-- head\nlocal a = 1 -- tail\n\n    return a\n", "\nlocal a = 1\n\nreturn a\n"],
+    'a comment at the end without a line break' => ['return 1 -- end', 'return 1'],
+    'blanks between tokens become one space' => ["local  a\t=\t1\r\nreturn   a\r\n", "local a = 1\nreturn a\n"],
+    'block comments keep their line breaks' => ["--[[ a\nb ]] local x = 1 --[==[ ]] still\n comment ]==]\nreturn x", "\nlocal x = 1\n\nreturn x"],
+    'a block comment separates tokens' => ['return a--[[c]]b', 'return a b'],
+    '--[ and --[= start line comments' => ["--[ x\n--[= y ]]\nreturn 1", "\n\nreturn 1"],
+    'a minus before a negative number' => ['return 1 - -1', 'return 1 - -1'],
+    'an index of a long string' => ['return t[ [[x]] ]', 'return t[ [[x]] ]'],
+    'dashes in quoted strings' => ["return '--a', \"b -- c\", '--[[ d ]]'", "return '--a', \"b -- c\", '--[[ d ]]'"],
+    'escaped quotes and backslashes' => ["return 'a\\'--b', \"c\\\"--d\", '\\\\' -- e", "return 'a\\'--b', \"c\\\"--d\", '\\\\'"],
+    'an escaped line break in a quoted string' => ["return 'a\\\n  -- b' -- c", "return 'a\\\n  -- b'"],
+    'long strings as they are' => ["return [[\n  -- not a comment\n]], [==[ ]] -- ]==] -- c", "return [[\n  -- not a comment\n]], [==[ ]] -- ]==]"],
+    'patterns with %-' => ["return string.match(s, '^%-?%d+') -- c", "return string.match(s, '^%-?%d+')"],
+]);
+
+it('returns a source with an unfinished string or comment as it is, so Redis reports its error', function (string $source): void {
+    expect(Lua::compact($source))->toBe($source);
+})->with([
+    'quoted string' => ["-- c\nreturn 'abc"],
+    'quoted string over a line break' => ["-- c\nreturn 'a\nb'"],
+    'backslash at the end' => ["-- c\nreturn 'a\\"],
+    'long string' => ["-- c\nreturn [==[ x ]]"],
+    'block comment' => ["return 1 --[[ open\n"],
+]);
+
+it('keeps the lines of every package script and sends each one shorter', function (string $path): void {
+    $source = (string) file_get_contents($path);
+    $compact = Lua::compact($source);
+
+    expect(substr_count($compact, "\n"))->toBe(substr_count($source, "\n"))
+        ->and(strlen($compact))->toBeLessThan(strlen($source))
+        ->and((new Lua(dirname($path)))->source(basename($path, '.lua')))->toBe($compact);
+})->with(function (): array {
+    $paths = glob(dirname(__DIR__, 3).'/resources/lua/*.lua') ?: [];
+
+    return array_combine(array_map(basename(...), $paths), array_map(static fn (string $path): array => [$path], $paths));
+});

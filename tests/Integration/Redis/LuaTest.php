@@ -7,6 +7,7 @@ use DF\HorizonObservability\Redis\Keys;
 use DF\HorizonObservability\Redis\Lua;
 use DF\HorizonObservability\Redis\RedisClients;
 use DF\HorizonObservability\Redis\RedisScriptFailed;
+use DF\HorizonObservability\Tests\Support\RedisCommands;
 use DF\HorizonObservability\Tests\Support\RedisKeys;
 use DF\HorizonObservability\Tests\TestCase;
 
@@ -19,6 +20,15 @@ beforeEach(function (): void {
     file_put_contents($this->directory.'/nil_reply.lua', 'return nil');
     file_put_contents($this->directory.'/error_reply.lua', "return redis.error_reply('ERR boom')");
     file_put_contents($this->directory.'/runtime_error.lua', "error('crash')");
+    file_put_contents($this->directory.'/commented.lua', "-- A comment.\nreturn {'-- kept', [[\n  -- kept]]} -- gone\n");
+    // Compiles both sources in the server's own Lua: string.dump() holds the code, the constants and the debug
+    // information (the line of every instruction, the local names), so equal dumps are the same function.
+    file_put_contents($this->directory.'/same_function.lua', implode("\n", [
+        "local file, compact = loadstring(ARGV[1], '=script'), loadstring(ARGV[2], '=script')",
+        "if not file or not compact then return redis.error_reply('ERR does not compile') end",
+        'local dump = string.dump(file)',
+        'return {dump == string.dump(compact) and 1 or 0, #dump}',
+    ]));
     $this->lua = new Lua($this->directory);
     $this->storage = app(RedisClients::class)->storage();
 });
@@ -36,6 +46,38 @@ it('passes keys with the connection prefix and arguments in their exact form', f
     expect($result)->toBe([$prefixed, '1700000000.123456', '42', 1])
         ->and(RedisKeys::all(TestCase::redisPrefix()))->toBe([$prefixed]);
 });
+
+it('sends the script without its comments, which Redis caches byte for byte', function (): void {
+    $commands = RedisCommands::start($this->app);
+    $storage = app(RedisClients::class)->storage();
+    $compact = "\nreturn {'-- kept', [[\n  -- kept]]}\n";
+
+    expect($this->lua->eval($storage, 'commented', [], []))->toBe(['-- kept', '  -- kept'])
+        ->and($commands->names(RedisClients::STORAGE))->toBe(['EVAL'])
+        ->and($commands->commands(RedisClients::STORAGE)[0]['parameters'][0])->toBe($compact)
+        ->and(array_map(intval(...), (array) $storage->command('script', ['exists', sha1($compact)])))->toBe([1]);
+});
+
+it('compiles every package script without its comments to the function of its file', function (string $path): void {
+    $source = (string) file_get_contents($path);
+    $reply = $this->lua->eval($this->storage, 'same_function', [], [$source, Lua::compact($source)]);
+
+    expect($reply)->toBeArray()
+        ->and($reply[0] ?? null)->toBe(1)
+        ->and($reply[1] ?? 0)->toBeGreaterThan(500);
+})->with(function (): array {
+    $paths = glob(dirname(__DIR__, 3).'/resources/lua/*.lua') ?: [];
+
+    return array_combine(array_map(basename(...), $paths), array_map(static fn (string $path): array => [$path], $paths));
+});
+
+it('tells a changed function from the function of its file', function (string $file, string $changed): void {
+    expect($this->lua->eval($this->storage, 'same_function', [], [$file, $changed])[0] ?? null)->toBe(0);
+})->with([
+    'a line moved' => ["local a = 1\nreturn a", 'local a = 1 return a'],
+    'a string changed' => ["return '--a'", "return '-a'"],
+    'a local renamed' => ['local a = 1 return a', 'local b = 1 return b'],
+]);
 
 it('returns null for a nil reply', function (): void {
     expect($this->lua->eval($this->storage, 'nil_reply', [], []))->toBeNull();

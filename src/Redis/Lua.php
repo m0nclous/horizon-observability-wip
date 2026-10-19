@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DF\HorizonObservability\Redis;
 
+use DF\HorizonObservability\Support\RedisErrorReply;
 use Illuminate\Redis\Connections\Connection;
 use Illuminate\Redis\Connections\PhpRedisConnection;
 use InvalidArgumentException;
@@ -17,7 +18,9 @@ use RedisCluster;
  * Laravel's `Connection::eval()`, which orders the arguments for phpredis and predis alike. `EVALSHA` is not used:
  * Laravel's phpredis connection runs `SCRIPT LOAD` on every `evalsha()` call.
  *
- * - Sources are read once per process (a static cache survives container rebuilds under PHP-FPM).
+ * - Sources are read once per process (a static cache survives container rebuilds under PHP-FPM) and sent without
+ *   their comments ({@see self::compact()}): `record_attempt.lua` (every job end) is 3.1 KB instead of 8.5 KB,
+ *   `queue_state.lua` (every queue at every scrape) 7 KB instead of 12.6 KB.
  * - Every key is passed in `$keys` and receives the connection prefix; scripts never build key names.
  * - Floats are passed in their shortest round-trip form (`var_export`), never with a `(string)` cast that rounds
  *   to 14 digits.
@@ -95,7 +98,7 @@ final class Lua
     }
 
     /**
-     * The source of a script, read once per process.
+     * The source of a script as `EVAL` sends it ({@see self::compact()}), read once per process.
      *
      * @throws RedisScriptFailed when the file does not exist
      */
@@ -114,10 +117,119 @@ final class Lua
                 throw new RedisScriptFailed($script, sprintf('the file %s is missing.', $path));
             }
 
-            self::$sources[$path] = $source;
+            self::$sources[$path] = self::compact($source);
         }
 
         return self::$sources[$path];
+    }
+
+    /**
+     * A script without its comments and without the blanks around its lines; a run of blanks between two tokens
+     * becomes one space. Every line break stays, also those inside a block comment, so the line an error reply names
+     * is the line of the file ({@see RedisErrorReply}); strings, quoted or in long brackets, are copied byte for byte.
+     * Redis compiles the same function from both: tests/Integration/Redis/LuaTest compares their `string.dump()` in
+     * the Lua of the server for every package script.
+     *
+     * The rules of the Lua 5.1 lexer: `--[[ ... ]]` (with any number of `=` between the brackets, the same in the
+     * closing ones) is a block comment, any other `--` outside a string runs to the end of the line, and a backslash
+     * in a quoted string escapes the next byte. A source with an unfinished string or comment is returned as it is,
+     * so Redis reports its error.
+     */
+    public static function compact(string $source): string
+    {
+        $length = strlen($source);
+        $compact = '';
+        $blank = false;
+
+        for ($at = 0; $at < $length;) {
+            $byte = $source[$at];
+
+            if ($byte === "\n") {
+                $compact .= "\n";
+                $blank = false;
+                $at++;
+
+                continue;
+            }
+
+            if (str_contains(" \t\r\f\v", $byte)) {
+                $blank = true;
+                $at++;
+
+                continue;
+            }
+
+            if ($byte === '-' && ($source[$at + 1] ?? '') === '-') {
+                $level = self::longBracket($source, $at + 2);
+
+                if ($level === null) {
+                    $end = strpos($source, "\n", $at);
+                    $at = $end === false ? $length : $end;
+
+                    continue;
+                }
+
+                $end = self::longBracketEnd($source, $at + 2, $level);
+
+                if ($end === null) {
+                    return $source;
+                }
+
+                // A block comment separates the tokens around it like a blank.
+                $compact .= str_repeat("\n", substr_count($source, "\n", $at, $end - $at));
+                $blank = true;
+                $at = $end;
+
+                continue;
+            }
+
+            if ($blank && $compact !== '' && ! str_ends_with($compact, "\n")) {
+                $compact .= ' ';
+            }
+
+            $blank = false;
+
+            if ($byte === "'" || $byte === '"') {
+                $end = $at + 1;
+
+                while ($end < $length && $source[$end] !== $byte) {
+                    if ($source[$end] === "\n") {
+                        return $source;
+                    }
+
+                    $end += $source[$end] === '\\' ? 2 : 1;
+                }
+
+                if ($end >= $length) {
+                    return $source;
+                }
+
+                $compact .= substr($source, $at, $end + 1 - $at);
+                $at = $end + 1;
+
+                continue;
+            }
+
+            $level = $byte === '[' ? self::longBracket($source, $at) : null;
+
+            if ($level !== null) {
+                $end = self::longBracketEnd($source, $at, $level);
+
+                if ($end === null) {
+                    return $source;
+                }
+
+                $compact .= substr($source, $at, $end - $at);
+                $at = $end;
+
+                continue;
+            }
+
+            $compact .= $byte;
+            $at++;
+        }
+
+        return $compact;
     }
 
     /**
@@ -138,5 +250,29 @@ final class Lua
         }
 
         return var_export($value, true);
+    }
+
+    /**
+     * The level of the opening long bracket at `$at` (`[[` 0, `[=[` 1, ...), null when there is none.
+     */
+    private static function longBracket(string $source, int $at): ?int
+    {
+        if (($source[$at] ?? '') !== '[') {
+            return null;
+        }
+
+        $level = strspn($source, '=', $at + 1);
+
+        return ($source[$at + 1 + $level] ?? '') === '[' ? $level : null;
+    }
+
+    /**
+     * The offset after the closing long bracket of the level of the opening one at `$at`; null when it is missing.
+     */
+    private static function longBracketEnd(string $source, int $at, int $level): ?int
+    {
+        $close = strpos($source, ']'.str_repeat('=', $level).']', $at + $level + 2);
+
+        return $close === false ? null : $close + $level + 2;
     }
 }

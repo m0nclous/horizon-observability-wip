@@ -564,7 +564,9 @@ setting. The exporter's own metrics are `ho_exporter_*`. Names, types, labels an
 semantic versioning.
 
 Only Redis queue connections are counted. The sentinel `job_class` values are `(unscanned)` (beyond
-`queue_scan_limit`), `(unknown)` (a job without a class name) and `(other)` (beyond `max_job_classes`).
+`queue_scan_limit`), `(unknown)` (a job without a class name) and `(other)` (beyond `max_job_classes`). Label values
+are valid UTF-8 without control characters and at most 200 bytes: a longer value is cut and ends with `...` and the
+CRC32 of the whole value (8 hex digits), so two long values with the same start stay apart.
 
 Collector `horizon`:
 

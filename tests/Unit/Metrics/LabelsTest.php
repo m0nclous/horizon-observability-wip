@@ -19,16 +19,26 @@ it('strips control characters including the field separator', function (): void 
     expect(Labels::sanitize("a\x1fb\nc\td\re\x00f\x7fg\u{0085}h"))->toBe('abcdefgh');
 });
 
-it('cuts at 200 bytes on a character boundary with an ellipsis', function (): void {
+it('cuts at 200 bytes on a character boundary with an ellipsis and the hash of the whole value', function (): void {
     $ascii = Labels::sanitize(str_repeat('a', 250));
     $multibyte = Labels::sanitize(str_repeat("\u{0436}", 150));
 
-    expect(strlen($ascii))->toBe(200)
-        ->and($ascii)->toEndWith('...')
+    expect($ascii)->toBe(str_repeat('a', 189).'...'.hash('crc32b', str_repeat('a', 250)))
+        ->and(strlen($ascii))->toBe(200)
         ->and(strlen($multibyte))->toBeLessThanOrEqual(200)
-        ->and($multibyte)->toEndWith('...')
+        ->and($multibyte)->toBe(str_repeat("\u{0436}", 94).'...'.hash('crc32b', str_repeat("\u{0436}", 150)))
         ->and(mb_check_encoding($multibyte, 'UTF-8'))->toBeTrue()
+        ->and(Labels::sanitize($ascii))->toBe($ascii)
+        ->and(Labels::sanitize($multibyte))->toBe($multibyte)
         ->and(Labels::sanitize(str_repeat('b', 200)))->toBe(str_repeat('b', 200));
+});
+
+it('keeps two cut values apart when they share their first bytes', function (): void {
+    $list = implode(',', array_map(static fn (int $index): string => 'notifications-'.$index, range(1, 15)));
+
+    expect(strlen($list))->toBeGreaterThan(200)
+        ->and(Labels::sanitize($list))->not->toBe(Labels::sanitize($list.',push'))
+        ->and(substr(Labels::sanitize($list), 0, 189))->toBe(substr(Labels::sanitize($list.',push'), 0, 189));
 });
 
 it('defines the English sentinels', function (): void {

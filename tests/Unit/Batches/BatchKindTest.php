@@ -58,7 +58,7 @@ it('keeps the pilot kinds for names without hex tokens', function (string $name)
 it('sanitises invalid UTF-8 and caps the length', function (): void {
     expect(BatchKind::normalize("bad\xC3(name"))->toBe('bad?(name')
         ->and(strlen(BatchKind::normalize(str_repeat('x', 500))))->toBe(Labels::MAX_BYTES)
-        ->and(BatchKind::normalize(str_repeat('x', 500)))->toEndWith(Labels::ELLIPSIS);
+        ->and(BatchKind::normalize(str_repeat('x', 500)))->toEndWith(Labels::ELLIPSIS.hash('crc32b', str_repeat('x', 500)));
 });
 
 it('resolves with the default normaliser', function (): void {

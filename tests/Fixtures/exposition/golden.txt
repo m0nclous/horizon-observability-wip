@@ -69,7 +69,7 @@ ho_queue_jobs_total{connection="redis",queue="default",job_class="App\\Jobs\\Sen
 ho_queue_jobs_total{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",status="released"} 0
 ho_queue_jobs_total{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",status="retried"} 1
 ho_queue_jobs_total{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",status="timed_out"} 0
-# HELP ho_queue_job_duration_seconds Duration of job attempts, seconds.
+# HELP ho_queue_job_duration_seconds Duration of job attempts, seconds; a new series reads 0 for its first 90 seconds.
 # TYPE ho_queue_job_duration_seconds histogram
 ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="0.05"} 3
 ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="0.1"} 13
@@ -89,7 +89,7 @@ ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_clas
 ho_queue_job_duration_seconds_bucket{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice",le="+Inf"} 42
 ho_queue_job_duration_seconds_sum{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice"} 17.375
 ho_queue_job_duration_seconds_count{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice"} 42
-# HELP ho_queue_job_wait_seconds Seconds a job waited in the queue before its first attempt started.
+# HELP ho_queue_job_wait_seconds Seconds a job waited in the queue before its first attempt started; a new series reads 0 for its first 90 seconds.
 # TYPE ho_queue_job_wait_seconds histogram
 ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="0.05"} 20
 ho_queue_job_wait_seconds_bucket{connection="redis",queue="default",le="0.1"} 29
