@@ -166,3 +166,9 @@ The first public release: a rewrite of the internal pilot `sushi-market/horizon-
 - A shared link with a job class or batch kind that holds a backslash and matches no option turned the panels with
   the filter's All test into query errors.
 - The duration minimum and maximum could miss attempts with 60-second scrapes.
+- The Alerts tile could show a green "Stable" 0 while a rule was pending or firing. It counted a rule with a point in
+  the last 90 s of Grafana's state history, so a point more than 30 s late at the query time dropped the rule: a late
+  evaluation or write, or a browser clock ahead of Grafana's. Its number also lagged by up to one graph step (10
+  minutes at 24 hours), and a resolved rule stayed counted for 30 s. Now a pending or firing rule counts from its
+  first point until Grafana marks it resolved, and the number, colour and caption all show the state at the end of
+  the range. The alert sound watches the same firing rules.
