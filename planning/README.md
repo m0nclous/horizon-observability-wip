@@ -102,6 +102,12 @@ that the next task points to. Everything here is export-ignored and will be dele
       asks the owner.
     - The integrator merges a task branch only when the task is `done`.
 
+15. **Prod-first** (owner, 2026-10-19): the goal is a fast production launch in office. Everything that is not critical
+    goes to the patch backlog (TASKS T19) and is fixed in batches after the launch; critical means it blocks the office
+    launch, loses or corrupts data, breaks workers or the app, is a security hole, or makes common-setup numbers lie badly.
+    A QA round that rejects only for minor findings ends with the task accepted and the findings in T19 (T14 was accepted
+    this way after round 4). T17 stops after its WP1 slice; T15 runs in a lean scope (its section in TASKS.md).
+
 ## Git and environment
 
 - Work on branch `master`. Remote `origin` = `https://github.com/m0nclous/horizon-observability-wip`
@@ -120,7 +126,10 @@ that the next task points to. Everything here is export-ignored and will be dele
     concurrent runs in separate worktrees pass; above that the CPU saturates (24 threads) and timing tests such as
     `LiveSnapshotCacheTest` can flake. Every agent needs its own worktree with its own `composer install`: runs in one
     checkout collide on testbench's `route:cache`.
-  - Screenshots: `npm i --no-save playwright@1.56.1 && npx playwright install chromium`.
+  - Screenshots: `npm i --no-save playwright@1.56.1 && npx playwright install chromium`. On Ubuntu 26.04 Playwright
+    1.56.1 refuses the browser download; `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright install chromium` works.
+  - promtool locally (golden and rule tests): copy it out of the Prometheus image (`docker create
+    quay.io/prometheus/prometheus:v3.15.0`, `docker cp <id>:/bin/promtool <dir>`) and set `PROMTOOL=<dir>/promtool`.
   - Images: `grafana/grafana:12.4.13`, `grafana/grafana:13.2.4`, `quay.io/prometheus/prometheus:v3.15.0`.
 - Lowest-version legs locally (CI does this once T11 lands; otherwise write "lowest legs: deferred to CI" in the task note):
   `cp -r . /tmp/ho-leg && cd /tmp/ho-leg && rm -rf vendor composer.lock && composer remove --dev --no-update larastan/larastan rector/rector driftingly/rector-laravel laravel/pint ergebnis/composer-normalize phpstan/extension-installer phpstan/phpstan-deprecation-rules && composer require --no-update "laravel/framework:^11.23" && composer require --dev --no-update "orchestra/testbench:^9.5" "pestphp/pest:^3.8" && composer update --prefer-lowest --prefer-dist -W && vendor/bin/pest --exclude-group=cluster --exclude-group=e2e`.
@@ -132,19 +141,26 @@ that the next task points to. Everything here is export-ignored and will be dele
 - Grafana screenshots with Playwright need `locale: 'en-US'` and `timezoneId: 'UTC'` (see `planning/reference/screenshot-playwright.mjs`).
 - After `composer dump-autoload`, re-run `composer build` (testbench's purge-skeleton deletes the workbench SQLite DB).
 
-## Current state (2026-10-17 16:30 UTC)
+## Current state (2026-10-19, prod-first)
 
-The cloud session hit its usage limit during the phase C QA rounds; work resumed afterwards. Open threads:
-- **T12** (live backend, branch `wip/T12-live`): `testing`. QA round 1 rejected (4 findings, all fixed and pushed);
-  QA round 2 (spec + adversarial testers) has not run yet.
-- **T18** (CI green, branch `wip/T18-ci-green`, draft PR #20 in the wip repo, CI green there): `testing`. QA round 1
-  rejected (fixed); QA round 2 has not run yet. Merge it first: the integration branch CI stays red until it lands.
-- **T13** (Grafana, branch `wip/T13-grafana`): `in progress`. WP8B delivered; QA round 1 rejected it (see its QA line in
-  TASKS.md). Next: fix the round 1 findings, then WP8C (performance) and WP8D (live panels, committed render `--live=poll`).
-- **Board tooling** (branch `wip/board-sync`, not merged): needs owner, stop the line, PR per task, deps/WIP gates,
-  fields, flow report, screenshots. QA rounds 1-2 rejected; the round 2 fixes were interrupted and committed as
-  "WIP: interrupted board QA round 2 fixes (unverified)". Next: finish and test those fixes, then QA round 3. Until it
-  merges, `tools/board/set-status.sh` on the integration branch is the simpler first version (no gates).
+Work moved from the cloud sandbox to the owner's machine (WSL2, see "Git and environment"); the integration branch is
+`master`. Done and merged: T00-T12, T14 (accepted by the owner after QA round 4, minor findings in T19), T16, T18.
+Open threads (decision 15, prod-first):
+- **T13** (Grafana, `wip/T13-grafana`, draft PR #22): QA round 4. Its one major finding (delta() drops a series without a
+  value at the period end, e.g. after one failed scrape) is fixed before the merge; the minor one goes to T19.
+- **T15** (lean scope, see its TASKS section) runs in parallel; owner stops: office dry run, tag `v0.1.0`, Packagist,
+  repository transfer.
+- **T17**: the design is `planning/T17-DESIGN.md` (owner answers in TASKS T17); it stops after the WP1 slice on
+  `wip/T17-dashboard-truth` (draft PR), the rest is T19.
+- **T19**: the patch backlog, fixed in batches after the launch; moves to GitHub issues before `planning/` is deleted.
+- **Board tooling** (`wip/board-sync`): frozen by the owner on 2026-10-19 after 4 rejected QA rounds; not merged.
+  `tools/board/set-status.sh` on `master` (no gates) is the process tool until the end of the rewrite.
+- QA rounds on this machine: one worktree per agent (`../ho-s<N>-<task>-<role>`), each with its own compose project and
+  port block (`COMPOSE_PROJECT_NAME=ho-s<N>`, Grafana 13000+N, Prometheus 19000+N, compose Redis 16400+N, app 18000+N)
+  and the containerised dev stack (`PROMETHEUS_CONFIG=prometheus.app.yml --profile app`). Host-wide resources are
+  serialised with `flock`: the host-PHP workbench on port 8000, the perf exporter on port 8391 and
+  `tests/e2e/first-dashboard.sh` (default Redis prefix). Every reported finding is re-checked by an independent
+  verifier before a rejection is recorded.
 - After a container restart the `origin` remote may point to `sushi-market/horizon-observability` again; reset it with
   `git remote set-url origin https://github.com/m0nclous/horizon-observability-wip`.
 

@@ -12,6 +12,7 @@ use DF\HorizonObservability\Config\Config;
 use DF\HorizonObservability\Console\CacheCommand;
 use DF\HorizonObservability\Console\CheckCommand;
 use DF\HorizonObservability\Console\ClearCommand;
+use DF\HorizonObservability\Console\DemoCommand;
 use DF\HorizonObservability\Console\FlushCommand;
 use DF\HorizonObservability\Console\GrafanaCommand;
 use DF\HorizonObservability\Console\InstallCommand;
@@ -161,7 +162,7 @@ final class HorizonObservabilityServiceProvider extends ServiceProvider
     }
 
     /**
-     * The seven package commands in Arch Q7 order.
+     * The package commands: the seven of Arch Q7 in its order, then `demo` (owner decision 12).
      *
      * @return list<class-string>
      */
@@ -175,6 +176,7 @@ final class HorizonObservabilityServiceProvider extends ServiceProvider
             ClearCommand::class,
             FlushCommand::class,
             StreamCommand::class,
+            DemoCommand::class,
         ];
     }
 
