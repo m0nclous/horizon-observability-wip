@@ -433,7 +433,7 @@ become real (T08 removed cache and clear).
 T14 addition (phase B review): `check` warns when the default cache store or the batching DB connection has no
 connect/read timeout (a hung store can cost a scrape its budget), and the README says so (T15).
 
-### T15 WP11 Integration, docs, release — `todo` (depends on everything)
+### T15 WP11 Integration, docs, release — `in progress` (depends on everything)
 **Prod-first scope (owner, 2026-10-19; README decision 15).** T15 starts now, in parallel with the end of T13 and before
 T17, and keeps only what the office production launch needs: README (quick start first, then configuration, the 10 s
 scrape job, Grafana 12/13 setup, live modes, security, production setup, known limitations incl. the owner-approved
