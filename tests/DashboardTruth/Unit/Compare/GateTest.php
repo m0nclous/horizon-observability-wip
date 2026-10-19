@@ -198,8 +198,8 @@ it('takes the dash of a panel for a trivial expectation', function (): void {
     $dash = new Expectation([['labels' => [], 'points' => [1740966000000 => -1.0]]], dash: -1.0);
 
     expect($dash->nonTrivial())->toBeFalse()
-        ->and(new Expectation([['labels' => [], 'points' => [1740966000000 => 5.0]]], dash: -1.0)->nonTrivial())->toBeTrue()
-        ->and(new Expectation([['labels' => [], 'points' => [1740966000000 => 0.0]]])->nonTrivial())->toBeFalse();
+        ->and((new Expectation([['labels' => [], 'points' => [1740966000000 => 5.0]]], dash: -1.0))->nonTrivial())->toBeTrue()
+        ->and((new Expectation([['labels' => [], 'points' => [1740966000000 => 0.0]]]))->nonTrivial())->toBeFalse();
 });
 
 it('allows $__all in an Infinity URL only', function (): void {
