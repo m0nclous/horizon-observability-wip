@@ -434,6 +434,14 @@ T14 addition (phase B review): `check` warns when the default cache store or the
 connect/read timeout (a hung store can cost a scrape its budget), and the README says so (T15).
 
 ### T15 WP11 Integration, docs, release — `todo` (depends on everything)
+**Prod-first scope (owner, 2026-10-19; README decision 15).** T15 starts now, in parallel with the end of T13 and before
+T17, and keeps only what the office production launch needs: README (quick start first, then configuration, the 10 s
+scrape job, Grafana 12/13 setup, live modes, security, production setup, known limitations incl. the owner-approved
+dashboard deviations and the T19 known issues), UPGRADE.md (office migration, Appendix G, namespace `office`), CHANGELOG,
+CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, one `art/` screenshot, a cold-read review of the README, full matrix green, then
+the owner stops: office dry run, tag `v0.1.0`, Packagist, repository transfer. Before `legacy/` and `planning/` are deleted,
+the T19 backlog moves to GitHub issues. Deferred to T19: the blocking weekly e2e with the perf report and live
+screenshots, the Appendix H mapping audit, new side-by-side screenshot sets (T13 QA already compared them).
 README (English: install, config, Prometheus scrape job at 10 s, Grafana 12/13 setup, live modes, security), UPGRADE.md
 (office migration, Arch Appendix G, namespace `office`), CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, `art/` screenshots,
 `tests/Contract/*`, delete `legacy/` and `planning/`, full matrix green, side-by-side screenshots vs baseline on both
@@ -477,6 +485,13 @@ Redis restart reset; sync/deferred/background exclusion. Coverage gate: a test f
 Acceptance: green on phpredis and predis; each family listed in a coverage table in the test README.
 
 ### T17 Dashboard truth tests — `in progress` (depends on T13, T16, T11)
+**Owner decisions (2026-10-19)** on the design questions of planning/T17-DESIGN.md section 18: counter resets and
+in-range scrape gaps are documented as is (deviations D-R1, D-R2, D-G; ADDENDUM R3.1 to be amended), range-fed gauge
+tiles in `--live=off` show the last grid point (D-L), the three `increase()` cells (#6 F/G, #24 K) stay approximate with
+an honesty bound, and the CI policy is as proposed (label-gated drafts; ready PRs, master and weekly always; a required
+check once T13 and T17 are merged; one job for both Grafana versions; a weekly non-blocking `grafana:latest` leg).
+**Prod-first (README decision 15):** T17 stops after WP1 (the thin end-to-end slice on `wip/T17-dashboard-truth`); WP2-WP8
+move to the patch backlog T19 and resume after the production launch.
 Pipeline: T16 scenarios → workbench app → real Prometheus (dev stack, 10 s scrape, or promtool backfill of recorded
 expositions for determinism) → Grafana 12.4.13 and 13.2.4 → for every panel/target of the rendered dashboard (off, poll,
 stream) evaluate through `/api/ds/query` with interpolated variables and compare with the expected values from the
@@ -485,3 +500,45 @@ Prometheus extrapolation is documented). Cases: All vs each filter, empty state,
 range 15 m / 1 h / 6 h. Playwright DOM check of tile texts. CI job `dashboard-truth` on changes to `src/Grafana/**`,
 collectors, Lua, `composer.json`, plus weekly. Coverage gate: every panel id and target refId has at least one truth case.
 T13 acceptance addition: every WP8B/8C/8D step keeps T17 green (T13 may start T17's harness early).
+
+## Phase E: after the production launch
+
+### T19 Patch backlog — `todo` (depends on T15)
+Everything the owner deferred under the prod-first rule (README decision 15): non-critical QA findings and notes, fixed
+in batches after office runs the package in production. Before T15 deletes `planning/`, every item moves to a GitHub
+issue (label `backlog`) and this section points there. Each item names its origin; parked probes are skipped tests whose
+skip reason names the item, so a fix turns them into regression tests.
+1. check: Redis error replies outside the RedisErrorReply list get the reachability fix under a reachable Storage line:
+   NOREPLICAS (min-replicas-to-write), TIME refused inside the package scripts ("Unknown (Redis) command called from (Lua)
+   script"), "max number of clients reached", CLUSTERDOWN/TRYAGAIN (T14 round 4; probes in AdversarialRound4CheckTest).
+2. check: the Horizon connection's Timeouts fix ('read_timeout' => 2.0 on database.redis.<horizon.use>) ignores
+   queue.connections.*.block_for of the redis queue on the same connection; following it makes idle blocking pops fail
+   (T14 round 4; probe in AdversarialRound4CheckTest). Until fixed, the README warns to keep read_timeout above block_for.
+3. install: KEY=null followed by a later commented no-value KEY=null # x fills only the first line (T14 round 4; probe in
+   AdversarialRound4InstallTest).
+4. check, minor wording and edge cases (T14 rounds 3-4 notes): a url query with a non-positive timeout gets a fix line
+   that has no effect; 'Job classes / Cap' and 'Live / Last push' answer an ACL refusal with "Fix the storage connection
+   first"; phpredis returns false instead of throwing for NOPERM/WRONGTYPE on ZRANGE/HGETALL (BatchLinks wraps it,
+   AttemptStore reads no classes); EnvFile reads `null#x` and escaped quotes unlike phpdotenv; 'shared for 0 s' with
+   cache_ttl 0; lastPush can read 1 s low; EndpointUrl ignores a parameterised domain; --live-push-test with live disabled
+   prints nothing; the Docker URL question comes before the install banner; on predis a connection url query overrides
+   the private clients' timeout caps (pre-existing, RedisClients::standalone()).
+5. Dashboard: the tiles' last step stops short of the period end when the browser's UTC offset is not a multiple of the
+   step (Asia/Kathmandu, Failed tile at 2 min over 6 h: 13,196 vs 13,283) (T13 round 4 finding 2; probe in c39942c).
+6. Dashboard: a pooled balance=false supervisor is left out of the off-mode #3 Supervisor Processes tile and the #5 tables
+   under Queue=All; the dashboard should use T16's horizon_supervisor_queues (T13 round 3 note, T17 design 14).
+7. Dashboard: a custom Job/Batch variable value that matches no option and contains a backslash (stale shared link) breaks
+   the PromQL string of the filter text (pre-existing since the pilot; T13 round 3 finding 3 remainder).
+8. Dashboard: Supervisor Processes under a Job filter with no busy workers may show '—' where 0 is honest (T17 design 14,
+   unconfirmed).
+9. T17 WP2-WP8 (planning/T17-DESIGN.md section 16): the full dashboard truth suite, coverage gate to empty PENDING,
+   sensitivity gate, the required `dashboard-truth` check; the deviation register with the owner decisions of 2026-10-19.
+10. Exporter (T16 notes): Lua::eval sends whole scripts (record_attempt.lua 8.5 KB per job end; strip comments or use
+    EVALSHA); label values cut at 200 bytes can duplicate label sets of long balance=false pools (InvalidMetric drops the
+    supervisor families); spaced balance=auto queue options differ between the model and the collector; HELP texts of
+    the held histograms do not mention the 90 s hold; FirstValueTruthTest's 1 s margin; a test across the 500-field HDEL
+    chunk; Arch Q7 tree and ADDENDUM C2.4 lack new_series.lua, Redis/ServerClock and the new @internal methods.
+11. T15 deferrals: the blocking weekly e2e with the perf report and the poll/stream live screenshots, the Appendix H mapping
+    audit.
+12. Process: the frozen board tooling branch `wip/board-sync` (owner, 2026-10-19), only if the board is kept after the
+    repository transfer.
