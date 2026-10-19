@@ -457,10 +457,13 @@ final readonly class Diagnostics
                 $prefix,
             ));
         } catch (Throwable $e) {
-            $results[] = CheckResult::error($section, 'Connection', sprintf('%s unreachable: %s', $name, FailureReporter::describe($e)), sprintf(
-                'Start Redis or fix database.redis.%s (host, port, password) in config/database.php; the package storage is redis.connection (HORIZON_OBSERVABILITY_REDIS_CONNECTION).',
-                $name,
-            ));
+            $reply = RedisErrorReply::of($e);
+            $results[] = $reply instanceof RedisErrorReply
+                ? CheckResult::error($section, 'Connection', sprintf('%s answers with an error: %s', $name, FailureReporter::describe($e)), $this->replyFix($reply, $name))
+                : CheckResult::error($section, 'Connection', sprintf('%s unreachable: %s', $name, FailureReporter::describe($e)), sprintf(
+                    'Start Redis or fix database.redis.%s (host, port, password) in config/database.php; the package storage is redis.connection (HORIZON_OBSERVABILITY_REDIS_CONNECTION).',
+                    $name,
+                ));
         }
 
         $results[] = CheckResult::info($section, 'Timeouts', sprintf(
@@ -544,7 +547,10 @@ final readonly class Diagnostics
                 $clients->reader($redis)->exists('horizon-observability:check');
                 $results[] = CheckResult::ok($section, 'Redis '.$redis, sprintf('reachable in %s ms%s', $this->milliseconds($started), $clients->isCluster($redis) ? ' (cluster)' : ''));
             } catch (Throwable $e) {
-                $results[] = CheckResult::error($section, 'Redis '.$redis, 'unreachable: '.FailureReporter::describe($e), sprintf('Start Redis or fix database.redis.%s in config/database.php (the queue connection %s uses it).', $redis, $connection));
+                $reply = RedisErrorReply::of($e);
+                $results[] = $reply instanceof RedisErrorReply
+                    ? CheckResult::error($section, 'Redis '.$redis, 'answers with an error: '.FailureReporter::describe($e), $this->replyFix($reply, $redis))
+                    : CheckResult::error($section, 'Redis '.$redis, 'unreachable: '.FailureReporter::describe($e), sprintf('Start Redis or fix database.redis.%s in config/database.php (the queue connection %s uses it).', $redis, $connection));
             }
 
             if ($settings !== null && $settings->persistentPlaces() !== []) {
@@ -843,7 +849,10 @@ final readonly class Diagnostics
                 default => CheckResult::warning($section, 'Status', 'not running: no job is processed and the dashboard shows Horizon as down', 'Start it with php artisan horizon (under supervisord or systemd in production).'),
             };
         } catch (Throwable $e) {
-            $results[] = CheckResult::error($section, 'Status', 'cannot be read: '.FailureReporter::describe($e), "Check Horizon's Redis connection (horizon.use and database.redis in config/database.php).");
+            $reply = RedisErrorReply::of($e);
+            $results[] = CheckResult::error($section, 'Status', 'cannot be read: '.FailureReporter::describe($e), $reply instanceof RedisErrorReply
+                ? $this->replyFix($reply, 'horizon')
+                : "Check Horizon's Redis connection (horizon.use and database.redis in config/database.php).");
         }
 
         $results[] = $this->grafanaLink($section, $config);
@@ -1104,14 +1113,54 @@ final readonly class Diagnostics
             $count > 1 ? sprintf(' (and %d more)', $count - 1) : '',
         );
 
+        $reply = RedisErrorReply::of($e);
         $fix = match (true) {
             $e instanceof UnsupportedTopology => 'Give the queue a hash tag, e.g. {default}, or run Laravel 13 with first-class cluster queues; or set collectors.queues to false.',
             $e instanceof QueryException, $e instanceof PDOException => 'Check the batching database connection (queue.batching.database) and its job_batches table.',
+            $reply instanceof RedisErrorReply => $this->replyFix($reply, $this->failureConnection($id, $source, $config)),
             str_contains(strtolower($e->getMessage()), 'connect') || str_contains(strtolower($e::class), 'redis') || str_contains(strtolower($e::class), 'connection') => 'Check that Redis is reachable with the settings in config/database.php (see Storage and Queues).',
             default => sprintf('Fix the error above; until then Prometheus sees %sexporter_collector_success{collector="%s"} 0.', $config->prefix(), $id),
         };
 
         return CheckResult::error($section, $id, $message, $fix);
+    }
+
+    /**
+     * The fix of a Redis error reply on the connection, with the place, user and prefix of the client Laravel builds
+     * for it ({@see RedisClientSettings}).
+     */
+    private function replyFix(RedisErrorReply $reply, string $connection): string
+    {
+        $settings = $this->redis($connection);
+
+        return $reply->fix($settings->base ?? 'database.redis.'.$connection, $settings?->username(), $settings?->prefix() ?? '');
+    }
+
+    /**
+     * The Redis connection a collector failure comes from: Horizon's for the horizon collector, the queue's for a queue
+     * of the queues collector (`queue:<connection>:<queue>`), else the package storage (attempts, batch links).
+     */
+    private function failureConnection(string $id, ?string $source, Config $config): string
+    {
+        if ($id === 'horizon') {
+            return 'horizon';
+        }
+
+        if ($id === 'queues') {
+            /** @var Topology $topology */
+            $topology = $this->container->make(Topology::class);
+            $queueConnection = $source !== null && str_starts_with($source, 'queue:') ? explode(':', $source, 3)[1] : null;
+
+            try {
+                $queueConnection ??= array_key_first($topology->queuesByConnection());
+            } catch (Throwable) {
+                // Horizon's configuration is reported under Queues.
+            }
+
+            return is_string($queueConnection) ? ($topology->redisConnection($queueConnection) ?? $queueConnection) : 'default';
+        }
+
+        return $config->redisConnection;
     }
 
     /**

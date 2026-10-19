@@ -110,6 +110,16 @@ final readonly class RedisClientSettings
     }
 
     /**
+     * The ACL user the client authenticates as (null: none, the `default` user).
+     */
+    public function username(): ?string
+    {
+        $username = $this->value($this->connections[0] ?? [], 'username')[0];
+
+        return is_string($username) && $username !== '' ? $username : null;
+    }
+
+    /**
      * The key prefix every command gets (`''` without one).
      */
     public function prefix(): string
