@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Install;
 
 /**
- * The setup snippets `horizon-observability:install` prints for an existing Prometheus and Grafana (Arch Q2.5, Q7,
- * Addendum R3.2, R4.9): the scrape job at 10 s, the Infinity datasource, the render command of each live mode and the
- * stream mode steps (a service account with role Editor). Secrets appear as placeholders only. With `live.enabled` false
- * there is no `/live` endpoint and no stream command, so the only render is `--live=off`.
+ * The setup snippets `horizon-observability:install` prints for an existing Prometheus and Grafana: the scrape job at
+ * 10 s, the Infinity datasource, the render command of each live mode and the stream mode steps (a service account
+ * with role Editor). Secrets appear as placeholders only. With `live.enabled` false there is no `/live` endpoint and
+ * no stream command, so the only render is `--live=off`.
  *
  * @internal
  */
@@ -78,8 +78,7 @@ final readonly class SetupGuide
     }
 
     /**
-     * The render command per live mode => what it gives (Addendum R4.1, owner decision 9); only `--live=off` when live
-     * is disabled.
+     * The render command per live mode => what it gives; only `--live=off` when live is disabled.
      *
      * @return array<string, string>
      */

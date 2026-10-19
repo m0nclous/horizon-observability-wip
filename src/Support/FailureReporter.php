@@ -15,7 +15,7 @@ use Psr\Log\LoggerInterface;
 use Throwable;
 
 /**
- * Throttled logging of the package's failures and warnings (Arch Q1.3, Q6.6, C24).
+ * Throttled logging of the package's failures and warnings.
  *
  * - A key logs at most once per {@see self::THROTTLE_SECONDS} per process, and across processes through
  *   `Cache::add()` on the default store. If the cache itself fails, or keeps nothing (the `null` store, whose
@@ -70,7 +70,7 @@ final class FailureReporter
     /**
      * {@see self::report()} with the in-process throttle only: no cache round trip. For failures of the package's
      * Redis and of the cache store itself, where the default cache store may be unreachable as well and
-     * `Cache::add()` would add its own timeout (C11: the circuit breaker's one warning per opening).
+     * `Cache::add()` would add its own timeout (the circuit breaker's one warning per opening).
      *
      * @param  array<string, mixed>  $context
      */
@@ -101,7 +101,7 @@ final class FailureReporter
      * The `config.problems` warning (throttled like {@see self::warnOnce()}), when the snapshot has problems.
      *
      * It costs a cache round trip, so it runs where that is acceptable: the console (commands and workers) and an
-     * authorised scrape, never on the path of a request that may be denied (Arch Q2.4).
+     * authorised scrape, never on the path of a request that may be denied.
      */
     public function configProblems(Config $config): void
     {

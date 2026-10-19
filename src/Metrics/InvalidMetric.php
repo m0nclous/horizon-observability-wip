@@ -8,7 +8,7 @@ use LogicException;
 
 /**
  * A collector built an invalid family (label set mismatch, duplicate series, bad histogram shape). The exporter treats
- * it as a failure of that collector (Arch Q1.2).
+ * it as a failure of that collector.
  *
  * @internal
  */

@@ -10,7 +10,7 @@ use Laravel\Horizon\ProvisioningPlan;
 use Laravel\Horizon\SupervisorOptions;
 
 /**
- * The queues `php artisan horizon` runs in the effective environment, and their wait thresholds (Arch Q3, Q6.3).
+ * The queues `php artisan horizon` runs in the effective environment, and their wait thresholds.
  *
  * Read from Horizon's config, not from a running Horizon, so queue metrics are collected while Horizon is down and
  * the queues grow. The rules are Horizon's own `ProvisioningPlan`: the environment is `horizon.env ?? app.env`, the
@@ -154,7 +154,7 @@ final readonly class Topology
      * The Redis connection (`database.redis.<name>` or `database.redis.clusters.<name>`) that holds the queues of a
      * queue connection, as Laravel's and Horizon's Redis connectors resolve it: `queue.connections.<name>.connection`,
      * or `default` when it is unset. Null when the queue connection is not configured or does not use the `redis`
-     * driver, so its queues are not inspected. Shared by the queue readers (T05, T06, T12): pass the result to
+     * driver, so its queues are not inspected. Shared by the queue readers: pass the result to
      * `RedisClients::reader()`.
      */
     public function redisConnection(string $queueConnection): ?string

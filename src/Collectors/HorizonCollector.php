@@ -16,23 +16,22 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Collector `horizon`: horizon_status, horizon_supervisor_*, horizon_wait_threshold_seconds, horizon_info
- * (Arch Q1.3, Q4, C5, C14, C17).
+ * Collector `horizon`: horizon_status, horizon_supervisor_*, horizon_wait_threshold_seconds, horizon_info.
  *
  * - **Sources.** Horizon's own master and supervisor repositories (container-bound, on the app's `horizon`
  *   connection; `WorkloadRepository` is not used and `horizon_current_processes` is gone), the topology from
  *   Horizon's config, and the links from the config. Each source is read in isolation: a failing one is reported
  *   with {@see ScrapeContext::reportFailure()} (`exporter_collector_success` 0) and the others are still exported,
- *   so a Redis outage leaves `horizon_info` and the wait thresholds (C5). When the status read used up the scrape
+ *   so a Redis outage leaves `horizon_info` and the wait thresholds. When the status read used up the scrape
  *   budget, the supervisors are not read (source `budget`).
  * - **Supervisors** are keyed by the name after the last `:` (the master prefix stripped). With several masters
  *   running the same supervisor (a deploy, several hosts) the processes are summed per queue, the minimum and maximum
  *   are the largest reported, and the settings come from the first master by name. The `queue` label is Horizon's
- *   pool label, so a balance=false supervisor keeps its comma-joined queue list (C14).
+ *   pool label, so a balance=false supervisor keeps its comma-joined queue list.
  * - **horizon_supervisor_queues** maps every queue a supervisor works to the pool label of its processes: the queue
  *   itself for balance=auto and simple (a pool per queue), the comma-joined list for balance=false (one pool for all).
  *   PromQL cannot split a label value into several series, so without it a pooled queue had no supervisor, no
- *   processes and no row in the dashboard's queue table (T16, the pilot's #5 bug). The queues come from the
+ *   processes and no row in the dashboard's queue table. The queues come from the
  *   supervisor's `queue` option, the pool labels from its process map (the joined option without one), over every
  *   master: when the masters disagree (a deploy that changes a balance=false queue list, or the balance), a queue has
  *   a series per pool that works it, so the processes per queue count every master's.

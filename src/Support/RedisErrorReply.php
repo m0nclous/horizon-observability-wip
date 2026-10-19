@@ -11,7 +11,7 @@ use RedisException;
 use Throwable;
 
 /**
- * An error reply of a Redis server that answered (T14 QA round 3): not a connectivity problem, so `check` gives the
+ * An error reply of a Redis server that answered: not a connectivity problem, so `check` gives the
  * fix for the reply instead of "check that Redis is reachable", which its Storage and Queues lines contradict.
  *
  * The reply is read from the failure and its causes: a phpredis `RedisException` or `RedisClusterException` (phpredis

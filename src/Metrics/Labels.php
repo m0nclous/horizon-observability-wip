@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Metrics;
 
 /**
- * Label value rules shared by every collector (Arch Q4): the English sentinels, sanitising and top-N folding.
+ * Label value rules shared by every collector: the English sentinels, sanitising and top-N folding.
  *
  * @internal
  */

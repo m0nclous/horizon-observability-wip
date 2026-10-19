@@ -16,7 +16,7 @@ use Throwable;
 use WeakMap;
 
 /**
- * Access decision of the endpoints (Arch Q2.3, C4). It runs before any Redis or DB work.
+ * Access decision of the endpoints. It runs before any Redis or DB work.
  *
  * 1. **Callback.** When the app called `HorizonObservability::auth()`, the callback alone decides: `true` allows,
  *    anything else (including a throw) answers 403.
@@ -35,7 +35,7 @@ use WeakMap;
  * The reason of a denial never reaches the response body; it goes to one info line per endpoint and reason. Tokens
  * are never logged.
  *
- * **A denial costs no I/O** (Arch Q2.4, 8.4): no cache, Redis or DB call, so an unauthenticated flood costs the
+ * **A denial costs no I/O**: no cache, Redis or DB call, so an unauthenticated flood costs the
  * string comparisons and nothing else. The denial lines are therefore throttled in-process only, like the in-process
  * half of {@see FailureReporter}: once per {@see FailureReporter::THROTTLE_SECONDS} per endpoint and reason for as long
  * as the application's reporter lives. {@see FailureReporter::warnOnce()} is not used, because its cross-process

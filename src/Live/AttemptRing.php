@@ -14,10 +14,10 @@ use Illuminate\Container\Container;
 use UnexpectedValueException;
 
 /**
- * The attempt ring buffer (Addendum R4.5): `live:ring:<unix div 5>` hashes of `conn\x1fqueue\x1fstatus` => attempts,
+ * The attempt ring buffer: `live:ring:<unix div 5>` hashes of `conn\x1fqueue\x1fstatus` => attempts,
  * written inside `record_attempt.lua` and read over the 12 complete buckets before the current one (60 s).
  *
- * - `key()` and `ttl()` are the writer's contract (T04, `AttemptStore::record()`), frozen.
+ * - `key()` and `ttl()` are the writer's contract (`AttemptStore::record()`), frozen.
  * - {@see self::window()} reads the window with one `ring_read.lua` `EVAL` (12 `HGETALL` inside) on the
  *   short-timeout reader of the storage connection (`redis.scrape_timeout`), like every live-path read of package
  *   keys. The window `[5(c - 12), 5c)` with `c = now div 5` is exactly 60 s and lags by at most 5 s. Workers stamp

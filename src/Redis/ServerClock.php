@@ -7,7 +7,7 @@ namespace DF\HorizonObservability\Redis;
 use InvalidArgumentException;
 
 /**
- * The clock of the new-series hold (T16, Arch Q4): the storage Redis' own `TIME`.
+ * The clock of the new-series hold: the storage Redis' own `TIME`.
  *
  * `record_attempt.lua` stamps the creation time of a new counter series with `TIME` and `new_series.lua` measures
  * its age with `TIME` again, both inside the script on the node that holds the package keys. The clocks of the

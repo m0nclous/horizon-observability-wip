@@ -11,14 +11,14 @@ use Illuminate\Console\Command;
 use Symfony\Component\Console\Formatter\OutputFormatter;
 
 /**
- * PUBLIC `horizon-observability:check` (Arch Q7, Addendum Q9' WP10): explains every problem with one actionable fix
- * line (owner decision 12) and gates deploys with its exit code.
+ * PUBLIC `horizon-observability:check`: explains every problem with one actionable fix line and gates deploys with
+ * its exit code.
  *
  * - Exit 1 on an error; with `--strict` also on a warning; 0 otherwise.
  * - `--json` prints `{"status", "errors", "warnings", "checks": [{section, name, status, message, fix}]}` and nothing
  *   else.
  * - `--live-push-test` pushes one `tiles` frame to the Grafana Live stream `<id>_check` of every configured Grafana
- *   and reports the HTTP status with the hint for 401 and 403 (Addendum R4.10). The dashboard's own stream is never
+ *   and reports the HTTP status with the hint for 401 and 403. The dashboard's own stream is never
  *   touched.
  *
  * The collector dry run is a real scrape without the HTTP request: it reads what a scrape reads and writes what a

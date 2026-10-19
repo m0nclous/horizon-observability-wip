@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Queues;
 
 /**
- * Readiness of a queued job from its payload (Arch Q6.3, C8, C19): the PHP twin of the formula in `queue_state.lua`.
+ * Readiness of a queued job from its payload: the PHP twin of the formula in `queue_state.lua`.
  * `tests/Fixtures/payloads.php` holds the shared parity cases.
  *
  * @internal
@@ -21,7 +21,7 @@ final class PayloadClock
      * - without `pushedAt`, `createdAt` is the base; without both, the readiness is unknown (null).
      *
      * A Horizon retry or `queue:retry` keeps the old `createdAt` and `delay` but gets a fresh `pushedAt`, so the
-     * stale delay is ignored (C19).
+     * stale delay is ignored.
      *
      * @param  array<array-key, mixed>  $payload
      */

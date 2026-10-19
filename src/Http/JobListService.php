@@ -15,21 +15,21 @@ use DF\HorizonObservability\Redis\Keys;
 use Illuminate\Support\Facades\Date;
 
 /**
- * The rows of a job list (Arch Q2.1, C13, C14): resolves the dashboard filters to queue and class sets, reads the
+ * The rows of a job list: resolves the dashboard filters to queue and class sets, reads the
  * rows from {@see JobStore} or {@see DelayedJobStore} and formats them with {@see JobRows}.
  *
  * - Supervisor: the queues of the selected running supervisors, split from their `queue` option, so a
- *   `balance=false` pool (whose process label is `mail,sms`) matches the single queue of each job (C14). The
+ *   `balance=false` pool (whose process label is `mail,sms`) matches the single queue of each job. The
  *   running supervisors are read only when this filter is set.
  * - Batch: the queues and classes of the selected batch kinds' links ({@see BatchLinks::forKinds()}), read only
  *   when this filter is set and the other filters can still match.
  * - Queue and Job: intersected with the above; values compare with Horizon's `queue` field and the normalised job
  *   name.
  * - An empty resolved filter (a supervisor that is not running, a batch kind without links, disjoint filters)
- *   returns no rows without reading any job (C13).
+ *   returns no rows without reading any job.
  * - Delayed jobs are read from the queues of the Horizon topology that pass the filters (with a Supervisor filter,
  *   only the queues those supervisors run on their connection), against one `now` per request (Laravel's date
- *   factory, so `travelTo()` applies, C23).
+ *   factory, so `travelTo()` applies).
  *
  * @internal
  */

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Metrics;
 
 /**
- * Per-scrape builder of one family's samples (Arch Q1.2). Every call is validated, and any violation throws
+ * Per-scrape builder of one family's samples. Every call is validated, and any violation throws
  * {@see InvalidMetric}, which the exporter counts as a failure of the collector:
  * - the label keys must equal {@see Metric::labels()} as a set (`le` is reserved for histogram buckets);
  * - values pass through {@see Labels::sanitize()};

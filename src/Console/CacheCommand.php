@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 use Throwable;
 
 /**
- * PUBLIC `horizon-observability:cache` (Arch Q7, Q6.9, C22): discovers the queueable job classes and writes
+ * PUBLIC `horizon-observability:cache`: discovers the queueable job classes and writes
  * `bootstrap/cache/horizon-observability.php`, which the `job_classes` collector reads instead of scanning the code.
  * `php artisan optimize` runs it on Laravel >= 11.27.1; earlier versions add it to the deploy script.
  */

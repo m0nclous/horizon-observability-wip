@@ -15,7 +15,7 @@ use DF\HorizonObservability\Support\FailureReporter;
 use Illuminate\Redis\Connections\Connection;
 
 /**
- * Delayed jobs that are not due yet (Arch Q2.1, C13), like the Delayed tile: the sorted set `queues:<q>:delayed` of
+ * Delayed jobs that are not due yet, like the Delayed tile: the sorted set `queues:<q>:delayed` of
  * each queue, whose score is the time the job becomes available. Horizon does not list them (its pending list
  * holds a delayed job only for `horizon.trim.pending` minutes); due ones are ready and count as pending.
  *
@@ -31,7 +31,7 @@ use Illuminate\Redis\Connections\Connection;
  * - Each queue contributes its `$limit` soonest matching jobs; the merged rows are sorted by availability (ties keep
  *   the queue order) and cut to `$limit`.
  * - A failing script skips its queue and is logged; a connection error propagates. An empty queue list or class
- *   filter returns without any Redis command (C13).
+ *   filter returns without any Redis command.
  *
  * @phpstan-type DelayedRow array{id: string, name: string, queue: string, attempts: int, pushed_at: float|null, available_at: float}
  *

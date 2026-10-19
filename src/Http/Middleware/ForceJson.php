@@ -11,7 +11,7 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Makes the JSON endpoints (the job lists and `/live`) answer JSON whatever the client sends: it sets
  * `Accept: application/json` before {@see Authorize} and the controller run, so 401, 403, 422 and errors are JSON
- * too (Arch Q2.1). It runs first on those routes, so a browser can never be redirected to a login page.
+ * too. It runs first on those routes, so a browser can never be redirected to a login page.
  *
  * @internal
  */

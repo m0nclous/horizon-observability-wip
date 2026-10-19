@@ -1,5 +1,5 @@
 --[[
-queue_state.lua: the state of one Laravel Redis queue (Arch Q6.3, Q6.11, C8, C12; Appendix D, Addendum D').
+queue_state.lua: the state of one Laravel Redis queue.
 
 KEYS[1]  queues:<q>            list of ready payloads, head first
 KEYS[2]  queues:<q>:reserved   zset of the payloads workers hold

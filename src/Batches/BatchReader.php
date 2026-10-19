@@ -16,7 +16,7 @@ use Throwable;
 use WeakMap;
 
 /**
- * Batching driver and table detection plus the two bounded batch queries (Arch Q6.7, C1, C15).
+ * Batching driver and table detection plus the two bounded batch queries.
  *
  * **Detection** ({@see self::available()}, the auto mode of `collectors.batches`): batches are read only with the
  * `database` batching driver (`queue.batching.driver`, absent = database), a configured `queue.batching.database`
@@ -28,7 +28,7 @@ use WeakMap;
  * and nothing is memoised.
  *
  * **Reading** ({@see self::read()}) runs two queries through the query builder, each `ORDER BY created_at DESC LIMIT
- * 5000`, so the cost no longer grows with the table (C15):
+ * 5000`, so the cost no longer grows with the table:
  * 1. open batches (`finished_at` and `cancelled_at` null) created during the last 7 days, so lost batches age out
  *    instead of growing the oldest age forever. allowFailures batches that are closed without `finished_at` (see
  *    {@see self::status()}) and older than the closed window are left out in SQL: they would only be discarded;

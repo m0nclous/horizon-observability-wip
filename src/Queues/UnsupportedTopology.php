@@ -7,7 +7,7 @@ namespace DF\HorizonObservability\Queues;
 use RuntimeException;
 
 /**
- * A queue whose keys cannot be read by one script on its Redis connection (Arch Q6.5): on a Redis Cluster the keys
+ * A queue whose keys cannot be read by one script on its Redis connection: on a Redis Cluster the keys
  * `queues:<q>`, `queues:<q>:reserved` and `queues:<q>:delayed` share a slot only through a hash tag, e.g. the
  * queue `{default}`, which a framework without first-class cluster queues does not add itself. Raised before any
  * command is sent, instead of a `CROSSSLOT` error on every scrape.

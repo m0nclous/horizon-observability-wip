@@ -9,8 +9,8 @@ use DF\HorizonObservability\HorizonObservability;
 use DF\HorizonObservability\Metrics\Labels;
 
 /**
- * The batch kind of a batch, the value of the `batch` label (Arch Q4, C9). A single batch never becomes a label of its
- * own; its kind groups the batches that differ only by ids, dates or counters.
+ * The batch kind of a batch, the value of the `batch` label. A single batch never becomes a label of its own;
+ * its kind groups the batches that differ only by ids, dates or counters.
  *
  * The default normaliser ({@see self::normalize()}), in this order:
  * - turns control characters into spaces;

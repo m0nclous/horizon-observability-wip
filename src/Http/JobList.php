@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Http;
 
 /**
- * The job lists of `GET {base}/jobs/{list}` (Arch Q2.1); the values are the public path segments.
+ * The job lists of `GET {base}/jobs/{list}`; the values are the public path segments.
  *
  * @internal
  */

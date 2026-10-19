@@ -43,7 +43,7 @@ use PDOException;
 use Throwable;
 
 /**
- * Data of the `about` section and of `horizon-observability:check` (Arch Q7, Addendum Q9' WP10, owner decision 12).
+ * Data of the `about` section and of `horizon-observability:check`.
  *
  * {@see self::about()} reads the configuration only: no Redis, no database, never throws. {@see self::check()} runs
  * every check of `horizon-observability:check` and returns one {@see CheckResult} per item; every warning and error
@@ -115,7 +115,7 @@ final readonly class Diagnostics
 
     /**
      * A dry run slower than this (seconds) is a warning: the scrape budget at the smallest supported scrape interval
-     * (5 s scrape timeout minus the 0.5 s margin, Addendum R3.2).
+     * (5 s scrape timeout minus the 0.5 s margin).
      */
     public const SLOW_SCRAPE_SECONDS = 4.5;
 
@@ -304,7 +304,7 @@ final readonly class Diagnostics
     }
 
     /**
-     * Route precedence (Arch Q2.2): every endpoint must be answered by the package route, matched against the live
+     * Route precedence: every endpoint must be answered by the package route, matched against the live
      * router (cached or not) on the host the routes are bound to: `app.url`'s host without a domain, else the domain as
      * `Route::getDomain()` returns it (a sample host for a domain with parameters). A domain no request host can equal
      * is one error with the domain fix.
@@ -864,7 +864,7 @@ final readonly class Diagnostics
     }
 
     /**
-     * Whether the Horizon sidebar gets the Grafana link (T09): a valid `grafana.url` and the middleware on Horizon's
+     * Whether the Horizon sidebar gets the Grafana link: a valid `grafana.url` and the middleware on Horizon's
      * `horizon.index` route (directly, or through the `horizon` group of Horizon 5.45+).
      */
     private function grafanaLink(string $section, Config $config): CheckResult
@@ -1009,7 +1009,7 @@ final readonly class Diagnostics
     }
 
     /**
-     * A dry run of every enabled collector, as one scrape runs it (Arch Q1.3), with the error of a failed one.
+     * A dry run of every enabled collector, as one scrape runs it, with the error of a failed one.
      *
      * @return list<CheckResult>
      */
@@ -1167,8 +1167,8 @@ final readonly class Diagnostics
     }
 
     /**
-     * The live block (Addendum Q9' WP10): enabled, poll endpoint, stream URL, token set or missing, stream id, the last
-     * push, and the optional push test.
+     * The live block: enabled, poll endpoint, stream URL, token set or missing, stream id, the last push, and the
+     * optional push test.
      *
      * @return list<CheckResult>
      */

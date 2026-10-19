@@ -10,7 +10,7 @@ use SensitiveParameter;
 use Throwable;
 
 /**
- * Immutable, validated snapshot of `config/horizon-observability.php` (Arch Q3, Addendum A').
+ * Immutable, validated snapshot of `config/horizon-observability.php`.
  *
  * Built lazily by {@see self::fromRepository()} as a container singleton. It normalises and reports: an invalid
  * non-security value falls back to its default and adds a {@see ConfigProblem}; security values (tokens, IPs) fail
@@ -60,7 +60,7 @@ final readonly class Config
     public const MAX_LIVE_STREAM_INTERVAL = 10.0;
 
     /**
-     * Collector ids in exporter order (Arch Q1.3).
+     * Collector ids in exporter order.
      */
     public const COLLECTORS = ['horizon', 'queues', 'attempts', 'job_classes', 'batches'];
 
@@ -168,7 +168,7 @@ final readonly class Config
     }
 
     /**
-     * Boot-time cast used by the provider and the route file (Arch Q3: safe casts, no validation): booleans,
+     * Boot-time cast used by the provider and the route file (safe casts, no validation): booleans,
      * `1`/`0` and the strings `true`/`false`/`on`/`off`/`yes`/`no`/`1`/`0`/`''`; anything else is `$default`.
      */
     public static function flag(mixed $value, bool $default): bool

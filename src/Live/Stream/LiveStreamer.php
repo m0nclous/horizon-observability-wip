@@ -19,7 +19,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * The stream loop (Addendum R4.6): one tick every `live.stream.interval` seconds, no overlap.
+ * The stream loop: one tick every `live.stream.interval` seconds, no overlap.
  *
  * 1. **Leader election.** A follower tries `SET live:leader NX PX 5000` every {@see self::FOLLOWER_RETRY_SECONDS}
  *    whatever the interval (its wait for the next tick ends early when the retry is due, and a tick runs at once), so
@@ -587,7 +587,7 @@ final class LiveStreamer
     /**
      * Sleep until the monotonic time `$until` (the next tick) in slices of at most 0.1 s, so a signal stops the wait.
      *
-     * The wait does not depend on the interval for the lease (Addendum R4.6): the leader renews it every
+     * The wait does not depend on the interval for the lease: the leader renews it every
      * {@see self::KEEPALIVE_SECONDS} unless the next tick comes first (it renews anyway), and a follower ends the wait
      * when its retry is due, so the next tick tries to take the lease every {@see self::FOLLOWER_RETRY_SECONDS}. A
      * leader whose keep-alive renew fails becomes a follower here, like at a tick.

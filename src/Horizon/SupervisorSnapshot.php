@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Horizon;
 
 /**
- * One running Horizon supervisor as Horizon's repository reports it (Arch Q6, C14).
+ * One running Horizon supervisor as Horizon's repository reports it.
  *
  * @internal
  */

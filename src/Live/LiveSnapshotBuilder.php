@@ -21,7 +21,7 @@ use Throwable;
 use UnexpectedValueException;
 
 /**
- * Builds the live snapshot of a scope (Addendum R4.2): Q + 5 round trips, Q = the queues in scope.
+ * Builds the live snapshot of a scope: Q + 5 round trips, Q = the queues in scope.
  *
  * 1. **Horizon**: the status and the running supervisors from Horizon's repositories ({@see Supervisors}, 2 round
  *    trips each, as in the exporter). The supervisors are not read when the status read failed (same connection).
@@ -29,7 +29,8 @@ use UnexpectedValueException;
  *    items and 1 MB), on the reader of the queue connection's Redis connection, with the reserved classes only when a
  *    Job or Batch filter is active. Queues of connections that do not use the `redis` driver are skipped, as in the
  *    exporter.
- * 3. **Wait thresholds** from {@see Topology::waitThreshold()} (Horizon's effective value, Addendum C2.3 item 5).
+ * 3. **Wait thresholds** from {@see Topology::waitThreshold()} (Horizon's effective value, so the poll colours equal
+ *    the off-mode colours).
  * 4. **Throughput** from the attempt ring ({@see AttemptRing::window()}, 1 round trip): the last complete minute.
  *    The ring has no job classes, so with a Job or Batch filter it is not read and the throughput is null
  *    (`RPM: \u{2014}`) rather than the unfiltered count.

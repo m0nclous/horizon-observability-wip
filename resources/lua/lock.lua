@@ -1,4 +1,4 @@
--- lock.lua: compare-and-renew or compare-and-delete of a lease (Addendum R4.2, R4.6, D').
+-- lock.lua: compare-and-renew or compare-and-delete of a lease.
 --
 -- KEYS[1]  the lease key: live:snapshot-lock:<scope hash> (snapshot build) or live:leader (stream leader)
 -- ARGV[1]  op: 'renew' or 'release'

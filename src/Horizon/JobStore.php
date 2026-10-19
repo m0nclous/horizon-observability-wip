@@ -23,8 +23,8 @@ use Redis;
 use RedisCluster;
 
 /**
- * Pending, completed and failed rows from Horizon's Redis (Arch Q2.1, Q6.4, Q6.11, C13, C14): the jobs of Horizon's
- * Pending Jobs, Completed Jobs and Failed Jobs pages, read on the private reader of Horizon's `horizon` connection.
+ * Pending, completed and failed rows from Horizon's Redis: the jobs of Horizon's Pending Jobs, Completed Jobs and
+ * Failed Jobs pages, read on the private reader of Horizon's `horizon` connection.
  *
  * - The ids come from Horizon's sorted sets `pending_jobs`, `completed_jobs` and `failed_jobs`, whose score is minus
  *   the time the job was pushed, completed or failed, so the newest come first and the period `[from, to]` is a
@@ -40,7 +40,7 @@ use RedisCluster;
  *   call per {@see self::DETAILS_CHUNK} rows of the final page only; with `exceptions = none` the exception is not
  *   read at all. A failing script leaves its rows without details (0 attempts, no exception) and is logged; a
  *   connection error propagates.
- * - An empty queue or class filter returns without any Redis command (C13).
+ * - An empty queue or class filter returns without any Redis command.
  *
  * @phpstan-type JobStoreRow array{id: string, name: string, queue: string, created_at: float|null, reserved_at: float|null, completed_at: float|null, failed_at: float|null, attempts: int, exception: string|null}
  *
@@ -64,7 +64,7 @@ final readonly class JobStore
     public const SCAN_LIMIT = 10000;
 
     /**
-     * `ZRANGEBYSCORE` calls per request at most (Arch Q6.11: 10 000 / 500).
+     * `ZRANGEBYSCORE` calls per request at most (10 000 / 500).
      */
     private const MAX_CALLS = self::SCAN_LIMIT / self::CHUNK;
 

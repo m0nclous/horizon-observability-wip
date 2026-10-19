@@ -13,7 +13,7 @@ use Redis;
 use RedisCluster;
 
 /**
- * Runs the package's Lua scripts (`resources/lua/<name>.lua`, Arch Q6 and Appendix D) with one `EVAL` through
+ * Runs the package's Lua scripts (`resources/lua/<name>.lua`) with one `EVAL` through
  * Laravel's `Connection::eval()`, which orders the arguments for phpredis and predis alike. `EVALSHA` is not used:
  * Laravel's phpredis connection runs `SCRIPT LOAD` on every `evalsha()` call.
  *

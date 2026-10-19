@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Config;
 
 /**
- * One invalid configuration value that {@see Config} replaced (normalise and report, Arch Q3).
+ * One invalid configuration value that {@see Config} replaced (normalise and report).
  *
  * @internal
  */

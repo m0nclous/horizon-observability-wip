@@ -9,7 +9,7 @@ use Illuminate\Contracts\Config\Repository;
 
 /**
  * Where the package endpoints answer, for the `about` section, `horizon-observability:check` and
- * `horizon-observability:install` (Arch Q2.1): `app.url` plus the base path, or with `horizon-observability.domain`
+ * `horizon-observability:install`: `app.url` plus the base path, or with `horizon-observability.domain`
  * that host. The routes are bound to the domain, so on `app.url`'s host they get a 404 or Horizon's catch-all.
  *
  * A domain URL takes the scheme and port of `app.url`, as Laravel's URL generator builds the URL of a domain route

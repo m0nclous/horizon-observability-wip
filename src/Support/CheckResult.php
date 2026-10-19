@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace DF\HorizonObservability\Support;
 
 /**
- * One item of `horizon-observability:check` (Arch Q7): what was checked, the outcome, and for a warning or an error
- * exactly one actionable fix line (owner decision 12). Never carries a secret.
+ * One item of `horizon-observability:check`: what was checked, the outcome, and for a warning or an error exactly one
+ * actionable fix line. Never carries a secret.
  *
  * @internal
  */

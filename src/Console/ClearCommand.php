@@ -10,7 +10,7 @@ use Illuminate\Console\Command;
 use Throwable;
 
 /**
- * PUBLIC `horizon-observability:clear` (Arch Q7, Q6.9): deletes the job class cache file and the runtime cache
+ * PUBLIC `horizon-observability:clear`: deletes the job class cache file and the runtime cache
  * entry, so the next scrape discovers the classes again. `php artisan optimize:clear` runs it on Laravel >= 11.27.1.
  * Metric data is never deleted here (that is `horizon-observability:flush`).
  */

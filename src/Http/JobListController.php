@@ -12,7 +12,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Throwable;
 
 /**
- * `GET|HEAD {base}/jobs/{list}`: `{"data":[...]}` for Grafana's Infinity datasource (Arch Q2.1).
+ * `GET|HEAD {base}/jobs/{list}`: `{"data":[...]}` for Grafana's Infinity datasource.
  *
  * - The rows have the fields of {@see JobRows::fields()}; slashes and Unicode are not escaped, and an invalid UTF-8
  *   byte (a corrupt name in Redis) becomes U+FFFD instead of failing the response.

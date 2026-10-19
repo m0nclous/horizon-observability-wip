@@ -14,7 +14,7 @@ use Symfony\Component\Finder\Finder;
 use Throwable;
 
 /**
- * Queueable classes in the given directories: token prefilter plus reflection, never including files (Arch Q6.9, C22).
+ * Queueable classes in the given directories: token prefilter plus reflection, never including files.
  *
  * 1. Every `*.php` file below the directories is a candidate (dot directories and VCS folders are skipped, symlinked
  *    directories are not followed). Files over {@see self::MAX_FILE_BYTES} are skipped unread: tokenizing costs

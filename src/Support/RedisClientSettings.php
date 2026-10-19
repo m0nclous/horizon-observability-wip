@@ -12,7 +12,7 @@ use Throwable;
 /**
  * What the client Laravel builds for an app Redis connection reads, for `horizon-observability:check`: its timeouts,
  * its persistent flag and its key prefix, each with the place in `database.redis` it comes from. check judges the
- * client the app really gets, and every fix line names a place that client reads (T14 QA round 3).
+ * client the app really gets, and every fix line names a place that client reads.
  *
  * Illuminate\Redis\RedisManager and its connectors (the same in Laravel 11.23 to 13), and the clients:
  * - **phpredis, one server** (`PhpRedisConnector::connect()`): `array_merge($connection, database.redis.options,

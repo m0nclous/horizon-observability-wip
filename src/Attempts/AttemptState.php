@@ -7,7 +7,7 @@ namespace DF\HorizonObservability\Attempts;
 use DF\HorizonObservability\Queues\PayloadClock;
 
 /**
- * In-flight state of one attempt between `JobProcessing` and `JobAttempted`/`JobTimedOut` (Arch Q6.2, C20).
+ * In-flight state of one attempt between `JobProcessing` and `JobAttempted`/`JobTimedOut`.
  *
  * {@see AttemptTracker} keeps it in a `WeakMap` keyed by the job object, which the worker passes to every event of
  * one attempt; the entry disappears with the job.

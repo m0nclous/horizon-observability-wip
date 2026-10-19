@@ -7,7 +7,7 @@ namespace DF\HorizonObservability\Attempts;
 use DF\HorizonObservability\Metrics\Labels;
 
 /**
- * The `job_class` label value from a payload `displayName` (Horizon's job `name`), Arch Q4.
+ * The `job_class` label value from a payload `displayName` (Horizon's job `name`).
  *
  * The same normaliser applies to attempts, queue-state class counts, batch links and the job-list `job_class`
  * filter, so values match everywhere.

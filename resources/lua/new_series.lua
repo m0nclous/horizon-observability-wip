@@ -1,5 +1,4 @@
--- new_series.lua: the counter series inside their new-series hold, on the clock of this Redis (T16; Arch Q4,
--- Appendix D).
+-- new_series.lua: the counter series inside their new-series hold, on the clock of this Redis.
 --
 -- One EVAL per scrape of the attempts collector, after the counters are read (a series with counts then always has
 -- its creation time here, or it was released already). US below is the unit separator \31 of the hash fields.

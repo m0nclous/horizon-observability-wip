@@ -10,7 +10,7 @@ use DF\HorizonObservability\Redis\Lua;
 use DF\HorizonObservability\Support\FailureReporter;
 
 /**
- * `reset_guard.lua` before the counters are read: a changed Redis `run_id` deletes the counters (Arch Q6.10, C21).
+ * `reset_guard.lua` before the counters are read: a changed Redis `run_id` deletes the counters.
  *
  * A restart without persistence, a restore from an older RDB or a failover to a lagging replica rolls the counters
  * back; `increase()` would then count the old totals again. Deleting them is a plain counter reset, which `rate()` and

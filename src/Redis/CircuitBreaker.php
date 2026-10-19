@@ -9,7 +9,7 @@ use DF\HorizonObservability\Support\FailureReporter;
 use Throwable;
 
 /**
- * Per-process circuit breaker of the worker-side storage writes (Arch Q6.6, C11), shared by `AttemptStore`,
+ * Per-process circuit breaker of the worker-side storage writes, shared by `AttemptStore`,
  * `BatchLinks` and `LegacyReadyAt`.
  *
  * - A write that throws (anything: a connection or timeout error, a Lua failure, a missing connection) opens the
@@ -93,7 +93,7 @@ final class CircuitBreaker
             if ($this->openedAt === null) {
                 $this->openedAt = $now;
                 // In-process throttle only: the default cache store often shares the unreachable Redis, and its
-                // add() would cost another timeout on top of the one this opening bounds (C11).
+                // add() would cost another timeout on top of the one this opening bounds.
                 $this->reporter->reportLocally('breaker:'.$operation, $e, ['cooldown_seconds' => self::COOLDOWN_SECONDS]);
             }
 

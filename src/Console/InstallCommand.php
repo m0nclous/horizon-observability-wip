@@ -27,7 +27,7 @@ use Symfony\Component\Console\Formatter\OutputFormatter;
 use Throwable;
 
 /**
- * PUBLIC `horizon-observability:install` (Arch Q7, Addendum Q9' WP10, owner decision 12): everything it safely can,
+ * PUBLIC `horizon-observability:install`: everything it safely can,
  * so a newcomer gets from `composer require` to a dashboard with data in minutes.
  *
  * 1. Publishes `config/horizon-observability.php` (asks; keeps an existing file unless `--force` or confirmed).

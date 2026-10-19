@@ -8,7 +8,7 @@ use DF\HorizonObservability\Metrics\MetricFamily;
 use DF\HorizonObservability\Metrics\ScrapeContext;
 
 /**
- * One isolated source of metric families (Arch Q1.3). The exporter materialises `collect()` fully; a throw fails the
+ * One isolated source of metric families. The exporter materialises `collect()` fully; a throw fails the
  * whole collector, and {@see ScrapeContext::reportFailure()} keeps the data read so far but marks it failed.
  *
  * @internal

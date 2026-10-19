@@ -14,19 +14,19 @@ use InvalidArgumentException;
 use Symfony\Component\Console\Input\InputOption;
 
 /**
- * PUBLIC `horizon-observability:grafana` (Arch Q5.1): renders the Grafana dashboard and the alert rules into
+ * PUBLIC `horizon-observability:grafana`: renders the Grafana dashboard and the alert rules into
  * `{path}/dashboards/horizon-observability.json` and `{path}/alerting/horizon-observability.json`, with
- * `--recording-rules` also the opt-in Prometheus recording rules into `{path}/prometheus/horizon-observability.rules.yml`
- * (ADDENDUM R2.4 O9), or with `--check` compares those files with the render and exits 1 when they differ (for the CI
- * of an infrastructure repository).
+ * `--recording-rules` also the opt-in Prometheus recording rules into `{path}/prometheus/horizon-observability.rules.yml`,
+ * or with `--check` compares those files with the render and exits 1 when they differ (for the CI of an
+ * infrastructure repository).
  *
  * Metric names carry the prefix of `horizon-observability.namespace` (default `ho_`), also with `--defaults`, so the
- * render matches what the application exports. The Live Overview polls the application by default (`--live=poll`,
- * owner decision 9), or reads Prometheus (`--live=off`) while `horizon-observability.live.enabled` is false;
- * `--live=stream` subscribes to the Grafana Live stream of `horizon-observability.live.stream.id` (the package
- * default with `--defaults`), and `--live=off` reads every tile from Prometheus.
+ * render matches what the application exports. The Live Overview polls the application by default (`--live=poll`), or
+ * reads Prometheus (`--live=off`) while `horizon-observability.live.enabled` is false; `--live=stream` subscribes to
+ * the Grafana Live stream of `horizon-observability.live.stream.id` (the package default with `--defaults`), and
+ * `--live=off` reads every tile from Prometheus.
  *
- * A relative path is relative to the application root (`base_path()`, Arch Q5.1), wherever the command runs from;
+ * A relative path is relative to the application root (`base_path()`), wherever the command runs from;
  * under `vendor/bin/testbench` that is its skeleton, so the package's own scripts pass an absolute path.
  */
 final class GrafanaCommand extends Command
@@ -207,7 +207,7 @@ final class GrafanaCommand extends Command
     }
 
     /**
-     * `--live`: poll by default (owner decision 9), but off while the application serves no live endpoint
+     * `--live`: poll by default, but off while the application serves no live endpoint
      * (`horizon-observability.live.enabled` false, without `--defaults`): the live tiles would read a route that
      * does not exist. An explicit poll or stream render of such an application is kept, with a warning.
      *
@@ -242,7 +242,7 @@ final class GrafanaCommand extends Command
     }
 
     /**
-     * `--live-poll-interval` in seconds: `<n>s` or `<n>m`, 1 second to 5 minutes (ADDENDUM R4.1).
+     * `--live-poll-interval` in seconds: `<n>s` or `<n>m`, 1 second to 5 minutes.
      *
      * @throws InvalidArgumentException
      */
@@ -276,7 +276,7 @@ final class GrafanaCommand extends Command
     }
 
     /**
-     * `--scrape-interval` in seconds: `<n>s` or `1m`, within the supported 5 to 60 seconds (ADDENDUM R3.2).
+     * `--scrape-interval` in seconds: `<n>s` or `1m`, within the supported 5 to 60 seconds.
      *
      * @throws InvalidArgumentException
      */
@@ -317,7 +317,7 @@ final class GrafanaCommand extends Command
     }
 
     /**
-     * The output directory: an absolute path as is, a relative one under the application root (Arch Q5.1).
+     * The output directory: an absolute path as is, a relative one under the application root.
      */
     private function directory(): string
     {
