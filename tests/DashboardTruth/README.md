@@ -102,8 +102,8 @@ None.
 - Mutant `completed-retried` (#8 A counts retried attempts as completed): killed on both versions, 8 dashboard
   defects in S01 (grid, both replays and DOM per version); CI runs it after every PR run.
 - Negative control S02: fails as `case setup` only, on both versions.
-- Determinism: two full local runs (`wp1a`, `wp1b`, each recording its own world) gave identical observations, 4 of 4
-  (`bin/run compare`, measured durations masked).
+- Determinism: full local runs, each recording its own world, give identical observations (`bin/run compare`,
+  measured durations masked): two on phpredis and a third recorded on predis, 4 of 4 observations each.
 
 ## Stage timings
 
