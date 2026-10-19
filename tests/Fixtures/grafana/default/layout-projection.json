@@ -1,0 +1,3282 @@
+[
+  {
+    "row": null,
+    "id": 23,
+    "type": "marcusolsson-dynamictext-panel",
+    "title": "",
+    "gridPos": {
+      "h": 1,
+      "w": 24,
+      "x": 0,
+      "y": 0
+    },
+    "options": {
+      "content": " ",
+      "contentPartials": [],
+      "defaultContent": " ",
+      "editor": {
+        "format": "auto",
+        "language": "html"
+      },
+      "editors": [
+        "afterRender"
+      ],
+      "externalStyles": [],
+      "helpers": "",
+      "renderMode": "data",
+      "styles": "",
+      "wrap": false
+    }
+  },
+  {
+    "row": null,
+    "id": 10,
+    "type": "row",
+    "title": "Overview",
+    "gridPos": {
+      "h": 1,
+      "w": 24,
+      "x": 0,
+      "y": 1
+    },
+    "collapsed": false
+  },
+  {
+    "row": 10,
+    "id": 1,
+    "type": "stat",
+    "title": "Horizon",
+    "gridPos": {
+      "h": 5,
+      "w": 2,
+      "x": 0,
+      "y": 2
+    },
+    "options": {
+      "colorMode": "background",
+      "graphMode": "area",
+      "justifyMode": "center",
+      "orientation": "auto",
+      "percentChangeColorMode": "standard",
+      "reduceOptions": {
+        "calcs": [
+          "lastNotNull"
+        ],
+        "fields": "",
+        "values": false
+      },
+      "showPercentChange": false,
+      "textMode": "value_and_name",
+      "wideLayout": true,
+      "text": {
+        "titleSize": 14
+      }
+    },
+    "fieldConfig": {
+      "defaults": {
+        "color": {
+          "mode": "thresholds"
+        },
+        "decimals": 0,
+        "mappings": [],
+        "noValue": "—",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "red",
+              "value": null
+            }
+          ]
+        },
+        "unit": "locale",
+        "min": 0,
+        "max": 10,
+        "displayName": "Uptime"
+      },
+      "overrides": []
+    },
+    "transformations": [
+      {
+        "id": "configFromData",
+        "options": {
+          "configRefId": "B",
+          "mappings": [
+            {
+              "fieldName": "status",
+              "handlerKey": "mappings.value"
+            },
+            {
+              "fieldName": "text",
+              "handlerKey": "mappings.text"
+            },
+            {
+              "fieldName": "color",
+              "handlerKey": "mappings.color"
+            },
+            {
+              "fieldName": "Time",
+              "handlerKey": "__ignore"
+            },
+            {
+              "fieldName": "Value",
+              "handlerKey": "__ignore"
+            }
+          ],
+          "applyTo": {
+            "id": "byFrameRefID",
+            "options": "A"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "row": 10,
+    "id": 3,
+    "type": "stat",
+    "title": "Supervisor Processes",
+    "gridPos": {
+      "h": 5,
+      "w": 6,
+      "x": 2,
+      "y": 2
+    },
+    "options": {
+      "colorMode": "background",
+      "graphMode": "area",
+      "justifyMode": "center",
+      "orientation": "auto",
+      "percentChangeColorMode": "standard",
+      "reduceOptions": {
+        "calcs": [
+          "lastNotNull"
+        ],
+        "fields": "",
+        "values": false
+      },
+      "showPercentChange": false,
+      "textMode": "value_and_name",
+      "wideLayout": true,
+      "text": {
+        "titleSize": 14
+      }
+    },
+    "fieldConfig": {
+      "defaults": {
+        "color": {
+          "mode": "thresholds"
+        },
+        "decimals": 0,
+        "mappings": [],
+        "noValue": "—",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "green",
+              "value": null
+            }
+          ]
+        },
+        "unit": "locale"
+      },
+      "overrides": []
+    },
+    "transformations": [
+      {
+        "id": "configFromData",
+        "options": {
+          "configRefId": "B",
+          "mappings": [
+            {
+              "fieldName": "value",
+              "handlerKey": "mappings.value"
+            },
+            {
+              "fieldName": "color",
+              "handlerKey": "mappings.color"
+            },
+            {
+              "fieldName": "Time",
+              "handlerKey": "__ignore"
+            },
+            {
+              "fieldName": "Value",
+              "handlerKey": "__ignore"
+            }
+          ],
+          "applyTo": {
+            "id": "byFrameRefID",
+            "options": "A"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "row": 10,
+    "id": 2,
+    "type": "stat",
+    "title": "Pending",
+    "gridPos": {
+      "h": 5,
+      "w": 4,
+      "x": 8,
+      "y": 2
+    },
+    "options": {
+      "colorMode": "background",
+      "graphMode": "area",
+      "justifyMode": "center",
+      "orientation": "auto",
+      "percentChangeColorMode": "standard",
+      "reduceOptions": {
+        "calcs": [
+          "lastNotNull"
+        ],
+        "fields": "",
+        "values": false
+      },
+      "showPercentChange": false,
+      "textMode": "value_and_name",
+      "wideLayout": true,
+      "text": {
+        "titleSize": 14
+      }
+    },
+    "fieldConfig": {
+      "defaults": {
+        "color": {
+          "mode": "thresholds"
+        },
+        "decimals": 0,
+        "mappings": [],
+        "noValue": "—",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "green",
+              "value": null
+            }
+          ]
+        },
+        "unit": "locale"
+      },
+      "overrides": []
+    },
+    "transformations": [
+      {
+        "id": "labelsToFields",
+        "filter": {
+          "id": "byRefId",
+          "options": "B"
+        },
+        "options": []
+      },
+      {
+        "id": "configFromData",
+        "options": {
+          "configRefId": "B",
+          "mappings": [
+            {
+              "fieldName": "display",
+              "handlerKey": "displayName"
+            }
+          ],
+          "applyTo": {
+            "id": "byFrameRefID",
+            "options": "A"
+          }
+        }
+      },
+      {
+        "id": "renameByRegex",
+        "options": {
+          "regex": "^(.+ · .+|—)$",
+          "renamePattern": "Oldest: $1"
+        }
+      },
+      {
+        "id": "calculateField",
+        "filter": {
+          "id": "byRefId",
+          "options": "C"
+        },
+        "options": {
+          "mode": "binary",
+          "alias": "warning",
+          "binary": {
+            "left": {
+              "matcher": {
+                "id": "byName",
+                "options": "level"
+              }
+            },
+            "operator": "-",
+            "right": {
+              "fixed": "1000000000"
+            }
+          }
+        }
+      },
+      {
+        "id": "calculateField",
+        "filter": {
+          "id": "byRefId",
+          "options": "C"
+        },
+        "options": {
+          "mode": "binary",
+          "alias": "critical",
+          "binary": {
+            "left": {
+              "matcher": {
+                "id": "byName",
+                "options": "level"
+              }
+            },
+            "operator": "-",
+            "right": {
+              "fixed": "0"
+            }
+          }
+        }
+      },
+      {
+        "id": "configFromData",
+        "options": {
+          "configRefId": "C",
+          "mappings": [
+            {
+              "fieldName": "level",
+              "handlerKey": "__ignore"
+            },
+            {
+              "fieldName": "warning",
+              "handlerKey": "threshold1",
+              "handlerArguments": {
+                "threshold": {
+                  "color": "yellow"
+                }
+              }
+            },
+            {
+              "fieldName": "critical",
+              "handlerKey": "threshold1",
+              "handlerArguments": {
+                "threshold": {
+                  "color": "red"
+                }
+              }
+            }
+          ],
+          "applyTo": {
+            "id": "byFrameRefID",
+            "options": "A"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "row": 10,
+    "id": 8,
+    "type": "stat",
+    "title": "Completed",
+    "gridPos": {
+      "h": 5,
+      "w": 4,
+      "x": 12,
+      "y": 2
+    },
+    "options": {
+      "colorMode": "none",
+      "graphMode": "area",
+      "justifyMode": "center",
+      "orientation": "auto",
+      "percentChangeColorMode": "standard",
+      "reduceOptions": {
+        "calcs": [
+          "sum"
+        ],
+        "fields": "",
+        "values": false
+      },
+      "showPercentChange": false,
+      "textMode": "value_and_name",
+      "wideLayout": true,
+      "text": {
+        "titleSize": 14
+      }
+    },
+    "fieldConfig": {
+      "defaults": {
+        "color": {
+          "mode": "thresholds"
+        },
+        "decimals": 0,
+        "mappings": [],
+        "noValue": "—",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "text",
+              "value": null
+            }
+          ]
+        },
+        "unit": "locale"
+      },
+      "overrides": []
+    },
+    "transformations": [
+      {
+        "id": "configFromData",
+        "options": {
+          "configRefId": "B",
+          "mappings": [
+            {
+              "fieldName": "per_minute",
+              "handlerKey": "displayName"
+            }
+          ],
+          "applyTo": {
+            "id": "byFrameRefID",
+            "options": "A"
+          }
+        }
+      },
+      {
+        "id": "renameByRegex",
+        "options": {
+          "regex": "^(\\d+)$",
+          "renamePattern": "RPM: $1"
+        }
+      },
+      {
+        "id": "renameByRegex",
+        "options": {
+          "regex": "^-1$",
+          "renamePattern": "RPM: —"
+        }
+      }
+    ]
+  },
+  {
+    "row": 10,
+    "id": 9,
+    "type": "stat",
+    "title": "Delayed",
+    "gridPos": {
+      "h": 5,
+      "w": 3,
+      "x": 16,
+      "y": 2
+    },
+    "options": {
+      "colorMode": "none",
+      "graphMode": "area",
+      "justifyMode": "center",
+      "orientation": "auto",
+      "percentChangeColorMode": "standard",
+      "reduceOptions": {
+        "calcs": [
+          "lastNotNull"
+        ],
+        "fields": "",
+        "values": false
+      },
+      "showPercentChange": false,
+      "textMode": "value",
+      "wideLayout": true
+    },
+    "fieldConfig": {
+      "defaults": {
+        "color": {
+          "mode": "thresholds"
+        },
+        "decimals": 0,
+        "mappings": [],
+        "noValue": "—",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "text",
+              "value": null
+            }
+          ]
+        },
+        "unit": "locale"
+      },
+      "overrides": []
+    }
+  },
+  {
+    "row": 10,
+    "id": 4,
+    "type": "stat",
+    "title": "Failed",
+    "gridPos": {
+      "h": 5,
+      "w": 3,
+      "x": 19,
+      "y": 2
+    },
+    "options": {
+      "colorMode": "background",
+      "graphMode": "area",
+      "justifyMode": "center",
+      "orientation": "auto",
+      "percentChangeColorMode": "standard",
+      "reduceOptions": {
+        "calcs": [
+          "sum"
+        ],
+        "fields": "",
+        "values": false
+      },
+      "showPercentChange": false,
+      "textMode": "value_and_name",
+      "wideLayout": true,
+      "text": {
+        "titleSize": 14
+      }
+    },
+    "fieldConfig": {
+      "defaults": {
+        "color": {
+          "mode": "thresholds"
+        },
+        "decimals": 0,
+        "mappings": [],
+        "noValue": "—",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "green",
+              "value": null
+            },
+            {
+              "color": "yellow",
+              "value": 1
+            },
+            {
+              "color": "red",
+              "value": 5
+            }
+          ]
+        },
+        "unit": "locale"
+      },
+      "overrides": []
+    },
+    "transformations": [
+      {
+        "id": "configFromData",
+        "options": {
+          "configRefId": "B",
+          "mappings": [
+            {
+              "fieldName": "success",
+              "handlerKey": "displayName"
+            }
+          ],
+          "applyTo": {
+            "id": "byFrameRefID",
+            "options": "A"
+          }
+        }
+      },
+      {
+        "id": "renameByRegex",
+        "options": {
+          "regex": "^(\\d+)$",
+          "renamePattern": "Success: $1.0%"
+        }
+      },
+      {
+        "id": "renameByRegex",
+        "options": {
+          "regex": "^(\\d+\\.\\d)$",
+          "renamePattern": "Success: $1%"
+        }
+      },
+      {
+        "id": "renameByRegex",
+        "options": {
+          "regex": "^-1$",
+          "renamePattern": "Success: —"
+        }
+      },
+      {
+        "id": "calculateField",
+        "filter": {
+          "id": "byRefId",
+          "options": "C"
+        },
+        "options": {
+          "mode": "binary",
+          "alias": "warning",
+          "binary": {
+            "left": {
+              "matcher": {
+                "id": "byName",
+                "options": "attempts"
+              }
+            },
+            "operator": "*",
+            "right": {
+              "fixed": "0.01"
+            }
+          }
+        }
+      },
+      {
+        "id": "calculateField",
+        "filter": {
+          "id": "byRefId",
+          "options": "C"
+        },
+        "options": {
+          "mode": "binary",
+          "alias": "critical",
+          "binary": {
+            "left": {
+              "matcher": {
+                "id": "byName",
+                "options": "attempts"
+              }
+            },
+            "operator": "*",
+            "right": {
+              "fixed": "0.05"
+            }
+          }
+        }
+      },
+      {
+        "id": "configFromData",
+        "options": {
+          "configRefId": "C",
+          "mappings": [
+            {
+              "fieldName": "attempts",
+              "handlerKey": "__ignore"
+            },
+            {
+              "fieldName": "warning",
+              "handlerKey": "threshold1",
+              "handlerArguments": {
+                "threshold": {
+                  "color": "yellow"
+                }
+              }
+            },
+            {
+              "fieldName": "critical",
+              "handlerKey": "threshold1",
+              "handlerArguments": {
+                "threshold": {
+                  "color": "red"
+                }
+              }
+            }
+          ],
+          "applyTo": {
+            "id": "byFrameRefID",
+            "options": "A"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "row": 10,
+    "id": 21,
+    "type": "stat",
+    "title": "Alerts",
+    "gridPos": {
+      "h": 5,
+      "w": 2,
+      "x": 22,
+      "y": 2
+    },
+    "options": {
+      "colorMode": "background",
+      "graphMode": "area",
+      "justifyMode": "center",
+      "orientation": "auto",
+      "percentChangeColorMode": "standard",
+      "reduceOptions": {
+        "calcs": [
+          "lastNotNull"
+        ],
+        "fields": "",
+        "values": false
+      },
+      "showPercentChange": false,
+      "textMode": "value_and_name",
+      "wideLayout": true,
+      "text": {
+        "titleSize": 14
+      }
+    },
+    "fieldConfig": {
+      "defaults": {
+        "color": {
+          "mode": "thresholds"
+        },
+        "decimals": 0,
+        "mappings": [],
+        "noValue": "—",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "green",
+              "value": null
+            }
+          ]
+        },
+        "unit": "locale"
+      },
+      "overrides": []
+    },
+    "transformations": [
+      {
+        "id": "labelsToFields",
+        "filter": {
+          "id": "byRefId",
+          "options": "B"
+        },
+        "options": []
+      },
+      {
+        "id": "configFromData",
+        "options": {
+          "configRefId": "B",
+          "mappings": [
+            {
+              "fieldName": "display",
+              "handlerKey": "displayName"
+            }
+          ],
+          "applyTo": {
+            "id": "byFrameRefID",
+            "options": "A"
+          }
+        }
+      },
+      {
+        "id": "calculateField",
+        "filter": {
+          "id": "byRefId",
+          "options": "C"
+        },
+        "options": {
+          "mode": "binary",
+          "alias": "warning",
+          "binary": {
+            "left": {
+              "matcher": {
+                "id": "byName",
+                "options": "level"
+              }
+            },
+            "operator": "-",
+            "right": {
+              "fixed": "1000000000"
+            }
+          }
+        }
+      },
+      {
+        "id": "calculateField",
+        "filter": {
+          "id": "byRefId",
+          "options": "C"
+        },
+        "options": {
+          "mode": "binary",
+          "alias": "critical",
+          "binary": {
+            "left": {
+              "matcher": {
+                "id": "byName",
+                "options": "level"
+              }
+            },
+            "operator": "-",
+            "right": {
+              "fixed": "0"
+            }
+          }
+        }
+      },
+      {
+        "id": "configFromData",
+        "options": {
+          "configRefId": "C",
+          "mappings": [
+            {
+              "fieldName": "level",
+              "handlerKey": "__ignore"
+            },
+            {
+              "fieldName": "warning",
+              "handlerKey": "threshold1",
+              "handlerArguments": {
+                "threshold": {
+                  "color": "yellow"
+                }
+              }
+            },
+            {
+              "fieldName": "critical",
+              "handlerKey": "threshold1",
+              "handlerArguments": {
+                "threshold": {
+                  "color": "red"
+                }
+              }
+            }
+          ],
+          "applyTo": {
+            "id": "byFrameRefID",
+            "options": "A"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "row": null,
+    "id": 11,
+    "type": "row",
+    "title": "Current Workload",
+    "gridPos": {
+      "h": 1,
+      "w": 24,
+      "x": 0,
+      "y": 7
+    },
+    "collapsed": false
+  },
+  {
+    "row": 11,
+    "id": 5,
+    "type": "table",
+    "title": "${supervisor_title:text}",
+    "gridPos": {
+      "h": 5,
+      "w": 24,
+      "x": 0,
+      "y": 8
+    },
+    "repeat": "supervisor_title",
+    "repeatDirection": "v",
+    "options": {
+      "cellHeight": "md",
+      "showHeader": true,
+      "sortBy": [
+        {
+          "desc": true,
+          "displayName": "Utilization"
+        }
+      ]
+    },
+    "fieldConfig": {
+      "defaults": {
+        "custom": {
+          "align": "auto",
+          "cellOptions": {
+            "type": "auto"
+          },
+          "filterable": false,
+          "inspect": false
+        },
+        "decimals": 0,
+        "mappings": [],
+        "noValue": "—",
+        "unit": "locale",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "text",
+              "value": null
+            }
+          ]
+        }
+      },
+      "overrides": [
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Queue"
+          },
+          "properties": [
+            {
+              "id": "custom.minWidth",
+              "value": 140
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Utilization"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 130
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "markdown"
+              }
+            },
+            {
+              "id": "mappings",
+              "value": [
+                {
+                  "type": "regex",
+                  "options": {
+                    "pattern": "/^1999$/",
+                    "result": {
+                      "text": "<div style=\"text-align: center;\">—</div>",
+                      "index": 0
+                    }
+                  }
+                },
+                {
+                  "type": "regex",
+                  "options": {
+                    "pattern": "/^10(?:0(\\d)|([1-6]\\d))$/",
+                    "result": {
+                      "text": "<div style=\"background: linear-gradient(90deg, #73BF69 $1$2%, rgba(204, 204, 220, 0.12) $1$2%); border-radius: 3px; color: #FFFFFF; font-size: 12px; text-align: center; padding: 2px 0;\">$1$2%</div>",
+                      "index": 1
+                    }
+                  }
+                },
+                {
+                  "type": "regex",
+                  "options": {
+                    "pattern": "/^10([78]\\d)()$/",
+                    "result": {
+                      "text": "<div style=\"background: linear-gradient(90deg, #FADE2A $1$2%, rgba(204, 204, 220, 0.12) $1$2%); border-radius: 3px; color: #111217; font-size: 12px; text-align: center; padding: 2px 0;\">$1$2%</div>",
+                      "index": 2
+                    }
+                  }
+                },
+                {
+                  "type": "regex",
+                  "options": {
+                    "pattern": "/^1(?:0(9\\d)|(100))$/",
+                    "result": {
+                      "text": "<div style=\"background: linear-gradient(90deg, #F2495C $1$2%, rgba(204, 204, 220, 0.12) $1$2%); border-radius: 3px; color: #FFFFFF; font-size: 12px; text-align: center; padding: 2px 0;\">$1$2%</div>",
+                      "index": 3
+                    }
+                  }
+                },
+                {
+                  "type": "value",
+                  "options": {
+                    "undefined": {
+                      "text": "<div style=\"text-align: center;\">—</div>",
+                      "index": 99
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Oldest wait"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 130
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "color-text"
+              }
+            },
+            {
+              "id": "custom.align",
+              "value": "right"
+            },
+            {
+              "id": "mappings",
+              "value": [
+                {
+                  "type": "regex",
+                  "options": {
+                    "pattern": "/^2\\|(.*)$/",
+                    "result": {
+                      "text": "$1",
+                      "color": "red",
+                      "index": 0
+                    }
+                  }
+                },
+                {
+                  "type": "regex",
+                  "options": {
+                    "pattern": "/^1\\|(.*)$/",
+                    "result": {
+                      "text": "$1",
+                      "color": "yellow",
+                      "index": 1
+                    }
+                  }
+                },
+                {
+                  "type": "regex",
+                  "options": {
+                    "pattern": "/^0\\|(.*)$/",
+                    "result": {
+                      "text": "$1",
+                      "index": 2
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Wait p95"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 100
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "color-text"
+              }
+            },
+            {
+              "id": "custom.align",
+              "value": "right"
+            },
+            {
+              "id": "mappings",
+              "value": [
+                {
+                  "type": "regex",
+                  "options": {
+                    "pattern": "/^2\\|(.*)$/",
+                    "result": {
+                      "text": "$1",
+                      "color": "red",
+                      "index": 0
+                    }
+                  }
+                },
+                {
+                  "type": "regex",
+                  "options": {
+                    "pattern": "/^1\\|(.*)$/",
+                    "result": {
+                      "text": "$1",
+                      "color": "yellow",
+                      "index": 1
+                    }
+                  }
+                },
+                {
+                  "type": "regex",
+                  "options": {
+                    "pattern": "/^0\\|(.*)$/",
+                    "result": {
+                      "text": "$1",
+                      "index": 2
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Pending"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 90
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Completed"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 100
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Delayed"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 90
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Processes"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 100
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Failed"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 80
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "color-text"
+              }
+            },
+            {
+              "id": "thresholds",
+              "value": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Retries"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 80
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Timeouts"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 90
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "color-text"
+              }
+            },
+            {
+              "id": "thresholds",
+              "value": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Success rate"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 110
+            },
+            {
+              "id": "mappings",
+              "value": [
+                {
+                  "type": "special",
+                  "options": {
+                    "match": "null+nan",
+                    "result": {
+                      "text": "—",
+                      "color": "text",
+                      "index": 0
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "unit",
+              "value": "percentunit"
+            },
+            {
+              "id": "decimals",
+              "value": 1
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "color-text"
+              }
+            },
+            {
+              "id": "thresholds",
+              "value": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.9
+                  },
+                  {
+                    "color": "text",
+                    "value": 0.99
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "transformations": [
+      {
+        "id": "merge",
+        "options": []
+      },
+      {
+        "id": "organize",
+        "options": {
+          "excludeByName": {
+            "Time": true,
+            "age": true,
+            "limit": true,
+            "level": true,
+            "Value #F": true,
+            "p95": true,
+            "p95_level": true,
+            "Value #K": true,
+            "Value #Z": true
+          },
+          "includeByName": [],
+          "indexByName": {
+            "Time": 0,
+            "queue": 1,
+            "Value #A": 2,
+            "Value #D": 3,
+            "Value #B": 4,
+            "Value #G": 5,
+            "cell": 6,
+            "p95_cell": 7,
+            "Value #C": 8,
+            "Value #E": 9,
+            "Value #I": 10,
+            "Value #H": 11,
+            "Value #J": 12
+          },
+          "renameByName": {
+            "queue": "Queue",
+            "Value #A": "Utilization",
+            "Value #B": "Pending",
+            "Value #C": "Completed",
+            "Value #G": "Delayed",
+            "Value #D": "Processes",
+            "Value #E": "Failed",
+            "Value #H": "Retries",
+            "Value #I": "Timeouts",
+            "Value #J": "Success rate",
+            "p95_cell": "Wait p95",
+            "cell": "Oldest wait"
+          }
+        }
+      },
+      {
+        "id": "convertFieldType",
+        "options": {
+          "conversions": [
+            {
+              "targetField": "Utilization",
+              "destinationType": "string"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "row": 11,
+    "id": 17,
+    "type": "table",
+    "title": "Batches",
+    "gridPos": {
+      "h": 7,
+      "w": 24,
+      "x": 0,
+      "y": 13
+    },
+    "options": {
+      "cellHeight": "md",
+      "showHeader": true,
+      "sortBy": [
+        {
+          "desc": true,
+          "displayName": "Running"
+        }
+      ]
+    },
+    "fieldConfig": {
+      "defaults": {
+        "custom": {
+          "align": "auto",
+          "cellOptions": {
+            "type": "auto"
+          },
+          "filterable": false,
+          "inspect": false
+        },
+        "decimals": 0,
+        "mappings": [],
+        "noValue": "—",
+        "unit": "locale",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "text",
+              "value": null
+            }
+          ]
+        }
+      },
+      "overrides": [
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Batch"
+          },
+          "properties": [
+            {
+              "id": "custom.minWidth",
+              "value": 160
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Running"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 100
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Progress"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 160
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "markdown"
+              }
+            },
+            {
+              "id": "mappings",
+              "value": [
+                {
+                  "type": "regex",
+                  "options": {
+                    "pattern": "/^1999$/",
+                    "result": {
+                      "text": "<div style=\"text-align: center;\">—</div>",
+                      "index": 1
+                    }
+                  }
+                },
+                {
+                  "type": "regex",
+                  "options": {
+                    "pattern": "/^1(?:0{1,2}(\\d{1,2})|(100))$/",
+                    "result": {
+                      "text": "<div style=\"background: linear-gradient(90deg, #5794F2 $1$2%, rgba(204, 204, 220, 0.12) $1$2%); border-radius: 3px; color: #FFFFFF; font-size: 12px; text-align: center; padding: 2px 0;\">$1$2%</div>",
+                      "index": 0
+                    }
+                  }
+                },
+                {
+                  "type": "value",
+                  "options": {
+                    "undefined": {
+                      "text": "<div style=\"text-align: center;\">—</div>",
+                      "index": 99
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Pending"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 90
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Failed"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 80
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "color-text"
+              }
+            },
+            {
+              "id": "thresholds",
+              "value": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Workers"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 90
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Oldest"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 100
+            },
+            {
+              "id": "unit",
+              "value": "s"
+            },
+            {
+              "id": "decimals",
+              "value": 0
+            },
+            {
+              "id": "mappings",
+              "value": [
+                {
+                  "type": "value",
+                  "options": {
+                    "-1": {
+                      "text": "—",
+                      "index": 0
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Completed"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 110
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "RPM"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 80
+            }
+          ]
+        }
+      ]
+    },
+    "transformations": [
+      {
+        "id": "merge",
+        "options": []
+      },
+      {
+        "id": "organize",
+        "options": {
+          "excludeByName": {
+            "Time": true,
+            "Value #Z": true
+          },
+          "indexByName": {
+            "Time": 0,
+            "batch": 1,
+            "Value #A": 2,
+            "Value #B": 3,
+            "Value #C": 4,
+            "Value #D": 5,
+            "Value #E": 6,
+            "Value #F": 7,
+            "Value #G": 8,
+            "Value #H": 9
+          },
+          "renameByName": {
+            "batch": "Batch",
+            "Value #A": "Running",
+            "Value #B": "Progress",
+            "Value #C": "Pending",
+            "Value #D": "Failed",
+            "Value #E": "Workers",
+            "Value #F": "Oldest",
+            "Value #G": "Completed",
+            "Value #H": "RPM"
+          }
+        }
+      },
+      {
+        "id": "convertFieldType",
+        "options": {
+          "conversions": [
+            {
+              "targetField": "Progress",
+              "destinationType": "string"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "row": null,
+    "id": 12,
+    "type": "row",
+    "title": "Details · Jobs",
+    "gridPos": {
+      "h": 1,
+      "w": 24,
+      "x": 0,
+      "y": 20
+    },
+    "collapsed": true
+  },
+  {
+    "row": 12,
+    "id": 7,
+    "type": "timeseries",
+    "title": "Pending by job: $queue",
+    "gridPos": {
+      "h": 9,
+      "w": 24,
+      "x": 0,
+      "y": 21
+    },
+    "repeat": "queue",
+    "repeatDirection": "h",
+    "maxPerRow": 4,
+    "options": {
+      "legend": {
+        "showLegend": false
+      },
+      "tooltip": {
+        "hideZeros": true,
+        "mode": "multi",
+        "sort": "desc"
+      }
+    },
+    "fieldConfig": {
+      "defaults": {
+        "color": {
+          "mode": "palette-classic"
+        },
+        "custom": {
+          "axisPlacement": "auto",
+          "drawStyle": "line",
+          "fillOpacity": 30,
+          "gradientMode": "none",
+          "lineInterpolation": "stepAfter",
+          "lineWidth": 1,
+          "pointSize": 4,
+          "showPoints": "never",
+          "spanNulls": false,
+          "stacking": {
+            "group": "A",
+            "mode": "normal"
+          }
+        },
+        "decimals": 0,
+        "min": 0,
+        "unit": "locale",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "transparent",
+              "value": null
+            }
+          ]
+        }
+      },
+      "overrides": [
+        {
+          "matcher": {
+            "id": "byFrameRefID",
+            "options": "B"
+          },
+          "properties": [
+            {
+              "id": "custom.stacking",
+              "value": {
+                "group": "A",
+                "mode": "none"
+              }
+            },
+            {
+              "id": "custom.fillOpacity",
+              "value": 0
+            },
+            {
+              "id": "custom.lineWidth",
+              "value": 2
+            },
+            {
+              "id": "color",
+              "value": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              }
+            },
+            {
+              "id": "custom.thresholdsStyle",
+              "value": {
+                "mode": "dashed+area"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "transformations": [
+      {
+        "id": "calculateField",
+        "filter": {
+          "id": "byRefId",
+          "options": "E"
+        },
+        "options": {
+          "mode": "binary",
+          "alias": "base",
+          "binary": {
+            "left": {
+              "matcher": {
+                "id": "byName",
+                "options": "overload"
+              }
+            },
+            "operator": "*",
+            "right": {
+              "fixed": "0"
+            }
+          }
+        }
+      },
+      {
+        "id": "calculateField",
+        "filter": {
+          "id": "byRefId",
+          "options": "E"
+        },
+        "options": {
+          "mode": "binary",
+          "alias": "limit",
+          "binary": {
+            "left": {
+              "matcher": {
+                "id": "byName",
+                "options": "overload"
+              }
+            },
+            "operator": "/",
+            "right": {
+              "fixed": "2"
+            }
+          }
+        }
+      },
+      {
+        "id": "organize",
+        "filter": {
+          "id": "byRefId",
+          "options": "E"
+        },
+        "options": {
+          "indexByName": {
+            "Time": 0,
+            "base": 1,
+            "limit": 2,
+            "overload": 3
+          }
+        }
+      },
+      {
+        "id": "configFromData",
+        "options": {
+          "configRefId": "E",
+          "mappings": [
+            {
+              "fieldName": "base",
+              "handlerKey": "threshold1",
+              "handlerArguments": {
+                "threshold": {
+                  "color": "transparent"
+                }
+              }
+            },
+            {
+              "fieldName": "limit",
+              "handlerKey": "threshold1",
+              "handlerArguments": {
+                "threshold": {
+                  "color": "yellow"
+                }
+              }
+            },
+            {
+              "fieldName": "overload",
+              "handlerKey": "threshold1",
+              "handlerArguments": {
+                "threshold": {
+                  "color": "red"
+                }
+              }
+            }
+          ],
+          "applyTo": {
+            "id": "byFrameRefID",
+            "options": "B"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "row": 12,
+    "id": 14,
+    "type": "timeseries",
+    "title": "Completed by job: $queue",
+    "gridPos": {
+      "h": 9,
+      "w": 24,
+      "x": 0,
+      "y": 30
+    },
+    "repeat": "queue",
+    "repeatDirection": "h",
+    "maxPerRow": 4,
+    "options": {
+      "legend": {
+        "showLegend": false
+      },
+      "tooltip": {
+        "hideZeros": true,
+        "mode": "multi",
+        "sort": "desc"
+      }
+    },
+    "fieldConfig": {
+      "defaults": {
+        "color": {
+          "mode": "palette-classic"
+        },
+        "custom": {
+          "axisPlacement": "auto",
+          "drawStyle": "line",
+          "fillOpacity": 30,
+          "gradientMode": "none",
+          "lineInterpolation": "stepAfter",
+          "lineWidth": 1,
+          "pointSize": 4,
+          "showPoints": "never",
+          "spanNulls": false,
+          "stacking": {
+            "group": "A",
+            "mode": "normal"
+          }
+        },
+        "decimals": 1,
+        "min": 0,
+        "unit": "suffix:/min",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "transparent",
+              "value": null
+            }
+          ]
+        }
+      },
+      "overrides": [
+        {
+          "matcher": {
+            "id": "byFrameRefID",
+            "options": "B"
+          },
+          "properties": [
+            {
+              "id": "custom.stacking",
+              "value": {
+                "group": "A",
+                "mode": "none"
+              }
+            },
+            {
+              "id": "custom.fillOpacity",
+              "value": 0
+            },
+            {
+              "id": "custom.lineWidth",
+              "value": 2
+            },
+            {
+              "id": "color",
+              "value": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "row": 12,
+    "id": 6,
+    "type": "table",
+    "title": "",
+    "gridPos": {
+      "h": 14,
+      "w": 24,
+      "x": 0,
+      "y": 39
+    },
+    "options": {
+      "cellHeight": "md",
+      "showHeader": true,
+      "sortBy": [
+        {
+          "desc": true,
+          "displayName": "Pending"
+        },
+        {
+          "desc": true,
+          "displayName": "Avg"
+        }
+      ]
+    },
+    "fieldConfig": {
+      "defaults": {
+        "custom": {
+          "align": "auto",
+          "cellOptions": {
+            "type": "auto"
+          },
+          "filterable": false,
+          "inspect": false
+        },
+        "decimals": 0,
+        "mappings": [],
+        "noValue": "—",
+        "unit": "locale",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "text",
+              "value": null
+            }
+          ]
+        }
+      },
+      "overrides": [
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Job"
+          },
+          "properties": [
+            {
+              "id": "custom.minWidth",
+              "value": 180
+            },
+            {
+              "id": "mappings",
+              "value": [
+                {
+                  "type": "regex",
+                  "options": {
+                    "pattern": "/^(?:.*\\\\)?([^\\\\]+)$/",
+                    "result": {
+                      "text": "$1",
+                      "index": 0
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Queue"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 110
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Pending"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 100
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Failed"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 80
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "color-text"
+              }
+            },
+            {
+              "id": "thresholds",
+              "value": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Retries"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 95
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Success rate"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 110
+            },
+            {
+              "id": "mappings",
+              "value": [
+                {
+                  "type": "special",
+                  "options": {
+                    "match": "null+nan",
+                    "result": {
+                      "text": "—",
+                      "color": "text",
+                      "index": 0
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": "unit",
+              "value": "percentunit"
+            },
+            {
+              "id": "decimals",
+              "value": 1
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "color-text"
+              }
+            },
+            {
+              "id": "thresholds",
+              "value": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.9
+                  },
+                  {
+                    "color": "text",
+                    "value": 0.99
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Workers"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 95
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Min"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 95
+            },
+            {
+              "id": "unit",
+              "value": "s"
+            },
+            {
+              "id": "decimals",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Avg"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 95
+            },
+            {
+              "id": "unit",
+              "value": "s"
+            },
+            {
+              "id": "decimals",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "p95"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 90
+            },
+            {
+              "id": "unit",
+              "value": "s"
+            },
+            {
+              "id": "decimals",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Max"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 95
+            },
+            {
+              "id": "unit",
+              "value": "s"
+            },
+            {
+              "id": "decimals",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Timeouts"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 95
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "color-text"
+              }
+            },
+            {
+              "id": "thresholds",
+              "value": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "transformations": [
+      {
+        "id": "merge",
+        "options": []
+      },
+      {
+        "id": "organize",
+        "options": {
+          "excludeByName": {
+            "Time": true,
+            "Value #Z": true
+          },
+          "includeByName": [],
+          "indexByName": {
+            "Time": 0,
+            "job_class": 1,
+            "queue": 2,
+            "Value #A": 3,
+            "Value #B": 4,
+            "Value #C": 5,
+            "Value #D": 6,
+            "Value #E": 7,
+            "Value #I": 8,
+            "Value #F": 9,
+            "Value #G": 10,
+            "Value #J": 11,
+            "Value #H": 12
+          },
+          "renameByName": {
+            "job_class": "Job",
+            "queue": "Queue",
+            "Value #A": "Pending",
+            "Value #B": "Failed",
+            "Value #C": "Retries",
+            "Value #D": "Success rate",
+            "Value #E": "Workers",
+            "Value #F": "Avg",
+            "Value #G": "p95",
+            "Value #H": "Timeouts",
+            "Value #I": "Min",
+            "Value #J": "Max"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "row": 12,
+    "id": 19,
+    "type": "table",
+    "title": "⚠︎ Failed Jobs",
+    "gridPos": {
+      "h": 15,
+      "w": 24,
+      "x": 0,
+      "y": 53
+    },
+    "options": {
+      "cellHeight": "md",
+      "showHeader": true,
+      "sortBy": [
+        {
+          "desc": true,
+          "displayName": "Failed"
+        }
+      ]
+    },
+    "fieldConfig": {
+      "defaults": {
+        "custom": {
+          "align": "auto",
+          "cellOptions": {
+            "type": "auto"
+          },
+          "filterable": false,
+          "inspect": false
+        },
+        "mappings": [],
+        "noValue": "—",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "text",
+              "value": null
+            }
+          ]
+        }
+      },
+      "overrides": [
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Job"
+          },
+          "properties": [
+            {
+              "id": "custom.minWidth",
+              "value": 140
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "markdown"
+              }
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Queue"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 90
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Runtime"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 80
+            },
+            {
+              "id": "unit",
+              "value": "suffix:s"
+            },
+            {
+              "id": "decimals",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Job"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 220
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Exception"
+          },
+          "properties": [
+            {
+              "id": "custom.minWidth",
+              "value": 200
+            },
+            {
+              "id": "custom.inspect",
+              "value": true
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Attempts"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 75
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Failed"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 160
+            },
+            {
+              "id": "unit",
+              "value": "time:YYYY-MM-DD HH:mm:ss"
+            }
+          ]
+        }
+      ]
+    },
+    "transformations": [
+      {
+        "id": "organize",
+        "options": {
+          "indexByName": {
+            "Job": 0,
+            "Queue": 1,
+            "Exception": 2,
+            "Attempts": 3,
+            "Runtime": 4,
+            "Failed": 5
+          }
+        }
+      }
+    ]
+  },
+  {
+    "row": 12,
+    "id": 18,
+    "type": "table",
+    "title": "✓ Completed Jobs",
+    "gridPos": {
+      "h": 30,
+      "w": 14,
+      "x": 0,
+      "y": 68
+    },
+    "options": {
+      "cellHeight": "md",
+      "showHeader": true,
+      "sortBy": [
+        {
+          "desc": true,
+          "displayName": "Completed"
+        }
+      ]
+    },
+    "fieldConfig": {
+      "defaults": {
+        "custom": {
+          "align": "auto",
+          "cellOptions": {
+            "type": "auto"
+          },
+          "filterable": false,
+          "inspect": false
+        },
+        "mappings": [],
+        "noValue": "—",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "text",
+              "value": null
+            }
+          ]
+        }
+      },
+      "overrides": [
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Job"
+          },
+          "properties": [
+            {
+              "id": "custom.minWidth",
+              "value": 140
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "markdown"
+              }
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Queue"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 90
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Runtime"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 80
+            },
+            {
+              "id": "unit",
+              "value": "suffix:s"
+            },
+            {
+              "id": "decimals",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Queued"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 160
+            },
+            {
+              "id": "unit",
+              "value": "time:YYYY-MM-DD HH:mm:ss"
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Completed"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 160
+            },
+            {
+              "id": "unit",
+              "value": "time:YYYY-MM-DD HH:mm:ss"
+            }
+          ]
+        }
+      ]
+    },
+    "transformations": [
+      {
+        "id": "organize",
+        "options": {
+          "indexByName": {
+            "Job": 0,
+            "Queue": 1,
+            "Queued": 2,
+            "Completed": 3,
+            "Runtime": 4
+          }
+        }
+      }
+    ]
+  },
+  {
+    "row": 12,
+    "id": 20,
+    "type": "table",
+    "title": "◷ Pending Jobs",
+    "gridPos": {
+      "h": 15,
+      "w": 10,
+      "x": 14,
+      "y": 68
+    },
+    "options": {
+      "cellHeight": "md",
+      "showHeader": true,
+      "sortBy": [
+        {
+          "desc": true,
+          "displayName": "Queued"
+        }
+      ]
+    },
+    "fieldConfig": {
+      "defaults": {
+        "custom": {
+          "align": "auto",
+          "cellOptions": {
+            "type": "auto"
+          },
+          "filterable": false,
+          "inspect": false
+        },
+        "mappings": [],
+        "noValue": "—",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "text",
+              "value": null
+            }
+          ]
+        }
+      },
+      "overrides": [
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Job"
+          },
+          "properties": [
+            {
+              "id": "custom.minWidth",
+              "value": 140
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "markdown"
+              }
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Queue"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 90
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Runtime"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 80
+            },
+            {
+              "id": "unit",
+              "value": "suffix:s"
+            },
+            {
+              "id": "decimals",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Queued"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 160
+            },
+            {
+              "id": "unit",
+              "value": "time:YYYY-MM-DD HH:mm:ss"
+            }
+          ]
+        }
+      ]
+    },
+    "transformations": [
+      {
+        "id": "organize",
+        "options": {
+          "indexByName": {
+            "Job": 0,
+            "Queue": 1,
+            "Queued": 2
+          }
+        }
+      }
+    ]
+  },
+  {
+    "row": 12,
+    "id": 22,
+    "type": "table",
+    "title": "⧖ Delayed Jobs",
+    "gridPos": {
+      "h": 15,
+      "w": 10,
+      "x": 14,
+      "y": 83
+    },
+    "options": {
+      "cellHeight": "md",
+      "showHeader": true,
+      "sortBy": [
+        {
+          "desc": false,
+          "displayName": "Available"
+        }
+      ]
+    },
+    "fieldConfig": {
+      "defaults": {
+        "custom": {
+          "align": "auto",
+          "cellOptions": {
+            "type": "auto"
+          },
+          "filterable": false,
+          "inspect": false
+        },
+        "mappings": [],
+        "noValue": "—",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "text",
+              "value": null
+            }
+          ]
+        }
+      },
+      "overrides": [
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Job"
+          },
+          "properties": [
+            {
+              "id": "custom.minWidth",
+              "value": 140
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "markdown"
+              }
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Queue"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 90
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Runtime"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 80
+            },
+            {
+              "id": "unit",
+              "value": "suffix:s"
+            },
+            {
+              "id": "decimals",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Attempts"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 75
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Queued"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 160
+            },
+            {
+              "id": "unit",
+              "value": "time:YYYY-MM-DD HH:mm:ss"
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Available"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 160
+            },
+            {
+              "id": "unit",
+              "value": "time:YYYY-MM-DD HH:mm:ss"
+            }
+          ]
+        }
+      ]
+    },
+    "transformations": [
+      {
+        "id": "organize",
+        "options": {
+          "indexByName": {
+            "Job": 0,
+            "Queue": 1,
+            "Attempts": 2,
+            "Queued": 3,
+            "Available": 4
+          }
+        }
+      }
+    ]
+  },
+  {
+    "row": null,
+    "id": 13,
+    "type": "row",
+    "title": "Details · Batches",
+    "gridPos": {
+      "h": 1,
+      "w": 24,
+      "x": 0,
+      "y": 21
+    },
+    "collapsed": true
+  },
+  {
+    "row": 13,
+    "id": 16,
+    "type": "table",
+    "title": "${batch_title:text}",
+    "gridPos": {
+      "h": 7,
+      "w": 24,
+      "x": 0,
+      "y": 22
+    },
+    "repeat": "batch_title",
+    "repeatDirection": "v",
+    "options": {
+      "cellHeight": "md",
+      "showHeader": true,
+      "sortBy": [
+        {
+          "desc": true,
+          "displayName": "Created"
+        }
+      ]
+    },
+    "fieldConfig": {
+      "defaults": {
+        "custom": {
+          "align": "auto",
+          "cellOptions": {
+            "type": "auto"
+          },
+          "filterable": false,
+          "inspect": false
+        },
+        "decimals": 0,
+        "mappings": [],
+        "noValue": "—",
+        "unit": "locale",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "color": "text",
+              "value": null
+            }
+          ]
+        }
+      },
+      "overrides": [
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Name"
+          },
+          "properties": [
+            {
+              "id": "custom.minWidth",
+              "value": 220
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "markdown"
+              }
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Status"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 110
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "color-background",
+                "mode": "basic"
+              }
+            },
+            {
+              "id": "custom.align",
+              "value": "center"
+            },
+            {
+              "id": "mappings",
+              "value": [
+                {
+                  "type": "value",
+                  "options": {
+                    "Running": {
+                      "text": "Running",
+                      "color": "#8E8E8E",
+                      "index": 0
+                    },
+                    "Finished": {
+                      "text": "Finished",
+                      "color": "green",
+                      "index": 1
+                    },
+                    "Failures": {
+                      "text": "Failures",
+                      "color": "red",
+                      "index": 2
+                    },
+                    "Cancelled": {
+                      "text": "Cancelled",
+                      "color": "orange",
+                      "index": 3
+                    },
+                    "—": {
+                      "text": "—",
+                      "color": "transparent",
+                      "index": 4
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Progress"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 160
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "markdown"
+              }
+            },
+            {
+              "id": "mappings",
+              "value": [
+                {
+                  "type": "regex",
+                  "options": {
+                    "pattern": "/^1999$/",
+                    "result": {
+                      "text": "<div style=\"text-align: center;\">—</div>",
+                      "index": 1
+                    }
+                  }
+                },
+                {
+                  "type": "regex",
+                  "options": {
+                    "pattern": "/^1(?:0{1,2}(\\d{1,2})|(100))$/",
+                    "result": {
+                      "text": "<div style=\"background: linear-gradient(90deg, #5794F2 $1$2%, rgba(204, 204, 220, 0.12) $1$2%); border-radius: 3px; color: #FFFFFF; font-size: 12px; text-align: center; padding: 2px 0;\">$1$2%</div>",
+                      "index": 0
+                    }
+                  }
+                },
+                {
+                  "type": "value",
+                  "options": {
+                    "undefined": {
+                      "text": "<div style=\"text-align: center;\">—</div>",
+                      "index": 99
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Jobs"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 90
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Pending"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 90
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Failed"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 80
+            },
+            {
+              "id": "custom.cellOptions",
+              "value": {
+                "type": "color-text"
+              }
+            },
+            {
+              "id": "thresholds",
+              "value": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Created"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 200
+            },
+            {
+              "id": "unit",
+              "value": "dateTimeAsLocal"
+            }
+          ]
+        },
+        {
+          "matcher": {
+            "id": "byName",
+            "options": "Duration"
+          },
+          "properties": [
+            {
+              "id": "custom.width",
+              "value": 110
+            },
+            {
+              "id": "unit",
+              "value": "s"
+            },
+            {
+              "id": "decimals",
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    "transformations": [
+      {
+        "id": "merge",
+        "options": []
+      },
+      {
+        "id": "organize",
+        "options": {
+          "excludeByName": {
+            "Time": true,
+            "batch": true,
+            "name": true,
+            "id": true,
+            "Value #Z": true
+          },
+          "indexByName": {
+            "Time": 0,
+            "batch": 1,
+            "name": 2,
+            "link": 3,
+            "status": 4,
+            "Value #A": 5,
+            "Value #B": 6,
+            "Value #C": 7,
+            "Value #D": 8,
+            "Value #E": 9,
+            "Value #F": 10,
+            "id": 11
+          },
+          "renameByName": {
+            "link": "Name",
+            "status": "Status",
+            "Value #A": "Progress",
+            "Value #B": "Jobs",
+            "Value #C": "Pending",
+            "Value #D": "Failed",
+            "Value #E": "Created",
+            "Value #F": "Duration"
+          }
+        }
+      },
+      {
+        "id": "convertFieldType",
+        "options": {
+          "conversions": [
+            {
+              "targetField": "Progress",
+              "destinationType": "string"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,16 @@
+# Optional recording rules of sushi-market/horizon-observability, rendered by
+# `php artisan horizon-observability:grafana --recording-rules`; the dashboard does not read them.
+# Load it with rule_files in prometheus.yml. The sums of counters are counters: read them with increase()
+# or rate(), as the class series.
+groups:
+  - name: horizon-observability
+    interval: 10s
+    rules:
+      - record: ho:queue_jobs:sum_by_queue_status
+        expr: 'sum by (job, connection, queue, status) (max by (job, connection, queue, job_class, status) (ho_queue_jobs_total{job=~".+"}))'
+      - record: ho:queue_job_duration_seconds_bucket:sum_by_queue
+        expr: 'sum by (job, connection, queue, le) (max by (job, connection, queue, job_class, le) (ho_queue_job_duration_seconds_bucket{job=~".+"}))'
+      - record: ho:queue_job_duration_seconds_sum:sum_by_queue
+        expr: 'sum by (job, connection, queue) (max by (job, connection, queue, job_class) (ho_queue_job_duration_seconds_sum{job=~".+"}))'
+      - record: ho:queue_job_duration_seconds_count:sum_by_queue
+        expr: 'sum by (job, connection, queue) (max by (job, connection, queue, job_class) (ho_queue_job_duration_seconds_count{job=~".+"}))'

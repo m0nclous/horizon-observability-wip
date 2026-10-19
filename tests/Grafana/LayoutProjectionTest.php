@@ -3,21 +3,28 @@
 declare(strict_types=1);
 
 use DF\HorizonObservability\Grafana\DashboardBuilder;
+use DF\HorizonObservability\Grafana\DashboardOptions;
+use DF\HorizonObservability\Grafana\Live\LiveMode;
 use DF\HorizonObservability\Grafana\PanelRegistry;
 use DF\HorizonObservability\Tests\Grafana\Support\LayoutProjection;
-use DF\HorizonObservability\Tests\Grafana\Support\LegacyFixtures;
+use DF\HorizonObservability\Tests\Grafana\Support\Rendered;
 
 /*
  * The layout projection (Arch Q5.6, Q5.7) must not change while WP8B rewrites the queries: panel ids, types,
- * titles, grid positions, repeat options and row membership, and the look of every panel.
+ * titles, grid positions, repeat options and row membership, and the look of every panel. The reference is the
+ * projection of the pilot's dashboard, frozen in tests/Fixtures/grafana/default/layout-projection.json. The
+ * --live=off render keeps it exactly; the poll and stream renders deviate only as ADDENDUM R4.1 lists (owner
+ * decision 9): the row title "Live Overview" and the look of the live tiles R4.8 gives.
  */
 
-function legacyDashboard(): array
+pest()->group('grafana');
+
+function renderedDashboard(?DashboardOptions $options = null): array
 {
-    return LayoutProjection::decoded((new DashboardBuilder(LegacyFixtures::options()))->build());
+    return LayoutProjection::decoded((new DashboardBuilder($options ?? new DashboardOptions))->build());
 }
 
-it('pins the layout', function (): void {
+it('pins the layout', function (LiveMode $mode): void {
     $rows = array_map(static fn (array $panel): array => [
         $panel['id'],
         $panel['type'],
@@ -28,12 +35,13 @@ it('pins the layout', function (): void {
         $panel['repeatDirection'] ?? null,
         $panel['maxPerRow'] ?? null,
         $panel['collapsed'] ?? null,
-    ], LayoutProjection::layout(legacyDashboard()));
+    ], LayoutProjection::layout(renderedDashboard(new DashboardOptions(live: $mode))));
 
     // id, type, title, [h, w, x, y], row, repeat, repeatDirection, maxPerRow, collapsed
     expect($rows)->toBe([
-        [23, 'marcusolsson-dynamictext-panel', '', [1, 24, 0, 0], null, null, null, null, null],
-        [10, 'row', 'Overview', [1, 24, 0, 1], null, null, null, null, false],
+        [23, 'marcusolsson-dynamictext-panel', '', [1, 12, 0, 0], null, null, null, null, null],
+        [24, 'table', 'Queues source', [1, 12, 12, 0], null, null, null, null, null],
+        [10, 'row', $mode === LiveMode::Off ? 'Overview' : 'Live Overview', [1, 24, 0, 1], null, null, null, null, false],
         [1, 'stat', 'Horizon', [5, 2, 0, 2], 10, null, null, null, null],
         [3, 'stat', 'Supervisor Processes', [5, 6, 2, 2], 10, null, null, null, null],
         [2, 'stat', 'Pending', [5, 4, 8, 2], 10, null, null, null, null],
@@ -55,16 +63,68 @@ it('pins the layout', function (): void {
         [13, 'row', "Details \u{00B7} Batches", [1, 24, 0, 21], null, null, null, null, true],
         [16, 'table', '${batch_title:text}', [7, 24, 0, 22], 13, 'batch_title', 'v', null, null],
     ]);
+})->with(Rendered::modes());
+
+it('keeps the layout and the look of the legacy dashboard', function (DashboardOptions $options): void {
+    // The frozen projection of the pilot's dashboard (Arch Q5.6) with the documented WP8C changes: no option may
+    // change the look
+    $dashboard = renderedDashboard($options);
+
+    expect(LayoutProjection::full($dashboard))->toBe(LayoutProjection::optimised(LayoutProjection::frozen(), $dashboard));
+})->with([
+    'package defaults, live off' => [new DashboardOptions(live: LiveMode::Off)],
+    'another identity, job and prefix' => [new DashboardOptions(metricPrefix: 'acme_', uid: 'queues', title: 'Queues', live: LiveMode::Off, job: 'app')],
+    'slow scrapes and health rules' => [new DashboardOptions(scrapeInterval: 60, live: LiveMode::Off, healthRules: true)],
+]);
+
+it('keeps the look of the committed off render', function (): void {
+    $off = Rendered::dashboard(LiveMode::Off);
+
+    expect(LayoutProjection::full($off))->toBe(LayoutProjection::optimised(LayoutProjection::frozen(), $off));
 });
 
-it('keeps the layout and the look of the legacy dashboard', function (): void {
-    $golden = json_decode(LegacyFixtures::read('queues.json'), true, flags: JSON_THROW_ON_ERROR);
+it('changes the look of the live renders only as ADDENDUM R4.1 lists', function (LiveMode $mode, DashboardOptions $options, DashboardOptions $off): void {
+    $live = renderedDashboard($options);
+    $offDashboard = renderedDashboard($off);
+    $expected = LayoutProjection::live($mode, LayoutProjection::optimised(LayoutProjection::frozen(), $offDashboard), $offDashboard);
 
-    expect(LayoutProjection::full(legacyDashboard()))->toBe(LayoutProjection::full($golden));
+    expect(LayoutProjection::full($live))->toBe($expected)
+        ->and(LayoutProjection::full($live))->not->toBe(LayoutProjection::full($offDashboard));
+})->with([
+    'poll, the package render' => [LiveMode::Poll, new DashboardOptions, new DashboardOptions(live: LiveMode::Off)],
+    'stream' => [LiveMode::Stream, new DashboardOptions(live: LiveMode::Stream), new DashboardOptions(live: LiveMode::Off)],
+    'poll, another identity, job and prefix' => [
+        LiveMode::Poll,
+        new DashboardOptions(metricPrefix: 'acme_', uid: 'queues', job: 'app', livePollInterval: 2),
+        new DashboardOptions(metricPrefix: 'acme_', uid: 'queues', live: LiveMode::Off, job: 'app'),
+    ],
+    'stream at slow scrapes with health rules' => [
+        LiveMode::Stream,
+        new DashboardOptions(scrapeInterval: 60, live: LiveMode::Stream, healthRules: true),
+        new DashboardOptions(scrapeInterval: 60, live: LiveMode::Off, healthRules: true),
+    ],
+]);
+
+it('keeps the look of the committed live renders but for ADDENDUM R4.1', function (LiveMode $mode): void {
+    $off = Rendered::dashboard(LiveMode::Off);
+
+    expect(LayoutProjection::full(Rendered::dashboard($mode)))
+        ->toBe(LayoutProjection::live($mode, LayoutProjection::optimised(LayoutProjection::frozen(), $off), $off));
+})->with([LiveMode::Poll, LiveMode::Stream]);
+
+it('shows the legacy columns of the queue and job tables in the legacy order', function (): void {
+    $frozen = array_column(LayoutProjection::frozen(), null, 'id');
+
+    expect(LayoutProjection::columns($frozen[PanelRegistry::QUEUES]['transformations']))->toBe([
+        'Queue', 'Utilization', 'Processes', 'Pending', 'Delayed', 'Oldest wait', 'Wait p95', 'Completed', 'Failed',
+        'Timeouts', 'Retries', 'Success rate',
+    ])->and(LayoutProjection::columns($frozen[PanelRegistry::JOBS]['transformations']))->toBe([
+        'Job', 'Queue', 'Pending', 'Failed', 'Retries', 'Success rate', 'Workers', 'Min', 'Avg', 'p95', 'Max', 'Timeouts',
+    ]);
 });
 
 it('fills the Overview row with tiles from edge to edge', function (): void {
-    $tiles = array_values(array_filter(LayoutProjection::layout(legacyDashboard()), static fn (array $panel): bool => $panel['row'] === PanelRegistry::OVERVIEW_ROW));
+    $tiles = array_values(array_filter(LayoutProjection::layout(renderedDashboard()), static fn (array $panel): bool => $panel['row'] === PanelRegistry::OVERVIEW_ROW));
     $x = 0;
 
     foreach ($tiles as $tile) {
@@ -80,7 +140,7 @@ it('fills the Overview row with tiles from edge to edge', function (): void {
 it('places no panel over another', function (): void {
     $overlaps = static fn (array $a, array $b): bool => $a['x'] < $b['x'] + $b['w'] && $b['x'] < $a['x'] + $a['w']
         && $a['y'] < $b['y'] + $b['h'] && $b['y'] < $a['y'] + $a['h'];
-    $dashboard = legacyDashboard();
+    $dashboard = renderedDashboard();
     // The dashboard grid, and the grid of each collapsed row (its panels open below it and push the rest down)
     $grids = [$dashboard['panels']];
 
@@ -100,11 +160,11 @@ it('places no panel over another', function (): void {
 });
 
 it('gives every panel the id of the registry', function (): void {
-    $ids = array_column(LayoutProjection::layout(legacyDashboard()), 'id');
+    $ids = array_column(LayoutProjection::layout(renderedDashboard()), 'id');
     $registry = (new ReflectionClass(PanelRegistry::class))->getConstants();
     sort($ids);
     sort($registry);
 
     expect($ids)->toBe($registry)
-        ->and(PanelRegistry::idOf(legacyDashboard(), 'Failed'))->toBe(PanelRegistry::FAILED);
+        ->and(PanelRegistry::idOf(renderedDashboard(), 'Failed'))->toBe(PanelRegistry::FAILED);
 });

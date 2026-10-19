@@ -10,13 +10,19 @@ use DF\HorizonObservability\Grafana\Queries\AlertState;
 /**
  * The hidden Business Text panel that plays an alarm tone and speaks the firing rule titles: Grafana plays no
  * sound itself. It sits above the Overview row, outside the rows, so it cannot be collapsed away; its script
- * hides it and lifts the grid by its row, because a panel takes at least one grid row.
+ * hides it and the queue source next to it (#24) and lifts the grid by their row, because a panel takes at least
+ * one grid row.
  *
  * @internal
  */
 final readonly class AlertSound
 {
     public const HEIGHT = 1;
+
+    /**
+     * The panel shares the hidden top grid row with the queue source (#24, ADDENDUM R2.4 O5): half of it each.
+     */
+    public const WIDTH = 12;
 
     public function __construct(
         private Common $common,
@@ -31,7 +37,7 @@ final readonly class AlertSound
     {
         return [
             'datasource' => Common::prometheus(),
-            'gridPos' => Common::gridPos(self::HEIGHT, 24, 0, 0),
+            'gridPos' => Common::gridPos(self::HEIGHT, self::WIDTH, 0, 0),
             'id' => PanelRegistry::ALERT_SOUND,
             'options' => [
                 'afterRender' => $this->script,

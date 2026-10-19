@@ -101,7 +101,7 @@
             "@test:types",
             "@php vendor/bin/pest --exclude-group=cluster --exclude-group=e2e"
         ],
-        "test:grafana": "@php vendor/bin/testbench horizon-observability:grafana resources/grafana --defaults --check --ansi",
+        "test:grafana": "@php vendor/bin/testbench horizon-observability:grafana \"$(pwd)/resources/grafana\" --defaults --recording-rules --check --ansi",
         "test:lint": [
             "@php vendor/bin/pint --test --ansi",
             "@php vendor/bin/rector --dry-run --ansi"
