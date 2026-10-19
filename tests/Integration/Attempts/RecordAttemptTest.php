@@ -42,6 +42,7 @@ it('writes only hash-tagged package keys under the connection prefix', function 
 
     expect(RedisKeys::all(TestCase::redisPrefix()))->toBe([
         $prefix.'attempts',
+        $prefix.'created',
         $prefix.'duration:buckets',
         $prefix.'duration:sum',
         $prefix.'extremes:113333334:max',

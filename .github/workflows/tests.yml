@@ -61,6 +61,9 @@ jobs:
       REDIS_CLIENT: ${{ matrix.client }}
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
+      # ResetTruthTest restarts a private Redis of the leg's server image in Docker (the runners have no
+      # redis-server); on CI it fails instead of skipping when it cannot (T16).
+      TRUTH_REDIS_IMAGE: ${{ matrix.redis }}
     steps:
       - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
@@ -169,6 +172,7 @@ jobs:
       REDIS_CLIENT: phpredis
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
+      TRUTH_REDIS_IMAGE: redis:7.4-alpine
       # MetricsEndpointTest "keeps the golden exposition promtool-clean" runs only with a promtool (skipped otherwise).
       PROMTOOL: docker run --rm -i --entrypoint promtool quay.io/prometheus/prometheus:v3.15.0
     steps:

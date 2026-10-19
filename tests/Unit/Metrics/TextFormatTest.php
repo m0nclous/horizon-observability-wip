@@ -34,7 +34,7 @@ it('renders HELP, TYPE and samples in the text format', function (): void {
         '# HELP ho_horizon_status Horizon status: 1 running, 0 paused (at least one master supervisor paused), -1 no master supervisor.',
         '# TYPE ho_horizon_status gauge',
         'ho_horizon_status 1',
-        '# HELP ho_queue_jobs_total Finished job attempts by outcome: completed, released, retried, failed, timed_out.',
+        '# HELP ho_queue_jobs_total Finished job attempts by outcome: completed, released, retried, failed, timed_out; a new series reads 0 for its first 90 seconds.',
         '# TYPE ho_queue_jobs_total counter',
         'ho_queue_jobs_total{connection="redis",queue="default",job_class="App\\\\Jobs\\\\SendInvoice",status="completed"} 42',
         '',

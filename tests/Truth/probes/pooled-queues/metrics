@@ -1,0 +1,25 @@
+# HELP ho_horizon_supervisor_processes Worker processes of a Horizon supervisor per queue; balance=false supervisors report their pooled queue list.
+# TYPE ho_horizon_supervisor_processes gauge
+ho_horizon_supervisor_processes{supervisor="supervisor-default",queue="default"} 3
+ho_horizon_supervisor_processes{supervisor="supervisor-pool",queue="mail,sms"} 2
+ho_horizon_supervisor_processes{supervisor="supervisor-slow",queue="reports"} 1
+ho_horizon_supervisor_processes{supervisor="supervisor-slow",queue="slow"} 1
+# HELP ho_horizon_supervisor_queues Queues of a Horizon supervisor, one series per queue; pool is the queue label of its process pool in horizon_supervisor_processes (a balance=false pool joins its queues with commas); always 1.
+# TYPE ho_horizon_supervisor_queues gauge
+ho_horizon_supervisor_queues{supervisor="supervisor-default",queue="default",pool="default"} 1
+ho_horizon_supervisor_queues{supervisor="supervisor-pool",queue="mail",pool="mail,sms"} 1
+ho_horizon_supervisor_queues{supervisor="supervisor-pool",queue="sms",pool="mail,sms"} 1
+ho_horizon_supervisor_queues{supervisor="supervisor-slow",queue="reports",pool="reports"} 1
+ho_horizon_supervisor_queues{supervisor="supervisor-slow",queue="slow",pool="slow"} 1
+# HELP ho_queue_pending_jobs Jobs ready to run and waiting for a worker, including delayed jobs that are already due.
+# TYPE ho_queue_pending_jobs gauge
+ho_queue_pending_jobs{connection="redis",queue="default"} 7
+ho_queue_pending_jobs{connection="redis",queue="mail"} 4
+ho_queue_pending_jobs{connection="redis",queue="reports"} 0
+ho_queue_pending_jobs{connection="redis",queue="slow"} 2
+ho_queue_pending_jobs{connection="redis",queue="sms"} 9
+# HELP ho_queue_jobs_reserved Jobs currently reserved by workers per job class.
+# TYPE ho_queue_jobs_reserved gauge
+ho_queue_jobs_reserved{connection="redis",queue="default",job_class="App\\Jobs\\SendInvoice"} 2
+ho_queue_jobs_reserved{connection="redis",queue="mail",job_class="App\\Mail\\Digest"} 1
+ho_queue_jobs_reserved{connection="redis",queue="sms",job_class="App\\Jobs\\SendSms"} 1

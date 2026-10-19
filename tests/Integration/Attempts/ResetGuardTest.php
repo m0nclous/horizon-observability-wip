@@ -62,7 +62,7 @@ it('deletes the counters after a changed run_id and logs it once', function (): 
     ]);
 
     expect(($this->guard)()->check($this->now))->toBeTrue()
-        ->and(array_map(Storage::exists(...), $this->keys->counterKeys()))->toBe([false, false, false, false, false])
+        ->and(array_map(Storage::exists(...), $this->keys->counterKeys()))->toBe([false, false, false, false, false, false])
         ->and(Storage::hash($this->keys->meta()))->toBe([
             'live_push_at' => '1699999999.5',
             'reset_at' => '1700000000.25',

@@ -36,7 +36,7 @@ it('names the storage keys as Appendix E and E-prime', function (): void {
     $keys = new Keys;
 
     expect([
-        $keys->attempts(), $keys->durationBuckets(), $keys->durationSum(), $keys->waitBuckets(), $keys->waitSum(),
+        $keys->attempts(), $keys->durationBuckets(), $keys->durationSum(), $keys->waitBuckets(), $keys->waitSum(), $keys->created(),
         $keys->extremes(113333333, 'min'), $keys->extremes(113333333, 'max'), $keys->jobClasses(), $keys->meta(),
         $keys->batchLinks(), $keys->readyAt('9a3c'), $keys->readyAtPattern(), $keys->ring(340000000),
         $keys->liveSnapshot('abc'), $keys->liveSnapshotStale('abc'), $keys->liveSnapshotLock('abc'), $keys->liveLeader(),
@@ -47,6 +47,7 @@ it('names the storage keys as Appendix E and E-prime', function (): void {
         '{horizon-observability}:v1:duration:sum',
         '{horizon-observability}:v1:wait:buckets',
         '{horizon-observability}:v1:wait:sum',
+        '{horizon-observability}:v1:created',
         '{horizon-observability}:v1:extremes:113333333:min',
         '{horizon-observability}:v1:extremes:113333333:max',
         '{horizon-observability}:v1:job_classes',
@@ -80,7 +81,7 @@ it('puts every key in one cluster slot (C10 "single slot")', function (): void {
 it('lists the counter keys in reset-guard order and the fixed keys', function (): void {
     $keys = new Keys;
 
-    expect($keys->counterKeys())->toBe([$keys->attempts(), $keys->durationBuckets(), $keys->durationSum(), $keys->waitBuckets(), $keys->waitSum()])
+    expect($keys->counterKeys())->toBe([$keys->attempts(), $keys->durationBuckets(), $keys->durationSum(), $keys->waitBuckets(), $keys->waitSum(), $keys->created()])
         ->and($keys->all())->toBe([...$keys->counterKeys(), $keys->jobClasses(), $keys->meta(), $keys->batchLinks(), $keys->liveLeader(), $keys->liveDelayedWindow()]);
 });
 

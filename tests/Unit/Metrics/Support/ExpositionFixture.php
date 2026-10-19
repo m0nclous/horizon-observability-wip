@@ -83,16 +83,17 @@ final class ExpositionFixture
     private static function horizon(): array
     {
         $supervisors = [
-            ['supervisor-default', 'auto', 1, 3, ['default' => 3]],
-            ['supervisor-pool', 'off', 1, 2, ['mail,sms' => 2]],
-            ['supervisor-slow', 'auto', 1, 2, ['slow' => 1, 'reports' => 1]],
+            ['supervisor-default', 'auto', 1, 3, ['default' => 3], ['default' => 'default']],
+            ['supervisor-pool', 'off', 1, 2, ['mail,sms' => 2], ['mail' => 'mail,sms', 'sms' => 'mail,sms']],
+            ['supervisor-slow', 'auto', 1, 2, ['slow' => 1, 'reports' => 1], ['slow' => 'slow', 'reports' => 'reports']],
         ];
         $processes = MetricFamily::of(Metric::SupervisorProcesses);
         $min = MetricFamily::of(Metric::SupervisorMinProcesses);
         $max = MetricFamily::of(Metric::SupervisorMaxProcesses);
         $info = MetricFamily::of(Metric::SupervisorInfo);
+        $pools = MetricFamily::of(Metric::SupervisorQueues);
 
-        foreach ($supervisors as [$name, $balance, $minimum, $maximum, $queues]) {
+        foreach ($supervisors as [$name, $balance, $minimum, $maximum, $queues, $poolOf]) {
             foreach ($queues as $queue => $count) {
                 $processes->set(['supervisor' => $name, 'queue' => $queue], $count);
             }
@@ -100,6 +101,10 @@ final class ExpositionFixture
             $min->set(['supervisor' => $name], $minimum);
             $max->set(['supervisor' => $name], $maximum);
             $info->set(['supervisor' => $name, 'balance' => $balance, 'connection' => 'redis'], 1);
+
+            foreach ($poolOf as $queue => $pool) {
+                $pools->set(['supervisor' => $name, 'queue' => $queue, 'pool' => $pool], 1);
+            }
         }
 
         return [
@@ -108,6 +113,7 @@ final class ExpositionFixture
             $min,
             $max,
             $info,
+            $pools,
             MetricFamily::of(Metric::WaitThreshold)
                 ->set(['connection' => 'redis', 'queue' => 'default'], 10)
                 ->set(['connection' => 'redis', 'queue' => 'slow'], 30)
