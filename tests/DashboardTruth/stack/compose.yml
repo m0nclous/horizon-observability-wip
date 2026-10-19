@@ -1,0 +1,71 @@
+# The dashboard truth stack (T17, design section 3 STACK and 12). Started and stopped by up.sh and down.sh, which
+# bin/run calls with the slot environment; never part of the package.
+#
+# - prometheus: v3.15.0 on tmpfs, the remote-write receiver on, no scrape jobs, retention 100y: the ingest stage
+#   remote-writes every dataset at its own past epoch (design section 6.3).
+# - grafana13 / grafana12: the two supported versions (owner decision 4), each on its own slot port. The plugin
+#   directory is a cache filled once by plugins.sh and mounted read-only, with the preinstall disabled: a plugin
+#   download timeout killed Grafana 12.4.13 at start (design X2). The shipped Infinity datasource file points at the
+#   router (Server/router.php) and a Prometheus datasource like the dev one at the prometheus service.
+#
+# Everything uses host networking and listens on 127.0.0.1 only, so the containers reach each other and the router on
+# the host by the slot ports, as the browser does.
+
+name: ${COMPOSE_PROJECT_NAME:-ho-t17}
+
+x-grafana-environment: &grafana-environment
+  GF_SERVER_HTTP_ADDR: 127.0.0.1
+  GF_SECURITY_ADMIN_PASSWORD: admin
+  GF_AUTH_ANONYMOUS_ENABLED: 'true'
+  GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+  GF_PATHS_PLUGINS: /var/lib/grafana-plugins
+  GF_PLUGINS_PREINSTALL_DISABLED: 'true'
+  GF_ANALYTICS_REPORTING_ENABLED: 'false'
+  GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+  GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: 'false'
+  GF_NEWS_NEWS_FEED_ENABLED: 'false'
+  GF_LOG_LEVEL: warn
+  HORIZON_OBSERVABILITY_PROMETHEUS_URL: http://127.0.0.1:${PROMETHEUS_PORT:?}
+  HORIZON_OBSERVABILITY_SCRAPE_INTERVAL: ${DASHBOARD_TRUTH_SCRAPE_INTERVAL:-10s}
+  HORIZON_OBSERVABILITY_APP_URL: http://127.0.0.1:${APP_PORT:?}
+  HORIZON_OBSERVABILITY_API_TOKEN: ${DASHBOARD_TRUTH_TOKEN:?}
+
+x-grafana: &grafana
+  network_mode: host
+  tmpfs:
+    - /var/lib/grafana:uid=472,gid=0,mode=0770
+  volumes:
+    - ${DASHBOARD_TRUTH_PLUGINS:?}:/var/lib/grafana-plugins:ro
+    - ./provisioning/datasources/prometheus.yaml:/etc/grafana/provisioning/datasources/prometheus.yaml:ro
+    - ../../../resources/grafana/provisioning/datasources/horizon-observability.yaml:/etc/grafana/provisioning/datasources/horizon-observability.yaml:ro
+
+services:
+  prometheus:
+    image: quay.io/prometheus/prometheus:v3.15.0
+    network_mode: host
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=100y
+      - --web.enable-remote-write-receiver
+      - --web.listen-address=127.0.0.1:${PROMETHEUS_PORT:?}
+    tmpfs:
+      - /prometheus:uid=65534,gid=65534,mode=0755
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana13:
+    <<: *grafana
+    image: grafana/grafana:13.2.4
+    profiles: [g13]
+    environment:
+      <<: *grafana-environment
+      GF_SERVER_HTTP_PORT: ${GRAFANA_PORT:?}
+
+  grafana12:
+    <<: *grafana
+    image: grafana/grafana:12.4.13
+    profiles: [g12]
+    environment:
+      <<: *grafana-environment
+      GF_SERVER_HTTP_PORT: ${GRAFANA12_PORT:?}
