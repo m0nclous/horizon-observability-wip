@@ -51,8 +51,9 @@ The first public release: a rewrite of the internal pilot `sushi-market/horizon-
 - The dashboard keeps the pilot's panels and look on Grafana 12.3+ (verified on 12.4.13 and 13.2.4): every query is
   scoped to the Prometheus job of the package endpoint (hidden `prometheus_job` variable), deduplicates replicas and
   derives its windows from the scrape interval; a refresh sends at most 12 requests.
-- The Live Overview row: `--live=poll` (the default render) reads the live endpoint at every dashboard refresh (5 s),
-  `--live=stream` updates the tiles every second from Grafana Live, `--live=off` reads every tile from Prometheus.
+- The Live Overview row: its live tiles (Supervisor Processes, Pending, Delayed and the RPM caption of Completed) read
+  the live endpoint at every dashboard refresh (5 s) with `--live=poll` (the default render); `--live=stream` updates
+  the first three every second from Grafana Live; `--live=off` reads every tile from Prometheus.
 - Alert rules "No queue metrics", "Horizon is down", "Queue wait over 2x limit" and "High failure rate"
   (uids `<uid>-no-metrics`, `-down`, `-long-wait`, `-failures`), "Live overview stalled" in stream mode, and the
   opt-in health rules for a failing collector and duplicate exporters. The dashboard sounds an alarm and speaks the

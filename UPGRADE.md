@@ -192,8 +192,9 @@ HORIZON_OBSERVABILITY_NAMESPACE=office php artisan horizon-observability:grafana
   first Infinity datasource. `--prometheus-datasource=<name regex>` and `--infinity-datasource=<name regex>` pick others.
 - `--scrape-interval` (default `10s`) must equal the scrape job's interval.
 - `--live` chooses the Live Overview: `poll` (default) reads the app's `/live` endpoint at every dashboard refresh (5 s);
-  `off` reads every tile from Prometheus and keeps the pilot's Overview exactly; `stream` updates the tiles every second
-  from Grafana Live and needs `php artisan horizon-observability:stream` running (see the README).
+  `off` reads every tile from Prometheus and keeps the pilot's Overview exactly; `stream` updates the live tiles
+  (Supervisor Processes, Pending, Delayed) every second from Grafana Live and needs
+  `php artisan horizon-observability:stream` running (see the README).
 - Run the same command with `--check` in CI: it exits 1 when the committed files differ from the render, e.g. after a
   package update. Render again after every update of the package.
 

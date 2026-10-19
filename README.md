@@ -6,7 +6,9 @@ Prometheus metrics, live job lists, a Grafana dashboard and alert rules for Lara
 
 You need a Laravel app with Horizon installed (`composer require laravel/horizon && php artisan horizon:install`),
 Redis on the app's default connection (the phpredis extension, or `predis/predis` with `REDIS_CLIENT=predis`), and
-Docker with Compose.
+Docker with Compose. Only jobs on a `redis` queue connection that Horizon works are counted (never `sync`,
+`database`, deferred or background ones), so set `QUEUE_CONNECTION=redis` in `.env` for your own jobs: a new Laravel
+app has `database`. The demo jobs of step 2 use Horizon's `redis` connection either way.
 
 **1. Install the package**
 
@@ -20,7 +22,8 @@ composer require sushi-market/horizon-observability
 php artisan horizon-observability:install --docker --demo
 ```
 
-Press Enter to accept the defaults. The installer ends with three next steps. Run each one in its own terminal:
+Press Enter to accept the defaults. Most of the output is the setup for your own Prometheus and Grafana, for later.
+The installer ends with three next steps. Run each one in its own terminal:
 
 ```bash
 php artisan serve --host=0.0.0.0 --port=8000
@@ -28,10 +31,14 @@ php artisan horizon
 docker compose -f docker-compose.observability.yml up -d
 ```
 
+Grafana answers within about a minute of `up -d`: it first waits for Prometheus to scrape the app (up to 60 s), then
+installs its two plugins.
+
 **3. Open Grafana**
 
-Open the URL the installer printed: <http://localhost:3000/d/horizon-observability>. Viewing needs no login. To edit,
-log in as `admin` / `admin`.
+Open the URL the installer printed: <http://localhost:3000/d/horizon-observability> (with `GRAFANA_PORT` set, that
+port, see the notes below). Anonymous visitors can view it, and `admin` / `admin` logs in. The provisioned dashboard
+is read-only: use Save as to keep a changed copy.
 
 ![The Horizon Observability dashboard on Grafana 13](art/dashboard.png)
 
@@ -48,17 +55,34 @@ What the installer did:
 - dispatched 200 sample jobs (completed, failed, retried, released and delayed ones, plus one batch);
 - ran the checks of `horizon-observability:check` and printed each problem with a fix line.
 
+Expected on a new app:
+
+- The installer's checks report two warnings. "Timeouts, Horizon connection": its fix line is safe while the `redis`
+  queue connection's `block_for` is null, as in a new app (see [Setup and operations](#setup-and-operations)).
+  "Horizon, Status: not running": until you start `php artisan horizon`.
+- The Horizon tile is yellow at first: its Uptime is the share of the dashboard range (the last hour) in which Horizon
+  ran, and a running Horizon below 99 % is yellow.
+- The alert "High failure rate" is pending, and fires 5 minutes later, because the demo fails 10 % of its jobs on
+  purpose. A firing rule makes the dashboard ring (a browser may need a click on the page first). The alert resolves
+  about 15 minutes after the burst.
+- The Completed and Failed numbers of a new job class, in the tiles, the tables and the Batches table, stay at 0 for
+  up to 90 s after its first attempt (the [new-series hold](#dashboard-numbers)). Pending, Delayed and Supervisor
+  Processes show at once. Progress in the Batches table reads "—" when no batch of the kind is running; the demo batch
+  finishes within seconds.
+
 Notes:
 
 - Running the installer again (without `--demo`) changes nothing.
-- Port 8000 taken? Run `install --docker --app-url=http://host.docker.internal:8080`, then serve the app on port 8080.
-  `GRAFANA_PORT` and `PROMETHEUS_PORT` move the ports of the stack (defaults 3000 and 9090).
+- Port 8000 taken? Set `APP_URL=http://localhost:8080` in `.env` before you run the installer. The stack then scrapes
+  port 8080, the installer prints `php artisan serve --host=0.0.0.0 --port=8080`, and the Endpoints and Horizon lines
+  and the dashboard's Horizon link use that port too. The comment at the top of `docker-compose.observability.yml`
+  says port 8000 whatever the port. `--app-url=<url>` changes only the URL at which the containers reach the app.
+- Port 3000 or 9090 taken? Add `GRAFANA_PORT=3001` and `PROMETHEUS_PORT=9091` to `.env` (Docker Compose reads the
+  `.env` next to the compose file), or put them before the `up` command. Then open
+  <http://localhost:3001/d/horizon-observability>: the installer always prints port 3000.
 - `--grafana=12` uses Grafana 12.4.13 instead of 13.2.4.
-- To change these options after a first run, add `--force`, or answer yes when the installer asks to overwrite a file.
-- A new job class reaches the Completed and Failed tiles up to 90 s after its first attempt (the
-  [new-series hold](#dashboard-numbers)).
-- Your own jobs are counted when they run on a `redis` queue connection that Horizon works (`QUEUE_CONNECTION=redis`).
-  Jobs on `sync`, `database`, deferred and background connections are never counted.
+- To change an option or `APP_URL` after a first run, run the installer again with `--force`, or answer yes when it
+  asks to overwrite a file.
 - More sample jobs: `php artisan horizon-observability:demo --jobs=500` (1 to 1000; refuses in production).
 - The stack is for local use only: its ports listen on 127.0.0.1, and anonymous visitors can view Grafana.
 - Stop it with `docker compose -f docker-compose.observability.yml down`. Add `-v` to drop its data.
@@ -267,7 +291,10 @@ Then provision them:
 
 To keep a committed render in sync, for example in the CI of an infrastructure repository, add `--check`: it exits 1
 when the files differ from the render. `php artisan vendor:publish --tag=horizon-observability-grafana` copies the
-package's own render (`--defaults`, poll mode, all jobs) into `grafana/`.
+package's whole `resources/grafana` into `grafana/`: its own render made with `--defaults --recording-rules` (poll
+mode, all jobs: `dashboards/`, `alerting/` and `prometheus/horizon-observability.rules.yml`), the examples in
+`provisioning/` (the Infinity datasource, the dashboard provider and `grafana.ini.example`), and `js/alert-sound.js`,
+the source of the alert sound script that the dashboard already contains.
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -309,7 +336,9 @@ origin).
 
 ## Live Overview modes
 
-The top row shows the current load without scrape lag. Pick the mode when you render the dashboard:
+The top row shows the current load without scrape lag. Its live tiles are Supervisor Processes, Pending and Delayed,
+plus the caption "RPM: n" of Completed. Every other tile, and the numbers of Completed and Failed, read Prometheus in
+every mode. Pick the mode when you render the dashboard:
 
 | | `off` | `poll` (default) | `stream` |
 |---|---|---|---|
@@ -327,6 +356,7 @@ Look and caveats:
 - In poll and stream modes, Supervisor Processes has no per-supervisor sparkline.
 - In stream mode, Pending has no sparkline, and Delayed shows the last 15 minutes whatever the dashboard range.
 - In both live modes, the Completed caption "RPM: n" counts the last complete 60 s instead of the 5-minute average.
+  In stream mode it still reads `{base}/live` through Infinity, at each dashboard refresh.
 - In poll mode, the whole dashboard refreshes every 5 s, and every viewer re-runs all of its Prometheus queries at
   each refresh. Faster polling needs a lower `GF_DASHBOARDS_MIN_REFRESH_INTERVAL`, `--live-poll-interval` and a
   re-provisioned dashboard.
@@ -659,7 +689,9 @@ By design:
 - **New series are held at 0 for 90 s.** A new (connection, queue, job class) exports 0 for its first 90 s, then every
   attempt since it appeared, so Prometheus and the dashboard count its first attempts too. The waits of a new queue
   work the same way. The cost:
-  - the first attempts show up to 90 s late (the live tiles are not delayed);
+  - the first attempts show up to 90 s late in every number that counts attempts from Prometheus: the Completed and
+    Failed tiles, the tables (the Batches table included) and the graphs. The caption "RPM: n" of the live modes
+    counts them at once;
   - a range that starts inside the hold also counts that series' attempts from before the range, and a range that
     ends inside it misses them;
   - for up to 90 s, a queue may show more waits than attempts.
@@ -677,6 +709,7 @@ Known issue, to be fixed:
   Redis connection, its fix line suggests `'read_timeout' => 2.0` (predis: `'read_write_timeout'`). That suggestion
   ignores the `block_for` of a `redis` queue connection on the same Redis connection. With `block_for` 5 and a 2 s read
   timeout, every idle blocking pop fails. Set the read timeout above `block_for`, for example 7 s for `block_for` 5.
+  With `block_for` null, as in a new Laravel app, the suggestion is safe.
 - `check` answers some Redis error replies with "Check that Redis is reachable", although its Storage line reports Redis
   as reachable. This happens for `NOREPLICAS` (min-replicas-to-write), "max number of clients reached",
   `CLUSTERDOWN`/`TRYAGAIN`, and a server without `TIME` ("Unknown (Redis) command called from (Lua) script"). Act on
