@@ -36,7 +36,7 @@
     </source>
     <php>
         <!-- The whole suite peaks above PHP's default 128M (Laravel, Horizon and 3000+ tests in one process); with
-             pcov, Pest reads the serialized coverage back after the run (about 270 MB with T13 and T14) next to the
+             pcov, Pest reads the serialized coverage back after the run (about 270 MB) next to the
              collected data, which exceeds 1G. -->
         <ini name="memory_limit" value="4G"/>
         <env name="APP_ENV" value="testing"/>

@@ -1,4 +1,4 @@
-# Provisions the rendered dashboard (Arch Q5.5): mount the dashboards directory of the render
+# Provisions the rendered dashboard: mount the dashboards directory of the render
 # (php artisan horizon-observability:grafana, default ./grafana/dashboards) at the path below.
 apiVersion: 1
 

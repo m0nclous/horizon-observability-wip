@@ -1,6 +1,6 @@
 #!/bin/sh
-# Creates the Grafana service account for "php artisan horizon-observability:stream" (ADDENDUM R4.9) and writes its
-# token to docker/grafana/live-token (gitignored), which the compose "stream" service reads.
+# Creates the Grafana service account for "php artisan horizon-observability:stream" and writes its token to
+# docker/grafana/live-token (gitignored), which the compose "stream" service reads.
 #
 #   docker/grafana/bootstrap-live.sh            Grafana on http://localhost:${GRAFANA_PORT:-3000}, admin:admin
 #   GRAFANA_URL=http://grafana.test GRAFANA_AUTH=admin:secret docker/grafana/bootstrap-live.sh

@@ -1,20 +1,20 @@
 # Dashboard performance profile
 
-The repeatable measurement method of ADDENDUM R2.2: synthetic history in a separate Prometheus, a continuation
-exporter, a Playwright capture of real dashboard refreshes, a PromQL replay and a budget report. Development only;
-`docker/` is export-ignored.
+A repeatable measurement of the dashboard: synthetic history in a separate Prometheus, a continuation exporter, a
+Playwright capture of real dashboard refreshes, a PromQL replay and a budget report. Development only; `docker/` is
+export-ignored.
 
 | File | Use |
 |---|---|
-| `workbench/app/Perf/SyntheticModel.php` | The model: every value is a pure function of time (port of the T01 probe `synth.py`). Profiles `medium` (4 supervisors, 12 queues, 160 job classes, about 5,300 series) and `large` (10, 40, 500); schemas `catalog` (package names, prefix `ho_`) and `legacy` (pilot names, prefix `office_`). |
+| `workbench/app/Perf/SyntheticModel.php` | The model: every value is a pure function of time (a port of the Python model of the first measurements; `tests/Unit/Perf/SyntheticModelTest.php` pins its medium profile in the `legacy` schema byte for byte). Profiles `medium` (4 supervisors, 12 queues, 160 job classes, about 5,300 series) and `large` (10, 40, 500); schemas `catalog` (package names, prefix `ho_`) and `legacy` (pilot names, prefix `office_`). |
 | `vendor/bin/testbench workbench:perf-data` | Writes the history as OpenMetrics chunks, one per 2-hour block window, with the `job`/`instance` labels Prometheus adds. |
 | `vendor/bin/testbench workbench:perf-exporter` | Serves the same model on `:8391/metrics` without `job`/`instance` (Prometheus would rename them to `exported_*`). |
 | `docker/perf/backfill.sh` | Writes, converts (`promtool tsdb create-blocks-from openmetrics`) and deletes one chunk at a time into the `perf-prometheus` volume. |
 | `docker/perf/prometheus.yml` | The perf Prometheus: scrapes the exporter at 10 s as job `perf-horizon`, instance `perf-exporter`. |
-| `docker/perf/prometheus.reference.yml` | The R2.1 reference stack: 15 s, job `office-horizon`, instance `app:8080`. |
+| `docker/perf/prometheus.reference.yml` | The reference stack of the pilot dashboard's measurement: 15 s, job `office-horizon`, instance `app:8080`. |
 | `bin/perf.mjs` | `capture`, `replay`, `report` (see its header). |
-| `docker/perf/budget.json` | The R2.3 budget per range; `report --budget` exits 1 on a violation. |
-| `docker/perf/reference-legacy.json` | The R2.1 legacy row; `report --expect … --tolerance 0.25` checks a reproduction. |
+| `docker/perf/budget.json` | The budget per range (the README's "Dashboard budget"); `report --budget` exits 1 on a violation. |
+| `docker/perf/reference-legacy.json` | The pilot dashboard's measurement before any optimisation (1-hour range); `report --expect … --tolerance 0.25` checks a reproduction. |
 
 ## Measure a dashboard (S = 10 s)
 
@@ -31,10 +31,11 @@ node bin/perf.mjs report build/perf/1h.json --budget docker/perf/budget.json
 Repeat the capture with `from=now-6h` for the 6-hour budget. Captures need at least four refresh cycles (cycle 0 is
 the first load; the report uses cycles 2-4), so `--seconds` must cover four refresh intervals after the first load.
 
-## Reproduce the R2.1 legacy row
+## Reproduce the pilot dashboard's measurement
 
-The pilot dashboard (uid `horizon`, the legacy golden that T13 deleted; `git show` restores it) on the probe's history: legacy names,
-15-second steps, the probe's job and instance labels, Grafana 13.2.4 with the datasource `timeInterval` at 15 s.
+The pilot dashboard (uid `horizon`, no longer in the tree; `git show` restores it) on the history of its original
+measurement: the pilot's metric names (`--schema=legacy`), 15-second steps, job `office-horizon` and instance
+`app:8080`, Grafana 13.2.4 with the datasource `timeInterval` at 15 s.
 
 ```sh
 docker compose --profile perf down -v

@@ -1,7 +1,7 @@
-# CI (Arch 8.5, ADDENDUM Q9' WP9). Jobs: tests (PHP x Laravel x lowest/stable x phpredis/predis x Redis/Valkey),
-# cluster, static, coverage, grafana (Grafana 12.4.13 and 13.2.4), dist, and weekly: first-dashboard (the README quick
-# start on a fresh Laravel app, T14) and e2e (screenshots, the replica dedupe gate and the performance report on both
-# Grafana versions; non-blocking until T15).
+# CI. Jobs: tests (PHP x Laravel x lowest/stable x phpredis/predis x Redis/Valkey), cluster, static, coverage, grafana
+# (Grafana 12.4.13 and 13.2.4), dist, and weekly: first-dashboard (the README quick start on a fresh Laravel app) and
+# e2e (screenshots, the replica dedupe gate and the performance report on both Grafana versions; the dedupe gate and
+# the report do not fail the job yet, known issue #37).
 name: tests
 
 on:
@@ -62,7 +62,7 @@ jobs:
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
       # ResetTruthTest restarts a private Redis of the leg's server image in Docker (the runners have no
-      # redis-server); on CI it fails instead of skipping when it cannot (T16).
+      # redis-server); on CI it fails instead of skipping when it cannot.
       TRUTH_REDIS_IMAGE: ${{ matrix.redis }}
     steps:
       - uses: actions/checkout@v7
@@ -71,7 +71,7 @@ jobs:
           php-version: ${{ matrix.php }}
           extensions: redis, pcntl, posix, pdo_sqlite, mbstring
           coverage: none
-      # The static tooling is dropped: it keeps the resolution fast and honest (Arch 8.5).
+      # The static tooling is dropped: it keeps the resolution fast and honest.
       # Composer 2.10 refuses versions with security advisories: every Laravel 11 release (past its security support)
       # and the oldest 12.x/13.x points. The matrix tests the supported range, so this step lifts the advisories policy
       # only. Not COMPOSER_NO_BLOCKING (or the older COMPOSER_NO_SECURITY_BLOCKING): both disable every policy, the
@@ -135,7 +135,7 @@ jobs:
       - name: Cluster tests
         run: |
           if ! grep -rqs "group('cluster')" tests; then
-            echo "::notice::No test is in the cluster group yet (T04 adds Integration/Attempts/ClusterStorageTest)."
+            echo "::notice::No test is in the cluster group."
             exit 0
           fi
           REDIS_CLIENT=phpredis vendor/bin/pest --ci --group=cluster
@@ -207,20 +207,21 @@ jobs:
           extensions: redis, pcntl, posix, pdo_sqlite, mbstring
           coverage: none
       - run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress
-      # Arch Q5.7 item 1; the static performance gates (ADDENDUM R2.2 step 6) are tests/Grafana/PerfBudgetTest.
+      # The committed assets must equal the --defaults render; the static performance gates (request count, interpolated
+      # PromQL size, counter lookbacks, variable refresh) are tests/Grafana/PerfBudgetTest in the grafana group.
       - name: Committed assets equal the render (composer test:grafana)
         run: composer test:grafana
       - name: Grafana contract tests
         run: |
           mkdir -p build
           if grep -rqs "group('grafana')" tests; then vendor/bin/pest --ci --group=grafana; else vendor/bin/pest --ci tests/Grafana; fi
-      # The grafana group writes build/grafana-rules.yml (every expression, macros substituted) and build/scrape.txt
-      # (a seeded exposition) once T13 and T15 add those tests.
+      # The grafana group writes build/grafana-rules.yml (every expression, macros substituted). build/scrape.txt (a
+      # seeded exposition) is checked when a test writes it.
       - name: promtool check rules and metrics
         run: |
           promtool() { docker run --rm -i -v "$PWD/build:/w" --entrypoint promtool "$PROMETHEUS_IMAGE" "$@"; }
-          if [ -f build/grafana-rules.yml ]; then promtool check rules /w/grafana-rules.yml; else echo "::notice::no build/grafana-rules.yml yet (T13)"; fi
-          if [ -f build/scrape.txt ]; then promtool check metrics < build/scrape.txt; else echo "::notice::no build/scrape.txt yet (T15)"; fi
+          if [ -f build/grafana-rules.yml ]; then promtool check rules /w/grafana-rules.yml; else echo "::notice::no build/grafana-rules.yml"; fi
+          if [ -f build/scrape.txt ]; then promtool check metrics < build/scrape.txt; else echo "::notice::no build/scrape.txt"; fi
       - name: Provisioning smoke test
         run: |
           docker compose up -d prometheus grafana
@@ -250,8 +251,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      # git archive applies .gitattributes export-ignore: only the package may ship (C25: no workbench, no load
-      # generator, no dev stack).
+      # git archive applies .gitattributes export-ignore: only the package may ship (no workbench, no load generator, no
+      # dev stack).
       - name: git archive HEAD equals the allowlist
         run: |
           git archive HEAD | tar -t | sort > archive.txt
@@ -265,8 +266,8 @@ jobs:
             grep -qx "$required" archive.txt || { echo "::error::git archive misses $required"; exit 1; }
           done
 
-  # Owner decision 12 (T14): from a fresh Laravel app with Horizon, the README quick start reaches a dashboard with
-  # Overview tiles in at most 5 minutes; a second install changes nothing.
+  # From a fresh Laravel app with Horizon, the README quick start must reach a dashboard with Overview tiles in at most
+  # 5 minutes; a second install changes nothing.
   first-dashboard:
     name: First dashboard / Grafana ${{ matrix.grafana }}
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -354,18 +355,18 @@ jobs:
         run: |
           curl -fsS http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {scrapeUrl, health, lastError}'
           curl -fsS http://localhost:9092/api/v1/targets | jq '.data.activeTargets[] | {scrapeUrl, health, lastError}'
-      # The perf data must use the metric names of the mounted dashboard: the pilot's office_* (legacy schema) until
-      # T13 mounts the package render (catalog schema, ho_*).
+      # The perf data must use the metric names of the mounted dashboard: the catalog schema (ho_*) for the package
+      # render, the legacy schema (the pilot's office_*) for a pilot dashboard.
       - name: Dashboard uid and perf schema
         run: |
           docker compose exec -T grafana sh -c 'cat /etc/grafana/dashboards/horizon-observability/*.json' > build/dashboard.json
           echo "DASHBOARD_UID=$(jq -r .uid build/dashboard.json | head -n 1)" >> "$GITHUB_ENV"
           if grep -q 'office_queue_jobs_total' build/dashboard.json; then schema=legacy; else schema=catalog; fi
           echo "PERF_SCHEMA=$schema" >> "$GITHUB_ENV"
-      - name: Screenshots (look review against planning/baseline)
+      - name: Screenshots (look review)
         run: node bin/screenshot.mjs --uid "$DASHBOARD_UID" --from now-15m --name "dashboard-${GRAFANA_IMAGE##*:}"
-      - name: Replica dedupe gate (C7)
-        continue-on-error: true            # blocking from T15 on, after T13's dedupe step
+      - name: Replica dedupe gate
+        continue-on-error: true            # not blocking yet: known issue #37
         run: |
           node bin/perf.mjs capture --url "http://localhost:3000/d/$DASHBOARD_UID?orgId=1&from=now-15m&to=now&kiosk" --seconds 45 --out build/perf/dedupe.json
           node bin/perf.mjs compare build/perf/dedupe.json --prometheus http://localhost:9090 --against http://localhost:9092
@@ -376,7 +377,8 @@ jobs:
           APP_URL: http://localhost:8000
         run: |
           if grep -rqs "group('e2e')" tests; then vendor/bin/pest --ci --group=e2e; else echo "::notice::no e2e test yet"; fi
-      # ADDENDUM R2.2 steps 1-5 on the medium profile; non-blocking until T15.
+      # Backfill, continuation exporter, capture, replay and budget report on the medium profile
+      # (docker/perf/README.md); not blocking yet: known issue #37.
       - name: Performance report (medium profile)
         continue-on-error: true
         run: |

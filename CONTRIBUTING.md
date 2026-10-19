@@ -240,7 +240,7 @@ The Grafana of the dev stack picks up the new dashboard within 10 seconds, and t
 | `grafana` | On Grafana 12.4.13 and 13.2.4: `composer test:grafana`, the `grafana` group with `PROMTOOL`, `promtool check rules` on every rendered expression, and a provisioning smoke test of the dev stack (the dashboard, 4 alert rules, both plugins, the Prometheus datasource health, no provisioning errors) |
 | `dist` | `git archive HEAD` contains only `src/`, `config/`, `routes/`, `resources/`, `composer.json`, `LICENSE`, `README.md`, `CHANGELOG.md` and `UPGRADE.md` |
 | `first-dashboard` | Weekly and by hand: `tests/e2e/first-dashboard.sh` on Grafana 12 and 13 |
-| `e2e` | Weekly and by hand: two app replicas, Horizon and ten minutes of simulated load, screenshots, the `e2e` group, the replica dedupe check and the performance report (the last two do not fail the job yet) |
+| `e2e` | Weekly and by hand: two app replicas, Horizon and ten minutes of simulated load, screenshots, the `e2e` group, the replica dedupe check and the performance report (the last two do not fail the job yet, [#37]) |
 
 `.github/workflows/release.yml` runs on a `vX.Y.Z` tag: it requires a non-empty `CHANGELOG.md` section for the version,
 runs `composer validate --strict` and `composer test:grafana`, and creates the GitHub release from that section.
@@ -249,3 +249,6 @@ Packagist updates through its webhook. Dependabot updates the GitHub Actions wee
 The dist archive is what Composer installs: everything for development (`.github`, `bin`, `docker`, `tests`,
 `workbench`, the tool configurations and these community files) is `export-ignore`d in `.gitattributes`. Check it with
 `git archive HEAD | tar -t`.
+
+<!-- The issue links of this file, in one place: change the repository here when it moves. -->
+[#37]: https://github.com/m0nclous/horizon-observability-wip/issues/37

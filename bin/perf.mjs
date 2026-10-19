@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Dashboard performance measurement (ADDENDUM R2.2 steps 3-5). Export-ignored dev tool.
+// Dashboard performance measurement (docker/perf/README.md). Export-ignored dev tool.
 //
 //   node bin/perf.mjs capture --url "<dashboard url>?from=now-1h&to=now&kiosk" [--seconds 70] [--out build/perf/<name>.json]
 //                             [--width 1920] [--height 1080]
@@ -13,8 +13,8 @@
 //          auto-refreshes. Needs `npm i --no-save playwright@1.56.1 && npx playwright install chromium`.
 // replay   re-runs every Prometheus target of one cycle against /api/v1/query(_range)?stats=all, three times each
 //          (median wall time), substituting $__interval, $__interval_ms, $__range, $__range_s, $__range_ms and
-//          $__rate_interval as Grafana's backend does, with the captured intervalMs as the step. Unlike the T01 probe
-//          the step is not floored at 15 s, so dashboards at a 10 s scrape interval replay at their resolution.
+//          $__rate_interval as Grafana's backend does, with the captured intervalMs as the step. The step is not
+//          floored at 15 s, so dashboards at a 10 s scrape interval replay at their resolution.
 //          Writes <capture>.replay.json.
 // report   prints per-panel and per-target tables and the totals: refresh p50/p95 over cycles 2-4, the Overview row,
 //          first load, requests and variable requests per refresh, Infinity calls, sequential PromQL ms, samples and

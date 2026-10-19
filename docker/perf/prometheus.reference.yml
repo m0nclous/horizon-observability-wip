@@ -1,6 +1,6 @@
-# The R2.1 reference stack scraped at 15 s (PERF_PROMETHEUS_CONFIG=prometheus.reference.yml), for reproducing the
-# legacy row with the probe's history (workbench:perf-data --schema=legacy --step=15 --job=office-horizon
-# --instance=app:8080). See docker/perf/README.md.
+# The reference stack of the pilot dashboard's measurement, scraped at 15 s
+# (PERF_PROMETHEUS_CONFIG=prometheus.reference.yml), for reproducing it with its history (workbench:perf-data
+# --schema=legacy --step=15 --job=office-horizon --instance=app:8080). See docker/perf/README.md.
 global:
   scrape_interval: 15s
   scrape_timeout: 10s
