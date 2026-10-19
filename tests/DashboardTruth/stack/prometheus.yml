@@ -1,0 +1,7 @@
+# The dashboard truth Prometheus: no scrape jobs. Every sample arrives by remote write from the ingest stage
+# (Ingest/RemoteWrite), at the recorded virtual times (design section 6.3).
+global:
+  scrape_interval: 1m
+  evaluation_interval: 1m
+
+scrape_configs: []

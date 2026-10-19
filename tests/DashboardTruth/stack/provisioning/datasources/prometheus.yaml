@@ -1,0 +1,20 @@
+# The Prometheus datasource of the dashboard truth stack, like the dev one (docker/grafana/provisioning/datasources):
+# the same uid, method, interval and incremental querying, pointed at the stack's Prometheus. The interval is the
+# dataset's scrape interval S.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: ${HORIZON_OBSERVABILITY_PROMETHEUS_URL}
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: ${HORIZON_OBSERVABILITY_SCRAPE_INTERVAL}
+      prometheusType: Prometheus
+      prometheusVersion: 3.15.0
+      incrementalQuerying: true
+      incrementalQueryOverlapWindow: 10m

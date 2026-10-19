@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dashboard-truth/observation.schema.json",
+  "title": "observations/<grafana>/<case>.json: one page load as browser/observe.mjs captured it",
+  "type": "object",
+  "required": ["schema", "case", "grafana", "grafanaVersion", "url", "fakeNow", "complete", "incomplete", "rows", "released", "requests", "variables", "panels", "dom", "router", "errors", "timing"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": 1},
+    "case": {"type": "string"},
+    "grafana": {"enum": ["12", "13"]},
+    "grafanaVersion": {"type": "string"},
+    "url": {"type": "string"},
+    "fakeNow": {"type": "integer"},
+    "complete": {"type": "boolean", "description": "the completion criterion held before the 90 s timeout"},
+    "incomplete": {"type": "array", "items": {"type": "string"}},
+    "rows": {"type": "array", "items": {"type": "object", "required": ["title", "expanded"]}},
+    "released": {
+      "type": ["object", "null"],
+      "required": ["atMs", "requests"],
+      "description": "when the fixed clock was released to run on from V, and how many requests had been sent by then"
+    },
+    "requests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["seq", "panelId", "panelTitle", "pluginId", "dashboardUid", "dsType", "url", "body", "status", "response", "error"],
+        "additionalProperties": false,
+        "properties": {
+          "seq": {"type": "integer"},
+          "panelId": {"type": ["string", "null"], "description": "X-Panel-Id: the panel id, a hash for a repeat clone"},
+          "panelTitle": {"type": ["string", "null"]},
+          "pluginId": {"type": ["string", "null"]},
+          "dashboardUid": {"type": ["string", "null"]},
+          "dsType": {"type": ["string", "null"]},
+          "url": {"type": "string"},
+          "body": {"type": ["object", "null"], "description": "the /api/ds/query body: from, to, queries (interpolated by the frontend)"},
+          "status": {"type": ["integer", "null"]},
+          "response": {"type": ["object", "null"], "description": "results per refId: status, frames (schema.meta.executedQueryString, fields, data.values)"},
+          "error": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "variables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "value", "text", "options"],
+        "properties": {
+          "name": {"type": "string"},
+          "type": {"type": "string"},
+          "options": {"type": "array", "items": {"type": "object", "required": ["text", "value"]}}
+        }
+      }
+    },
+    "panels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "pluginId", "title", "dataState", "requestPanelId", "errors", "transformed"],
+        "properties": {
+          "key": {"type": "string", "pattern": "^panel-"},
+          "pluginId": {"type": "string"},
+          "dataState": {"type": ["string", "null"]},
+          "requestPanelId": {"type": ["integer", "string", "null"]},
+          "errors": {"type": "array", "items": {"type": "string"}},
+          "transformed": {"type": ["array", "null"]}
+        }
+      }
+    },
+    "dom": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["key", "panelId", "title", "lines", "sparkline", "error", "noData"],
+        "properties": {
+          "key": {"type": "string"},
+          "lines": {"type": "array", "items": {"type": "string"}},
+          "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}, "description": "the text lines of every table row (role=row, the header row included), in display order"},
+          "sparkline": {"type": "boolean"},
+          "error": {"type": "boolean"},
+          "noData": {"type": "boolean"}
+        }
+      }
+    },
+    "router": {"type": "array", "items": {"type": "object", "required": ["method", "path", "query", "bearer", "status", "sha1"]}},
+    "errors": {"type": "array", "items": {"type": "string"}},
+    "timing": {"type": "object"}
+  }
+}
