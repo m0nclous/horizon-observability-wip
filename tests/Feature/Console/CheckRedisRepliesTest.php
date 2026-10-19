@@ -178,3 +178,30 @@ it('asks for the password Redis expects instead of reporting Redis down', functi
         ->and($storage->message)->toStartWith('ho-private answers with an error: ')->toMatch('/WRONGPASS|ERR AUTH/')
         ->and($storage->fix)->toBe('Set the password (and username) Redis expects in database.redis.ho-private (REDIS_PASSWORD, REDIS_USERNAME).');
 })->with(['phpredis', 'predis']);
+
+it('names the queue connection and its prefix when an ACL refuses the queue keys', function (string $client): void {
+    $redis = replyServer($this, $client);
+    $queuePrefix = 'hoq_'.getmypid().':';
+    // Horizon's queue on its own connection of the same server, with its own prefix; the package storage keys stay allowed.
+    config()->set('database.redis.ho-queue', ['host' => '127.0.0.1', 'port' => $redis->port, 'database' => 0, 'username' => 'ho', 'password' => 'secret', 'prefix' => $queuePrefix]);
+    config()->set('queue.connections.ho-queue', ['driver' => 'redis', 'connection' => 'ho-queue', 'queue' => 'default']);
+    config()->set('horizon.environments.testing', ['supervisor-1' => ['connection' => 'ho-queue', 'queue' => ['default'], 'maxProcesses' => 1]]);
+    expect($redis->command('ACL', 'SETUSER', 'ho', 'resetkeys', '~'.TestCase::redisPrefix().'*'))->toBe('+OK');
+
+    $results = replyCheck();
+    $fix = sprintf("Allow the keys of database.redis.ho-queue for its Redis user ho: ACL SETUSER ho '~%s*'.", $queuePrefix);
+
+    // The fix follows the failure to the queue's connection, not the storage one.
+    expect($results['Storage / Connection']->status->value)->toBe('ok')
+        ->and($results['Queues / Redis ho-queue']->status->value)->toBe('error')
+        ->and($results['Queues / Redis ho-queue']->message)->toStartWith('answers with an error: ')->toContain('NOPERM')
+        ->and($results['Queues / Redis ho-queue']->fix)->toBe($fix)
+        ->and($results['Collectors / queues']->status->value)->toBe('error')
+        ->and($results['Collectors / queues']->fix)->toBe($fix);
+
+    replyRunRule($redis, $fix);
+    $results = replyCheck();
+
+    expect($results['Queues / Redis ho-queue']->status->value)->toBe('ok')
+        ->and($results['Collectors / queues']->status->value)->toBe('ok');
+})->with(['phpredis', 'predis']);
