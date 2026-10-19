@@ -49,18 +49,26 @@ final readonly class Attempts
      * summed by (queue, job_class, status). The start is the last value within the lookback before the window, so a
      * scrape gap at the boundary does not break the count; a series without one (it appeared inside the window: a new
      * class, or the scrape job or a replica of an application added later; or it is back after an outage longer than
-     * the lookback over the start of the window) starts at its first value in the window. After a counter reset
-     * (negative difference) the value after the reset counts, for that series only.
+     * the lookback over the start of the window) starts at its first value in the window. The end is the series' last
+     * value inside the window, so a series that stops inside it keeps the attempts it made up to its last sample: a
+     * scrape job moved or renamed (the dedicated job of ADDENDUM R3.2), a Redis connection renamed, an application
+     * decommissioned, a failed scrape or an outage at the end of the window. After a counter reset (negative
+     * difference) the value after the reset counts, for that series only.
      *
      * The start is chosen per series, before the sum: a sum by (queue, job_class, status) has a start as soon as one of
      * its series has one, so a series that appears inside the window next to another job's series of the same queue,
      * class and status added its whole first value (its history), and a reset of one series made the sum's difference
-     * negative and counted every series' whole value (T13 QA round 3).
+     * negative and counted every series' whole value (T13 QA round 3). The end was the instant value at the end of the
+     * window (Prometheus' 5-minute lookback, nothing after a staleness marker), so a series without one lost every
+     * attempt of the window: one failed scrape at the end left the tables at 0 while the tiles counted 2,043 (T13 QA
+     * round 4).
      */
     public function delta(string $statuses, string $window): string
     {
         $status = [Promql::re('status', $statuses)];
-        $now = $this->promql->selector(Metric::JobsTotal, ...$status);
+        // The last value in (t - window, t]: range selectors skip staleness markers, and the window is the one the
+        // start's lookback ends at and its fallback reads
+        $end = $this->promql->over('last_over_time', Metric::JobsTotal, $window, $status);
         // The full-range fallback stays (ADDENDUM R2.4 O7): bounding it to the first LOOKBACK of the window would
         // count a series' whole value after a Prometheus outage longer than LOOKBACK over the start of the window
         $start = Promql::paren(Promql::either(
@@ -68,10 +76,11 @@ final readonly class Attempts
             $this->promql->over('min_over_time', Metric::JobsTotal, $window, $status),
         ));
 
-        // The value after a reset where the difference is negative. Every series with a value now has a start (the
-        // lookback covers Prometheus' 5 minutes), so `or now` adds exactly those, and the start, whose fallback reads
-        // every sample of the window, is evaluated once (the legacy `or (now < start)` evaluated it twice)
-        return $this->sum(Promql::paren(Promql::either(Promql::paren($now.' - '.$start).' >= 0', $now)));
+        // The value after a reset where the difference is negative. Every series with an end has a sample inside the
+        // window, so the fallback gives it a start, `or end` adds exactly the reset series, and the start, whose
+        // fallback reads every sample of the window, is evaluated once (the legacy `or (now < start)` evaluated it
+        // twice)
+        return $this->sum(Promql::paren(Promql::either(Promql::paren($end.' - '.$start).' >= 0', $end)));
     }
 
     /**
@@ -79,11 +88,13 @@ final readonly class Attempts
      * job_class, status): point t is the counter increase over (t, t + step], never below 0, so the points add up to
      * {@see delta()} over the period at any step. Grafana aligns the first point to the step size, at or before the
      * period start, and the last at or before the period end, so the first step starts at the series' value at
-     * `${__from}` and the last ends at its value at `${__to}` (a series without a value then appeared after the
-     * period). A step edge takes the last value inside the step, else the current one, so a staleness marker after a
-     * missed scrape does not zero the step. A series with no value at the start of a step (new, or back after a gap)
-     * starts at its first value inside the step: attempts during the gap are lost but not recounted. A counter reset
-     * counts 0 for its step on that series, as on the tiles ({@see perStepTotal()}).
+     * `${__from}` and the last ends at its last value within the lookback at `${__to}`, as the tiles' last point (a
+     * series without one appeared after the period or stopped before the last step; the instant value at `${__to}`
+     * left out the last step of a series whose scrape failed at the end, T13 QA round 4). A step edge takes the last
+     * value inside the step, else the current one, so a staleness marker after a missed scrape does not zero the step.
+     * A series with no value at the start of a step (new, or back after a gap) starts at its first value inside the
+     * step: attempts during the gap are lost but not recounted. A counter reset counts 0 for its step on that series,
+     * as on the tiles ({@see perStepTotal()}).
      *
      * The legacy form clipped with the values instead of the times (max with the value at the period start, min with
      * the one at the end), so after a reset every later step of the series counted its whole value; and it chose the
@@ -104,7 +115,7 @@ final readonly class Attempts
             $this->promql->selector(Metric::JobsTotal, ...$status),
         ));
         $stepFirst = $this->promql->over('min_over_time', Metric::JobsTotal, Promql::INTERVAL, $status, offset: $nextStep);
-        $periodEnd = $this->promql->shifted(Metric::JobsTotal, $status, at: Promql::TO_SECONDS);
+        $periodEnd = $this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status, at: Promql::TO_SECONDS);
         $periodStart = $this->promql->over('last_over_time', Metric::JobsTotal, $this->startLookback, $status, at: Promql::FROM_SECONDS);
         $firstStep = Promql::paren(Promql::paren('vector(time()) <= '.Promql::FROM_SECONDS).' + '.$step.' > '.Promql::FROM_SECONDS);
         $lastStep = Promql::paren('vector(time()) + '.$step.' > '.Promql::TO_SECONDS);

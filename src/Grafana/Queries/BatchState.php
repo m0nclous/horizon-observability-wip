@@ -65,21 +65,25 @@ final readonly class BatchState
     }
 
     /**
-     * Which queue and class each batch kind runs (legacy `BATCH_CLASSES`).
+     * Which queue and class each batch kind runs (legacy `BATCH_CLASSES`): now, or with $window every pair exported
+     * within it, for the attempts of the period (an application whose scrape failed at the end of the period keeps
+     * its kinds' attempts, T13 QA round 4).
      */
-    public function classes(): string
+    public function classes(?string $window = null): string
     {
-        return Promql::group($this->promql->selector(Metric::BatchJobClasses), 'batch', 'queue', 'job_class');
+        return Promql::group($window === null
+            ? $this->promql->selector(Metric::BatchJobClasses)
+            : $this->promql->over('last_over_time', Metric::BatchJobClasses, $window), 'batch', 'queue', 'job_class');
     }
 
     /**
      * A per-class value (labels queue, job_class) summed per batch kind its classes belong to
-     * (legacy `per_batch_kind`).
+     * (legacy `per_batch_kind`), with the classes of the kinds now or within $window ({@see classes()}).
      */
-    public function perKind(string $perClass): string
+    public function perKind(string $perClass, ?string $window = null): string
     {
         return Promql::sum(
-            Promql::binary($this->classes(), '*', Promql::sum($perClass, 'queue', 'job_class'), on: ['queue', 'job_class'], groupLeft: []),
+            Promql::binary($this->classes($window), '*', Promql::sum($perClass, 'queue', 'job_class'), on: ['queue', 'job_class'], groupLeft: []),
             'batch',
         );
     }

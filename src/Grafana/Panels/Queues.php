@@ -173,11 +173,14 @@ final readonly class Queues
     {
         $queues = $this->selection->queues();
         $range = Promql::RANGE;
+        // The queues of the period: an application whose scrape failed at the end of the period, or that stopped
+        // inside it, keeps its rows and their attempts (the columns of now show dashes; T13 QA round 4)
+        $periodQueues = $this->selection->queues($range);
         // Each selected queue with every supervisor it was seen with within a day: a row per (queue, supervisor), so a
         // queue that several supervisors work is in each of their tables
         $rows = Promql::andOn(
             Promql::group($this->promql->over('last_over_time', Metric::SupervisorProcesses, Variables::KNOWN_FOR), 'queue', 'supervisor'),
-            $queues,
+            $periodQueues,
             'queue',
         );
 
@@ -231,13 +234,13 @@ final readonly class Queues
         }
 
         // Completed, Failed, Timeouts, Retries and Success rate from one attempts query by status (ADDENDUM R2.4 O6;
-        // the legacy table evaluated attempts_delta six times): one series per (queue, status), 0 for configured
-        // queues without attempts. A series per status, not a table: the table pivots the statuses into columns with
-        // "Labels to fields" and computes Failed and Success rate.
+        // the legacy table evaluated attempts_delta six times): one series per (queue, status), 0 for the queues of
+        // the period without attempts. A series per status, not a table: the table pivots the statuses into columns
+        // with "Labels to fields" and computes Failed and Success rate.
         $statuses = explode('|', Attempts::COUNTED);
         $targets[] = Common::rawTarget('C', $this->promql->filtered(Promql::either(
-            Promql::andOn(Promql::sum($this->attempts->delta(Attempts::COUNTED, $range), 'queue', 'status'), $queues, 'queue'),
-            '0 * '.Promql::paren($this->perValue($queues, 'status', $statuses)),
+            Promql::andOn(Promql::sum($this->attempts->delta(Attempts::COUNTED, $range), 'queue', 'status'), $periodQueues, 'queue'),
+            '0 * '.Promql::paren($this->perValue($periodQueues, 'status', $statuses)),
         ), true));
 
         // A stub row of dashes when there are no rows: otherwise only headers remain, without the Queue column,

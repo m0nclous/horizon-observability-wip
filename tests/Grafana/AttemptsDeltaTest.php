@@ -11,9 +11,10 @@ use DF\HorizonObservability\Tests\Grafana\Support\Promtool;
 /*
  * The attempts of a window (Attempts::delta(), the tables, captions and alerts' sibling): the counter difference
  * from the last value within LOOKBACK before the window, with the full-range fallback min_over_time(sel[$__range])
- * for a series without one (ADDENDUM R2.4 O7: kept, not bounded), and the value after a reset where the difference
- * is negative. The start is evaluated once (`(now - start) >= 0 or now`); it must equal the legacy
- * `(now - start) >= 0 or (now < start)`, which evaluated it twice.
+ * for a series without one (ADDENDUM R2.4 O7: kept, not bounded), to the last value inside the window, and the value
+ * after a reset where the difference is negative. The start is evaluated once (`(end - start) >= 0 or end`); where
+ * every series has a value at the end of the window (the medium profile), it must equal the legacy
+ * `(now - start) >= 0 or (now < start)`, which evaluated it twice. SeriesEndTest holds the series without one.
  */
 
 pest()->group('grafana');

@@ -63,8 +63,9 @@ final readonly class Batches
             $this->common->target('B', $progress, format: 'table', jobFilter: false),
             // Waiting: Laravel counts failed jobs as pending
             $this->common->target('C', $this->batches->selectedKindsOrZero(Promql::call('clamp_min', $pending.' - '.$failed, '0')), format: 'table', jobFilter: false),
-            // Failed in the period, as Failed in the queue tables, not only in the batches running now
-            $this->common->target('D', $this->batches->selectedKindsOrZero($this->batches->perKind($this->attempts->delta(Attempts::FAILED, Promql::RANGE))), format: 'table'),
+            // Failed in the period, as Failed in the queue tables, not only in the batches running now; the attempts
+            // columns take the kinds' classes of the period (an application whose scrape failed at the end keeps them)
+            $this->common->target('D', $this->batches->selectedKindsOrZero($this->batches->perKind($this->attempts->delta(Attempts::FAILED, Promql::RANGE), Promql::RANGE)), format: 'table'),
             $this->common->target('E', $this->batches->selectedKindsOrZero($this->batches->perKind($this->promql->selector(Metric::QueueJobsReserved))), format: 'table'),
             $this->common->target(
                 'F',
@@ -75,10 +76,10 @@ final readonly class Batches
                 format: 'table',
                 jobFilter: false,
             ),
-            $this->common->target('G', $this->batches->selectedKindsOrZero($this->batches->perKind($this->attempts->delta(Attempts::COMPLETED, Promql::RANGE))), format: 'table'),
+            $this->common->target('G', $this->batches->selectedKindsOrZero($this->batches->perKind($this->attempts->delta(Attempts::COMPLETED, Promql::RANGE), Promql::RANGE)), format: 'table'),
             $this->common->target(
                 'H',
-                $this->batches->selectedKindsOrZero(Promql::call('round', $this->batches->perKind($this->attempts->delta(Attempts::COMPLETED, $minutes.'m')).' / '.$minutes)),
+                $this->batches->selectedKindsOrZero(Promql::call('round', $this->batches->perKind($this->attempts->delta(Attempts::COMPLETED, $minutes.'m'), Promql::RANGE).' / '.$minutes)),
                 format: 'table',
             ),
             // A stub row of dashes without batches in the period: otherwise only headers remain, without the Batch
