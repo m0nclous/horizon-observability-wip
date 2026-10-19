@@ -13,4 +13,4 @@ Conventions:
 - Change task statuses only with `tools/board/set-status.sh <Txx> <todo|in progress|testing|done> [--qa "..."]` (it
   commits and pushes `planning/TASKS.md`; the board workflow moves the card). Follow the QA gate in `planning/README.md`
   decision 14: implementer -> `testing`, two independent testers -> `done` or back to `in progress` with a QA verdict.
-- Push work to `origin` (branch `claude/hopeful-hawking-njeu3v`).
+- Push work to `origin` (branch `master`).

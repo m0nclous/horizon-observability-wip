@@ -104,7 +104,7 @@ that the next task points to. Everything here is export-ignored and will be dele
 
 ## Git and environment
 
-- Work on branch `claude/hopeful-hawking-njeu3v`. Remote `origin` = `https://github.com/m0nclous/horizon-observability-wip`
+- Work on branch `master`. Remote `origin` = `https://github.com/m0nclous/horizon-observability-wip`
   (private working repo; the owner will move it later). Push only to `origin`, never to the `sushi-market` remote
   (`https://github.com/sushi-market/horizon-observability`), until the owner says so. The old base branch there is `master`
   (commit `3b260c9 init`); there is no `main`.
@@ -143,7 +143,7 @@ The cloud session hit its usage limit during the phase C QA rounds; work resumed
 ## How to resume
 
 1. `git clone https://github.com/m0nclous/horizon-observability-wip horizon-observability && cd horizon-observability &&
-   git switch claude/hopeful-hawking-njeu3v` (or `git pull` in an existing checkout), `composer install`,
+   git switch master` (or `git pull` in an existing checkout), `composer install`,
    `vendor/bin/pest` (should be green), read TASKS.md.
 2. If a task is `in progress` but no session is working on it (no commit touching it in the last 24 h, or the owner says
    so), treat it as `todo` and resume it first; its "Progress" note says what is already done.
@@ -156,9 +156,9 @@ The cloud session hit its usage limit during the phase C QA rounds; work resumed
 
 - **Alone:** you are the integrator (Arch Q9 rule 2) and may edit the shared files; commit shared-file changes separately
   with the subject prefix `integrator:`.
-- **Parallel:** one worktree per task: `git worktree add ../ho-Txx -b wip/Txx-<slug> claude/hopeful-hawking-njeu3v`.
+- **Parallel:** one worktree per task: `git worktree add ../ho-Txx -b wip/Txx-<slug> master`.
   Only the integrator edits TASKS.md and the shared files, merges `wip/*` branches with `--no-ff` into
-  `claude/hopeful-hawking-njeu3v` and pushes.
+  `master` and pushes.
 - **Phase review:** when a phase is done, a fresh agent reviews `git diff <first commit of the phase>^..HEAD` against each
   task's acceptance and Arch Appendix H (e.g. `/code-review high`), fixes the findings, and adds
   "Review: <date>, <n> findings fixed, <commit>" under the phase heading in TASKS.md.
