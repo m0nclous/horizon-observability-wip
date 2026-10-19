@@ -1,0 +1,10 @@
+replica clocks probe, real exporter, Prometheus v3.15.0, scrape 5 s, replicas A (real time) and B (+15 s) behind one target,
+a worker 120 s ahead, 3 attempts of a new class at t = 10 s; window [t = 10 s, t = 260 s], truth: 3
+before samples:  3 3 3 3 0 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3 0 3 3 3 3 3 3 3 3
+before increase: 9.183673469387756
+before resets:   3
+after samples:  0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3 3
+after increase: 3.010616326530612
+after resets:   0
+before requests (t replica value): 9 A none;14 B 3;19 A 3;24 B 3;29 A 3;34 B 0;39 A 3;44 B 0;49 A 0;54 B 0;59 A 0;64 B 0;69 A 0;74 B 0;79 A 0;84 B 0;89 A 0;94 B 0;99 A 0;104 B 0;109 A 0;114 B 0;119 A 0;124 B 0;129 A 0;134 B 0;139 A 0;144 B 0;149 A 0;154 B 0;159 A 0;164 B 0;169 A 0;174 B 0;179 A 0;184 B 0;189 A 0;194 B 0;199 A 0;204 B 0;209 A 0;214 B 3;219 A 0;224 B 3;229 A 3;234 B 3;239 A 3;244 B 3;249 A 3;254 B 3;259 A 3;
+after requests (t replica value): 9 A none;14 B 0;19 A 0;24 B 0;29 A 0;34 B 0;39 A 0;44 B 0;49 A 0;54 B 0;59 A 0;64 B 0;69 A 0;74 B 0;79 A 0;84 B 0;89 A 0;94 B 0;99 A 0;104 B 3;109 A 3;114 B 3;119 A 3;124 B 3;129 A 3;134 B 3;139 A 3;144 B 3;149 A 3;154 B 3;159 A 3;164 B 3;169 A 3;174 B 3;179 A 3;184 B 3;189 A 3;194 B 3;199 A 3;204 B 3;209 A 3;214 B 3;219 A 3;224 B 3;229 A 3;234 B 3;239 A 3;244 B 3;249 A 3;254 B 3;259 A 3;

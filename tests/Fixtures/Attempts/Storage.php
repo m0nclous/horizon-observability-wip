@@ -11,6 +11,7 @@ use DF\HorizonObservability\Collectors\AttemptsCollector;
 use DF\HorizonObservability\Metrics\MetricFamily;
 use DF\HorizonObservability\Metrics\ScrapeContext;
 use DF\HorizonObservability\Redis\Keys;
+use DF\HorizonObservability\Redis\ServerClock;
 use DF\HorizonObservability\Tests\Support\RedisKeys;
 use DF\HorizonObservability\Tests\TestCase;
 use Illuminate\Container\Container;
@@ -19,6 +20,11 @@ use Throwable;
 /**
  * Test access to the attempt storage: readable hashes (`\x1f` shown as `|`), records with defaults, and the
  * attempts collector's samples.
+ *
+ * The storage Redis' clock ({@see ServerClock}), on which the new-series hold runs: {@see self::record()} and
+ * {@see self::scrape()} pin it for their call to `$server`, or to `$now` when only that is given (the worker or the
+ * exporter in sync with Redis), and restore it after; with neither it stays as it is (the server's `TIME` unless a
+ * test pinned it).
  */
 final class Storage
 {
@@ -144,8 +150,16 @@ final class Storage
         return (int) self::store()->reader()->exists($key) > 0;
     }
 
+    public static function clock(): ServerClock
+    {
+        return Container::getInstance()->make(ServerClock::class);
+    }
+
     /**
      * Record one attempt with defaults.
+     *
+     * @param  CarbonImmutable|null  $now  the worker's clock (the attempt end)
+     * @param  float|null  $server  the storage Redis' clock during the record (Unix seconds); default `$now`
      */
     public static function record(
         string $jobClass = 'App\\Jobs\\SendInvoice',
@@ -157,24 +171,56 @@ final class Storage
         ?CarbonImmutable $now = null,
         string $connection = 'redis',
         string $queue = 'default',
+        ?float $server = null,
     ): bool {
-        return self::store()->record($connection, $queue, $jobClass, $status, $duration, $startedAt, $readyAt, $uuid, $now ?? CarbonImmutable::now());
+        return self::onServerClock($server ?? self::unix($now), static fn (): bool => self::store()->record($connection, $queue, $jobClass, $status, $duration, $startedAt, $readyAt, $uuid, $now ?? CarbonImmutable::now()));
     }
 
     /**
      * Run the attempts collector once.
      *
+     * @param  CarbonImmutable|null  $now  the exporter's clock (the scrape's request time)
+     * @param  float|null  $server  the storage Redis' clock during the scrape (Unix seconds); default `$now`
      * @return array{samples: array<string, array<string, int|float>>, failures: list<string>}
      */
-    public static function scrape(?CarbonImmutable $now = null): array
+    public static function scrape(?CarbonImmutable $now = null, ?float $server = null): array
     {
         $context = new ScrapeContext($now ?? CarbonImmutable::now(), 8.0);
-        $families = Container::getInstance()->make(AttemptsCollector::class)->collect($context);
+        $families = self::onServerClock($server ?? self::unix($now), static fn (): array => [...Container::getInstance()->make(AttemptsCollector::class)->collect($context)]);
 
         return [
             'samples' => self::samples($families),
             'failures' => array_map(static fn (array $failure): string => $failure['source'].': '.self::message($failure['exception']), $context->takeFailures()),
         ];
+    }
+
+    /**
+     * Run `$call` with the server clock pinned to `$server` (null: as it is), then restore its pin.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $call
+     * @return T
+     */
+    public static function onServerClock(?float $server, callable $call): mixed
+    {
+        $clock = self::clock();
+        $pinned = $clock->pinned();
+
+        if ($server !== null) {
+            $clock->pin($server);
+        }
+
+        try {
+            return $call();
+        } finally {
+            $clock->pin($pinned);
+        }
+    }
+
+    private static function unix(?CarbonImmutable $time): ?float
+    {
+        return $time === null ? null : (float) $time->format('U.u');
     }
 
     /**

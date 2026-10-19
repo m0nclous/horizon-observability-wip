@@ -1,0 +1,10 @@
+pooled-queues probe, Prometheus v3.15.0; the pool supervisor-pool works mail and sms
+rows of #5 (supervisor, queue) with pending jobs:
+  T13 on horizon_supervisor_processes: default,supervisor-default=7, reports,supervisor-slow=0, slow,supervisor-slow=2
+  on horizon_supervisor_queues:        default,supervisor-default=7, mail,supervisor-pool=4, reports,supervisor-slow=0, slow,supervisor-slow=2, sms,supervisor-pool=9
+processes per queue (#5 Processes):
+  T13 sum by (queue):                  default=3, mail,sms=2, reports=1, slow=1
+  via the pool label:                  default=3, mail=2, reports=1, slow=1, sms=2
+busy workers per supervisor (utilisation numerator):
+  T13 on horizon_supervisor_processes: supervisor-default=2
+  on horizon_supervisor_queues:        supervisor-default=2, supervisor-pool=2

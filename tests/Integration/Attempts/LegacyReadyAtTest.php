@@ -81,7 +81,7 @@ it('passes no ready_at key to the record EVAL on a modern stack', function (): v
     $this->runWorker();
 
     expect($commands->names(RedisClients::STORAGE))->toBe(['EVAL'])
-        ->and(Storage::evalKeyCounts($commands->commands(RedisClients::STORAGE)))->toBe([10])
+        ->and(Storage::evalKeyCounts($commands->commands(RedisClients::STORAGE)))->toBe([11])
         ->and(Storage::waits())->toBe(1);
 });
 
@@ -115,7 +115,7 @@ it('uses ready_at for the wait on a legacy stack and deletes it inside the EVAL 
     $this->runWorker();
 
     expect($commands->names(RedisClients::STORAGE))->toBe(['EVAL'])
-        ->and(Storage::evalKeyCounts($commands->commands(RedisClients::STORAGE)))->toBe([11])
+        ->and(Storage::evalKeyCounts($commands->commands(RedisClients::STORAGE)))->toBe([12])
         ->and(Storage::hash((new Keys)->waitSum()))->toBe(['redis|default' => '5'])
         ->and(Storage::exists($key))->toBeFalse();
 });

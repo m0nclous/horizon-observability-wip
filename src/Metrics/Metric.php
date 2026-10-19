@@ -21,6 +21,7 @@ enum Metric: string
     case SupervisorMinProcesses = 'horizon_supervisor_min_processes';
     case SupervisorMaxProcesses = 'horizon_supervisor_max_processes';
     case SupervisorInfo = 'horizon_supervisor_info';
+    case SupervisorQueues = 'horizon_supervisor_queues';
     case WaitThreshold = 'horizon_wait_threshold_seconds';
     case HorizonInfo = 'horizon_info';
     case QueuePendingJobs = 'queue_pending_jobs';
@@ -74,6 +75,7 @@ enum Metric: string
             self::SupervisorMinProcesses => 'Configured minimum worker processes of a Horizon supervisor.',
             self::SupervisorMaxProcesses => 'Configured maximum worker processes of a Horizon supervisor.',
             self::SupervisorInfo => 'Horizon supervisor settings; always 1.',
+            self::SupervisorQueues => 'Queues of a Horizon supervisor, one series per queue; pool is the queue label of its process pool in horizon_supervisor_processes (a balance=false pool joins its queues with commas); always 1.',
             self::WaitThreshold => 'Long-wait threshold of a queue from horizon.waits, seconds.',
             self::HorizonInfo => 'Links for the Grafana dashboard: Horizon URL, job-list API path and text-to-speech URL; always 1.',
             self::QueuePendingJobs => 'Jobs ready to run and waiting for a worker, including delayed jobs that are already due.',
@@ -82,7 +84,7 @@ enum Metric: string
             self::QueueOldestPendingJobAge => 'Seconds the oldest ready first-attempt job has waited since it became available; 0 when nothing is waiting.',
             self::QueueJobsPending => 'Ready jobs per job class in the scanned head of the queue; (unscanned) counts the rest.',
             self::QueueJobsReserved => 'Jobs currently reserved by workers per job class.',
-            self::JobsTotal => 'Finished job attempts by outcome: completed, released, retried, failed, timed_out.',
+            self::JobsTotal => 'Finished job attempts by outcome: completed, released, retried, failed, timed_out; a new series reads 0 for its first 90 seconds.',
             self::JobDuration => 'Duration of job attempts, seconds.',
             self::JobWait => 'Seconds a job waited in the queue before its first attempt started.',
             self::JobDurationMin => 'Shortest job attempt during the last 150 seconds, seconds.',
@@ -123,6 +125,7 @@ enum Metric: string
             self::SupervisorProcesses => ['supervisor', 'queue'],
             self::SupervisorMinProcesses, self::SupervisorMaxProcesses => ['supervisor'],
             self::SupervisorInfo => ['supervisor', 'balance', 'connection'],
+            self::SupervisorQueues => ['supervisor', 'queue', 'pool'],
             self::WaitThreshold,
             self::QueuePendingJobs,
             self::QueueDelayedJobs,
@@ -160,6 +163,7 @@ enum Metric: string
             self::SupervisorMinProcesses,
             self::SupervisorMaxProcesses,
             self::SupervisorInfo,
+            self::SupervisorQueues,
             self::WaitThreshold,
             self::HorizonInfo => 'horizon',
             self::QueuePendingJobs,

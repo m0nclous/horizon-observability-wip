@@ -24,6 +24,7 @@ use DF\HorizonObservability\Redis\CircuitBreaker;
 use DF\HorizonObservability\Redis\Keys;
 use DF\HorizonObservability\Redis\Lua;
 use DF\HorizonObservability\Redis\RedisClients;
+use DF\HorizonObservability\Redis\ServerClock;
 use DF\HorizonObservability\Support\Diagnostics;
 use DF\HorizonObservability\Support\FailureReporter;
 use DF\HorizonObservability\Support\Versions;
@@ -85,6 +86,7 @@ final class HorizonObservabilityServiceProvider extends ServiceProvider
         $this->app->singleton(Versions::class);
         $this->app->singleton(Lua::class, static fn (): Lua => new Lua);
         $this->app->singleton(Keys::class, static fn (): Keys => new Keys);
+        $this->app->singleton(ServerClock::class);
         $this->app->singleton(Topology::class);
         $this->app->singleton(AttemptTracker::class);
         $this->app->singleton(AttemptStore::class);
