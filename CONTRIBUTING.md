@@ -214,7 +214,8 @@ The Grafana of the dev stack picks up the new dashboard within 10 seconds, and t
   `HORIZON_OBSERVABILITY_*` variables), the endpoints and their JSON, the metric names, labels and label values, the
   dashboard uid and variables, the `HorizonObservability` hooks, and the commands and their options. Renaming or
   removing any of them, or changing a path default or a JSON field, is a breaking change: in 0.x a minor release with an
-  entry in `UPGRADE.md`, from 1.0 a major one. Deprecate in a minor and remove in the next major.
+  entry in `UPGRADE.md` (create it with the first one), from 1.0 a major one. Deprecate in a minor and remove in the
+  next major.
 
 ## Commits and pull requests
 
@@ -237,7 +238,7 @@ The Grafana of the dev stack picks up the new dashboard within 10 seconds, and t
 | `static` | `composer validate --strict`, `composer normalize --dry-run`, Pint, Rector, PHPStan |
 | `coverage` | Pest with pcov and a minimum of 85 % coverage, with `PROMTOOL` set |
 | `grafana` | On Grafana 12.4.13 and 13.2.4: `composer test:grafana`, the `grafana` group with `PROMTOOL`, `promtool check rules` on every rendered expression, and a provisioning smoke test of the dev stack (the dashboard, 4 alert rules, both plugins, the Prometheus datasource health, no provisioning errors) |
-| `dist` | `git archive HEAD` contains only `src/`, `config/`, `routes/`, `resources/`, `composer.json`, `LICENSE`, `README.md`, `CHANGELOG.md` and `UPGRADE.md` |
+| `dist` | `git archive HEAD` contains only `src/`, `config/`, `routes/`, `resources/`, `composer.json`, `LICENSE`, `README.md` and `CHANGELOG.md` (and `UPGRADE.md` once there is one) |
 | `first-dashboard` | Weekly and by hand: `tests/e2e/first-dashboard.sh` on Grafana 12 and 13 |
 | `e2e` | Weekly and by hand: two app replicas, Horizon and ten minutes of simulated load, screenshots, the `e2e` group, the replica dedupe check and the performance report (the last two do not fail the job yet, [#37]) |
 

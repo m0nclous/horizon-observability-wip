@@ -98,7 +98,6 @@ Notes:
 - [Metrics](#metrics)
 - [Performance and scrape interval](#performance-and-scrape-interval)
 - [Known limitations](#known-limitations)
-- [Upgrading from the pilot](#upgrading-from-the-pilot)
 
 ## Requirements
 
@@ -793,14 +792,6 @@ By design:
   recorded can open the worker's circuit breaker for 30 s; that worker's attempts in the window are counted as
   dropped. With predis, a `ready_at` or batch-link write interrupted by SIGALRM can leave the package's private client
   out of sync.
-
-## Upgrading from the pilot
-
-This package replaces the internal pilot `sushi-market/horizon-prometheus-grafana`. Remove the pilot, require this
-package, and replace the `HPG_*` variables with their `HORIZON_OBSERVABILITY_*` counterparts. Set
-`HORIZON_OBSERVABILITY_NAMESPACE=office` to keep the `office_` metric names. Add a separate Prometheus scrape job with
-the bearer token, and render the dashboard with `--uid=horizon` to keep its links and alert history. The series
-history breaks once, because the `job` label and the counter keys change. [UPGRADE.md](UPGRADE.md) has every step.
 
 ## Contributing, security, license
 

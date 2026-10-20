@@ -204,8 +204,8 @@ it('allows only the package files in the dist archive, and requires every one of
 
     expect($run)->toContain('git archive HEAD')
         ->toContain("allowed='^(src/|config/|routes/|resources/|composer\\.json$|LICENSE$|README\\.md$|CHANGELOG\\.md$|UPGRADE\\.md$)'")
-        // The runtime resources (Lua scripts, Grafana assets, views) and the upgrade guide too.
-        ->toContain('for required in src/ config/ routes/ resources/ resources/lua/ composer.json LICENSE README.md CHANGELOG.md UPGRADE.md; do');
+        // The runtime resources (Lua scripts, Grafana assets, views) too; UPGRADE.md is allowed, not required.
+        ->toContain('for required in src/ config/ routes/ resources/ resources/lua/ composer.json LICENSE README.md CHANGELOG.md; do');
 });
 
 it('pins every action to a major version', function (string $file): void {

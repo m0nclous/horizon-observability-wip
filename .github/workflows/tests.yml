@@ -262,8 +262,9 @@ jobs:
             echo "::error::git archive ships files outside the allowlist (above)"
             exit 1
           fi
-          # resources/ holds the Lua scripts, the Grafana assets and the views the package needs at runtime.
-          for required in src/ config/ routes/ resources/ resources/lua/ composer.json LICENSE README.md CHANGELOG.md UPGRADE.md; do
+          # resources/ holds the Lua scripts, the Grafana assets and the views the package needs at runtime. UPGRADE.md
+          # is allowed for the upgrade guide that comes with the first breaking change.
+          for required in src/ config/ routes/ resources/ resources/lua/ composer.json LICENSE README.md CHANGELOG.md; do
             grep -qx "$required" archive.txt || { echo "::error::git archive misses $required"; exit 1; }
           done
 

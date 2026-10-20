@@ -3,7 +3,7 @@
 ## Supported versions
 
 The package is in its `0.x` series. Security fixes go into a new release of the latest `0.x` minor version only, so
-upgrade to it; `UPGRADE.md` lists what changes between minor versions.
+upgrade to it; `CHANGELOG.md` lists what changes between minor versions.
 
 | Version | Security fixes |
 |---|---|
